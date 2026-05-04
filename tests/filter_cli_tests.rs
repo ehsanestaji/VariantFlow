@@ -381,6 +381,30 @@ fn format_filter_rejects_unknown_sample() {
 }
 
 #[test]
+fn format_filter_rejects_site_only_header_even_with_sample_argument() {
+    let dir = tempdir().unwrap();
+    let output = dir.path().join("site-only-format.vcf");
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            fixture("tests/data/example.vcf").to_str().unwrap(),
+            "--where",
+            "FORMAT/DP > 20",
+            "--sample",
+            "HG002",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "FORMAT predicates require #CHROM header with sample columns",
+        ));
+}
+
+#[test]
 fn sample_argument_is_allowed_for_site_only_filters() {
     let dir = tempdir().unwrap();
     let output = dir.path().join("site-with-sample.vcf");
