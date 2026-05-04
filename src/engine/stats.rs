@@ -6,7 +6,7 @@ use anyhow::Result;
 use serde::Serialize;
 
 use crate::io::open_reader;
-use crate::vcf::{SiteRecord, info_numbers, parse_record_line};
+use crate::vcf::{RecordFields, for_each_info_number, parse_record_fields};
 
 #[derive(Debug, Default, Serialize)]
 pub struct StatsSummary {
@@ -50,8 +50,8 @@ pub fn collect(input: &Path) -> Result<StatsSummary> {
 
     while reader.read_line(&mut line)? != 0 {
         if !line.starts_with('#') {
-            let record = parse_record_line(&line)?;
-            summary.observe(&record, &mut titv);
+            let fields = parse_record_fields(&line)?;
+            summary.observe(&fields, &mut titv)?;
         }
         line.clear();
     }
@@ -63,33 +63,33 @@ pub fn collect(input: &Path) -> Result<StatsSummary> {
 }
 
 impl StatsSummary {
-    fn observe(&mut self, record: &SiteRecord, titv: &mut TiTv) {
+    fn observe(&mut self, record: &RecordFields<'_>, titv: &mut TiTv) -> Result<()> {
         self.variants += 1;
         *self
             .variants_per_chromosome
-            .entry(record.chrom.clone())
+            .entry(record.chrom.to_string())
             .or_default() += 1;
 
         if record.filter == "." {
             self.missing_filter_values += 1;
         }
 
-        if let Some(qual) = record.qual {
+        if let Some(qual) = record.qual_float()? {
             self.qual.observe(qual);
         }
 
-        for af in info_numbers(&record.info, "AF") {
-            self.af.observe(af);
-        }
+        for_each_info_number(record.info, "AF", |af| self.af.observe(af));
 
         for alt in record.alt_alleles() {
-            if is_snp(&record.reference, alt) {
+            if is_snp(record.reference, alt) {
                 self.snps += 1;
-                titv.observe(&record.reference, alt);
+                titv.observe(record.reference, alt);
             } else {
                 self.indels += 1;
             }
         }
+
+        Ok(())
     }
 }
 

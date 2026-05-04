@@ -4,7 +4,7 @@ use std::path::Path;
 use anyhow::{Result, bail};
 
 use crate::io::{open_reader, open_writer};
-use crate::vcf::info_value;
+use crate::vcf::{info_value, parse_record_fields};
 
 pub fn run(input: &Path, target: &str, output: &Path) -> Result<()> {
     match target {
@@ -32,20 +32,22 @@ fn convert_to_tsv(input: &Path, output: &Path) -> Result<()> {
 }
 
 fn write_tsv_record(line: &str, writer: &mut dyn Write) -> Result<()> {
-    let trimmed = line.trim_end_matches(['\r', '\n']);
-    let columns: Vec<&str> = trimmed.split('\t').collect();
-
-    if columns.len() < 8 {
-        bail!("VCF record has fewer than 8 columns: {trimmed}");
-    }
-
-    let dp = info_value(columns[7], "DP").unwrap_or(".");
-    let af = info_value(columns[7], "AF").unwrap_or(".");
+    let fields = parse_record_fields(line)?;
+    let dp = info_value(fields.info, "DP").unwrap_or(".");
+    let af = info_value(fields.info, "AF").unwrap_or(".");
 
     writeln!(
         writer,
         "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-        columns[0], columns[1], columns[2], columns[3], columns[4], columns[5], columns[6], dp, af
+        fields.chrom,
+        fields.pos,
+        fields.id,
+        fields.reference,
+        fields.alternate,
+        fields.qual,
+        fields.filter,
+        dp,
+        af
     )?;
 
     Ok(())
