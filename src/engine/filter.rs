@@ -16,26 +16,21 @@ pub fn run(input: &Path, where_expr: &str, sample: Option<&str>, output: &Path) 
         bail!("FORMAT predicates require --sample <name>");
     }
 
+    let sample_column = if required.requires_format() {
+        Some(resolve_format_sample_column(input, sample.unwrap())?)
+    } else {
+        None
+    };
+
     let mut reader = open_reader(input)?;
     let mut writer = open_writer(output)?;
     let mut line = String::new();
-    let mut sample_column = None;
 
     while reader.read_line(&mut line)? != 0 {
         if line.starts_with('#') {
-            if required.requires_format() && line.starts_with("#CHROM\t") {
-                if column_value(&line, 9).is_none() {
-                    bail!("FORMAT predicates require #CHROM header with sample columns");
-                }
-                sample_column = Some(resolve_sample_column(&line, sample.unwrap())?);
-            }
             writer.write_all(line.as_bytes())?;
             line.clear();
             continue;
-        }
-
-        if required.requires_format() && sample_column.is_none() {
-            bail!("FORMAT predicates require #CHROM header with sample columns");
         }
 
         let record = parse_eval_record_line(&line, required, sample_column)?;
@@ -47,6 +42,28 @@ pub fn run(input: &Path, where_expr: &str, sample: Option<&str>, output: &Path) 
 
     writer.flush()?;
     Ok(())
+}
+
+fn resolve_format_sample_column(input: &Path, sample: &str) -> Result<usize> {
+    let mut reader = open_reader(input)?;
+    let mut line = String::new();
+
+    while reader.read_line(&mut line)? != 0 {
+        if !line.starts_with('#') {
+            break;
+        }
+
+        if line.starts_with("#CHROM\t") {
+            if column_value(&line, 9).is_none() {
+                bail!("FORMAT predicates require #CHROM header with sample columns");
+            }
+            return resolve_sample_column(&line, sample);
+        }
+
+        line.clear();
+    }
+
+    bail!("FORMAT predicates require #CHROM header with sample columns");
 }
 
 fn parse_eval_record_line(
