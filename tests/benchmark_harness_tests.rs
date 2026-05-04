@@ -71,3 +71,25 @@ fn public_data_downloader_pins_giab_and_igsr_sources() {
     assert!(script.contains("ftp-trace.ncbi.nlm.nih.gov"));
     assert!(script.contains("ftp.1000genomes.ebi.ac.uk"));
 }
+
+#[test]
+fn compatibility_report_tracks_required_benchmark_fields() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let report =
+        fs::read_to_string(root.join("benchmark/reports/compatibility-benchmark.md")).unwrap();
+
+    assert!(report.contains("BCF input"));
+    assert!(report.contains("BGZF output"));
+    assert!(report.contains("Indexed VCF region filter"));
+    assert!(report.contains("Indexed BCF region stats"));
+    assert!(report.contains("bcftools filter"));
+    assert!(report.contains("bcftools query"));
+    assert!(report.contains("tabix -p vcf"));
+    assert!(report.contains("competitor version"));
+    assert!(report.contains("runtime"));
+    assert!(report.contains("speedup"));
+    assert!(report.contains("variants/sec"));
+    assert!(report.contains("peak RSS"));
+    assert!(report.contains("correctness result"));
+    assert!(report.contains("not a broad speed claim"));
+}
