@@ -143,7 +143,8 @@ pub fn parse_u64_ascii(value: &str) -> Result<u64> {
     Ok(result)
 }
 
-pub fn resolve_sample_column(chrom_header: &str, sample: &str) -> Result<usize> {
+#[allow(dead_code)]
+pub(crate) fn resolve_sample_column(chrom_header: &str, sample: &str) -> Result<usize> {
     let header = chrom_header.trim_end_matches(['\r', '\n']);
     let mut found = None;
 
@@ -156,7 +157,8 @@ pub fn resolve_sample_column(chrom_header: &str, sample: &str) -> Result<usize> 
     found.ok_or_else(|| anyhow::anyhow!("sample '{sample}' not found in VCF header"))
 }
 
-pub fn column_value(line: &str, target_column: usize) -> Option<&str> {
+#[allow(dead_code)]
+pub(crate) fn column_value(line: &str, target_column: usize) -> Option<&str> {
     let line = line.trim_end_matches(['\r', '\n']);
     let mut found = None;
 
@@ -169,11 +171,12 @@ pub fn column_value(line: &str, target_column: usize) -> Option<&str> {
     found
 }
 
-pub fn selected_format_values<'a>(
-    format: &'a str,
-    sample: &'a str,
+#[allow(dead_code)]
+pub(crate) fn selected_format_values<'sample>(
+    format: &str,
+    sample: &'sample str,
     required: RequiredFormatFields,
-) -> FormatValues<'a> {
+) -> FormatValues<'sample> {
     if sample == "." {
         return FormatValues::default();
     }
@@ -229,7 +232,7 @@ pub fn info_value<'a>(info: &'a str, key: &str) -> Option<&'a str> {
     found
 }
 
-fn format_value<'a>(format: &'a str, sample: &'a str, key: &str) -> Option<&'a str> {
+fn format_value<'sample>(format: &str, sample: &'sample str, key: &str) -> Option<&'sample str> {
     let mut key_index = None;
     let mut index = 0;
 
