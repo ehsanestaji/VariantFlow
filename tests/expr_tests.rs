@@ -1,4 +1,4 @@
-use vcf_fast::expr::{EvalRecord, parse_expression};
+use vcf_fast::expr::{EvalRecord, FormatValues, parse_expression};
 
 fn record<'a>(
     chrom: &'a str,
@@ -13,6 +13,18 @@ fn record<'a>(
         qual,
         filter,
         info,
+        format: FormatValues::default(),
+    }
+}
+
+fn record_with_format<'a>(format: FormatValues<'a>) -> EvalRecord<'a> {
+    EvalRecord {
+        chrom: "1",
+        pos: 100,
+        qual: Some(50.0),
+        filter: "PASS",
+        info: "DP=10;AF=0.1",
+        format,
     }
 }
 
@@ -78,4 +90,78 @@ fn rejects_malformed_expressions() {
     let err = parse_expression("QUAL >").unwrap_err().to_string();
 
     assert!(err.contains("expected literal"));
+}
+
+#[test]
+fn evaluates_format_numeric_predicates() {
+    let expr = parse_expression("FORMAT/DP > 20 && FORMAT/GQ >= 30").unwrap();
+
+    assert!(expr.evaluate(&record_with_format(FormatValues {
+        gt: Some("0/1"),
+        dp: Some("25"),
+        gq: Some("40"),
+    })));
+    assert!(!expr.evaluate(&record_with_format(FormatValues {
+        gt: Some("0/1"),
+        dp: Some("10"),
+        gq: Some("40"),
+    })));
+}
+
+#[test]
+fn evaluates_format_gt_as_exact_string() {
+    let expr = parse_expression("FORMAT/GT == \"0/1\"").unwrap();
+
+    assert!(expr.evaluate(&record_with_format(FormatValues {
+        gt: Some("0/1"),
+        dp: None,
+        gq: None,
+    })));
+    assert!(!expr.evaluate(&record_with_format(FormatValues {
+        gt: Some("0|1"),
+        dp: None,
+        gq: None,
+    })));
+
+    let missing_dot = parse_expression("FORMAT/GT == \".\"").unwrap();
+    assert!(!missing_dot.evaluate(&record_with_format(FormatValues {
+        gt: Some("."),
+        dp: None,
+        gq: None,
+    })));
+
+    let missing_empty = parse_expression("FORMAT/GT == \"\"").unwrap();
+    assert!(!missing_empty.evaluate(&record_with_format(FormatValues {
+        gt: Some(""),
+        dp: None,
+        gq: None,
+    })));
+}
+
+#[test]
+fn format_missing_or_invalid_numeric_values_are_false() {
+    let expr = parse_expression("FORMAT/DP > 20").unwrap();
+
+    assert!(!expr.evaluate(&record_with_format(FormatValues {
+        gt: None,
+        dp: None,
+        gq: None,
+    })));
+    assert!(!expr.evaluate(&record_with_format(FormatValues {
+        gt: None,
+        dp: Some("."),
+        gq: None,
+    })));
+    assert!(!expr.evaluate(&record_with_format(FormatValues {
+        gt: None,
+        dp: Some("not-a-number"),
+        gq: None,
+    })));
+}
+
+#[test]
+fn rejects_bare_gq_and_requires_explicit_format_prefix() {
+    let error = parse_expression("GQ > 20").unwrap_err().to_string();
+
+    assert!(error.contains("unsupported field 'GQ'"));
 }

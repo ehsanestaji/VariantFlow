@@ -113,6 +113,15 @@ predicate_check() {
     "AF > 0.2")
       awk -F '\t' 'BEGIN { ok = 1 } /^#/ { next } { split($8, fields, ";"); af = ""; for (i in fields) { if (fields[i] ~ /^AF=/) { sub(/^AF=/, "", fields[i]); af = fields[i] } } if (af <= 0.2) { ok = 0; print "record failed AF > 0.2: " $0 > "/dev/stderr" } } END { exit ok ? 0 : 1 }' "$output"
       ;;
+    "FORMAT/DP > 20")
+      awk -F '\t' 'BEGIN { ok = 1 } /^#/ { next } { split($9, keys, ":"); split($10, values, ":"); dp = ""; for (i in keys) { if (keys[i] == "DP") { dp = values[i] } } if (dp <= 20) { ok = 0; print "record failed FORMAT/DP > 20: " $0 > "/dev/stderr" } } END { exit ok ? 0 : 1 }' "$output"
+      ;;
+    "FORMAT/GQ >= 30")
+      awk -F '\t' 'BEGIN { ok = 1 } /^#/ { next } { split($9, keys, ":"); split($10, values, ":"); gq = ""; for (i in keys) { if (keys[i] == "GQ") { gq = values[i] } } if (gq < 30) { ok = 0; print "record failed FORMAT/GQ >= 30: " $0 > "/dev/stderr" } } END { exit ok ? 0 : 1 }' "$output"
+      ;;
+    "FORMAT/GT == \"0/1\"")
+      awk -F '\t' 'BEGIN { ok = 1 } /^#/ { next } { split($9, keys, ":"); split($10, values, ":"); gt = ""; for (i in keys) { if (keys[i] == "GT") { gt = values[i] } } if (gt != "0/1") { ok = 0; print "record failed FORMAT/GT == \"0/1\": " $0 > "/dev/stderr" } } END { exit ok ? 0 : 1 }' "$output"
+      ;;
     *)
       echo "no predicate check defined for $expression" >&2
       return 1
@@ -217,6 +226,9 @@ if [[ "$MODE" == "stress" ]]; then
     "QUAL plain|plain|QUAL > 30|QUAL>30"
     "DP plain|plain|DP > 40|INFO/DP>40"
     "AF plain|plain|AF > 0.2|INFO/AF>0.2"
+    "FORMAT/DP > 20|plain|FORMAT/DP > 20|FMT/DP[0]>20|SAMPLE_001"
+    "FORMAT/GQ >= 30|plain|FORMAT/GQ >= 30|FMT/GQ[0]>=30|SAMPLE_001"
+    "FORMAT/GT == \"0/1\"|plain|FORMAT/GT == \"0/1\"|FMT/GT[0]=\"0/1\"|SAMPLE_001"
     "QUAL gzip input|gzip|QUAL > 30|QUAL>30"
     "Convert TSV|plain|convert-tsv|query-tsv"
     "Stats JSON|plain|stats-json|stats"
@@ -237,6 +249,7 @@ fi
   echo "### Command Templates"
   echo
   echo "- VCF-Fast filter: \`./target/release/vcf-fast filter <input> --where '<expr>' -o <output>\`"
+  echo "- VCF-Fast FORMAT filter: \`./target/release/vcf-fast filter <input> --sample SAMPLE_001 --where '<expr>' -o <output>\`"
   echo "- bcftools filter: \`bcftools filter -i '<expr>' <input> -o <output>\`"
   echo "- VCF-Fast convert TSV: \`./target/release/vcf-fast convert <input> --to tsv -o <output.tsv>\`"
   echo "- bcftools query TSV: \`bcftools query -u -f '%CHROM\\t%POS\\t%ID\\t%REF\\t%ALT\\t%QUAL\\t%FILTER\\t%INFO/DP\\t%INFO/AF\\n' <input>\`"
@@ -266,14 +279,21 @@ for records in $SIZES; do
   gzip -c "$plain_dataset" >"$gzip_dataset"
 
   for case_spec in "${CASES[@]}"; do
-    IFS='|' read -r case_name input_kind fast_expr bcftools_expr <<<"$case_spec"
+    IFS='|' read -r case_name input_kind fast_expr bcftools_expr sample_name <<<"$case_spec"
     case_slug="$(slugify "$case_name")"
     dataset="$plain_dataset"
     input_label="plain"
+    fast_sample_option=""
+    fast_sample_hyperfine_arg=""
 
     if [[ "$input_kind" == "gzip" ]]; then
       dataset="$gzip_dataset"
       input_label="gzip"
+    fi
+
+    if [[ -n "${sample_name:-}" ]]; then
+      fast_sample_option="$sample_name"
+      fast_sample_hyperfine_arg=" --sample $fast_sample_option"
     fi
 
     fast_out="$OUT_DIR/fast-${case_slug}-${records}.vcf"
@@ -317,7 +337,11 @@ for records in $SIZES; do
         note="bcftools unavailable"
       fi
     else
-      ./target/release/vcf-fast filter "$dataset" --where "$fast_expr" -o "$fast_out"
+      if [[ -n "$fast_sample_option" ]]; then
+        ./target/release/vcf-fast filter "$dataset" --sample "$fast_sample_option" --where "$fast_expr" -o "$fast_out"
+      else
+        ./target/release/vcf-fast filter "$dataset" --where "$fast_expr" -o "$fast_out"
+      fi
       predicate_check "$fast_out" "$fast_expr"
 
       if command -v bcftools >/dev/null 2>&1; then
@@ -357,10 +381,10 @@ for records in $SIZES; do
           --warmup "${VCF_FAST_BENCH_WARMUP:-1}" \
           --runs "${VCF_FAST_BENCH_RUNS:-3}" \
           --export-json "$hyperfine_json" \
-          "./target/release/vcf-fast filter $dataset --where '$fast_expr' -o $OUT_DIR/fast-${case_slug}-${records}.timed.vcf" \
+          "./target/release/vcf-fast filter $dataset$fast_sample_hyperfine_arg --where '$fast_expr' -o $OUT_DIR/fast-${case_slug}-${records}.timed.vcf" \
           "bcftools filter -i '$bcftools_expr' $dataset -o $OUT_DIR/bcftools-${case_slug}-${records}.timed.vcf"
         read -r fast_mean bcftools_mean speedup < <(python3 benchmark/summarize_hyperfine.py "$hyperfine_json")
-        fast_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-fast-${case_slug}-${records}.txt" bash -c './target/release/vcf-fast filter "$1" --where "$2" -o "$3"' _ "$dataset" "$fast_expr" "$OUT_DIR/fast-${case_slug}-${records}.rss.vcf")"
+        fast_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-fast-${case_slug}-${records}.txt" bash -c 'if [[ -n "$4" ]]; then ./target/release/vcf-fast filter "$1" --sample "$4" --where "$2" -o "$3"; else ./target/release/vcf-fast filter "$1" --where "$2" -o "$3"; fi' _ "$dataset" "$fast_expr" "$OUT_DIR/fast-${case_slug}-${records}.rss.vcf" "${sample_name:-}")"
         bcftools_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-bcftools-${case_slug}-${records}.txt" bash -c 'bcftools filter -i "$1" "$2" -o "$3"' _ "$bcftools_expr" "$dataset" "$OUT_DIR/bcftools-${case_slug}-${records}.rss.vcf")"
       elif [[ "$fast_expr" == "stats-json" ]]; then
         hyperfine \
@@ -378,8 +402,8 @@ for records in $SIZES; do
         hyperfine \
           --warmup "${VCF_FAST_BENCH_WARMUP:-1}" \
           --runs "${VCF_FAST_BENCH_RUNS:-3}" \
-          "./target/release/vcf-fast filter $dataset --where '$fast_expr' -o $OUT_DIR/fast-${case_slug}-${records}.timed.vcf"
-        fast_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-fast-${case_slug}-${records}.txt" bash -c './target/release/vcf-fast filter "$1" --where "$2" -o "$3"' _ "$dataset" "$fast_expr" "$OUT_DIR/fast-${case_slug}-${records}.rss.vcf")"
+          "./target/release/vcf-fast filter $dataset$fast_sample_hyperfine_arg --where '$fast_expr' -o $OUT_DIR/fast-${case_slug}-${records}.timed.vcf"
+        fast_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-fast-${case_slug}-${records}.txt" bash -c 'if [[ -n "$4" ]]; then ./target/release/vcf-fast filter "$1" --sample "$4" --where "$2" -o "$3"; else ./target/release/vcf-fast filter "$1" --where "$2" -o "$3"; fi' _ "$dataset" "$fast_expr" "$OUT_DIR/fast-${case_slug}-${records}.rss.vcf" "${sample_name:-}")"
       fi
     else
       note="${note:+$note; }hyperfine unavailable"

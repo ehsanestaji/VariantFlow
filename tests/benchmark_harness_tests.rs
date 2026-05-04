@@ -33,6 +33,15 @@ fn benchmark_harness_defines_report_and_correctness_contract() {
     assert!(script.contains("DP plain"));
     assert!(script.contains("AF plain"));
     assert!(script.contains("QUAL gzip input"));
+    assert!(script.contains("FORMAT/DP > 20"));
+    assert!(script.contains("FORMAT/GQ >= 30"));
+    assert!(script.contains("FORMAT/GT == \\\"0/1\\\""));
+    assert!(script.contains("FMT/DP[0]>20"));
+    assert!(script.contains("FMT/GQ[0]>=30"));
+    assert!(script.contains("FMT/GT[0]=\\\"0/1\\\""));
+    assert!(script.contains("--sample SAMPLE_001"));
+    assert!(script.contains("fast_sample_option="));
+    assert!(!script.contains("fast_sample_args[@]"));
     assert!(script.contains("hyperfine"));
 }
 
