@@ -3,13 +3,41 @@ use std::path::Path;
 
 use anyhow::{Result, bail};
 
+use crate::compat::{Backend, CompressionMode, Region, select_backend};
 use crate::expr::{EvalRecord, FormatValues, RequiredFields, parse_expression};
-use crate::io::{open_reader, open_writer};
+use crate::io::{open_reader, open_vcf_writer};
 use crate::vcf::{
     SiteRecord, column_value, parse_record_fields, resolve_sample_column, selected_format_values,
 };
 
-pub fn run(input: &Path, where_expr: &str, sample: Option<&str>, output: &Path) -> Result<()> {
+pub fn run(
+    input: &Path,
+    where_expr: &str,
+    sample: Option<&str>,
+    output: &Path,
+    region: Option<&Region>,
+    compression: CompressionMode,
+) -> Result<()> {
+    let selected = select_backend(input, region, compression);
+    if selected.backend == Backend::Htslib {
+        #[cfg(feature = "htslib")]
+        {
+            return crate::htslib_backend::filter(
+                input,
+                where_expr,
+                sample,
+                output,
+                region,
+                compression,
+            );
+        }
+
+        #[cfg(not(feature = "htslib"))]
+        {
+            bail!(selected.reason.unwrap().unavailable_message());
+        }
+    }
+
     let expr = parse_expression(where_expr)?;
     let required = expr.required_fields();
     if required.requires_format() && sample.is_none() {
@@ -23,7 +51,7 @@ pub fn run(input: &Path, where_expr: &str, sample: Option<&str>, output: &Path) 
     };
 
     let mut reader = open_reader(input)?;
-    let mut writer = open_writer(output)?;
+    let mut writer = open_vcf_writer(output, compression)?;
     let mut line = String::new();
 
     while reader.read_line(&mut line)? != 0 {
