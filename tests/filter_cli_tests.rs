@@ -171,6 +171,7 @@ fn format_predicates_require_sample_selection() {
         .stderr(predicate::str::contains(
             "FORMAT predicates require --sample <name>",
         ));
+    assert!(!output.exists());
 }
 
 #[test]
@@ -378,6 +379,7 @@ fn format_filter_rejects_unknown_sample() {
         .stderr(predicate::str::contains(
             "sample 'MISSING' not found in VCF header",
         ));
+    assert!(!output.exists());
 }
 
 #[test]
@@ -402,6 +404,7 @@ fn format_filter_rejects_site_only_header_even_with_sample_argument() {
         .stderr(predicate::str::contains(
             "FORMAT predicates require #CHROM header with sample columns",
         ));
+    assert!(!output.exists());
 }
 
 #[test]
