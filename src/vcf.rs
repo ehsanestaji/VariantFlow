@@ -145,28 +145,54 @@ pub fn parse_u64_ascii(value: &str) -> Result<u64> {
 
 pub(crate) fn resolve_sample_column(chrom_header: &str, sample: &str) -> Result<usize> {
     let header = chrom_header.trim_end_matches(['\r', '\n']);
-    let mut found = None;
+    let bytes = header.as_bytes();
+    let mut start = 0;
+    let mut column = 0;
 
-    for_each_tab_column(header, |column, value| {
-        if column >= 9 && value == sample && found.is_none() {
-            found = Some(column);
+    while start <= bytes.len() {
+        let end = bytes[start..]
+            .iter()
+            .position(|byte| *byte == b'\t')
+            .map_or(bytes.len(), |offset| start + offset);
+
+        if column >= 9 && &header[start..end] == sample {
+            return Ok(column);
         }
-    });
 
-    found.ok_or_else(|| anyhow::anyhow!("sample '{sample}' not found in VCF header"))
+        if end == bytes.len() {
+            break;
+        }
+        start = end + 1;
+        column += 1;
+    }
+
+    Err(anyhow::anyhow!("sample '{sample}' not found in VCF header"))
 }
 
 pub(crate) fn column_value(line: &str, target_column: usize) -> Option<&str> {
     let line = line.trim_end_matches(['\r', '\n']);
-    let mut found = None;
+    let bytes = line.as_bytes();
+    let mut start = 0;
+    let mut column = 0;
 
-    for_each_tab_column(line, |column, value| {
-        if column == target_column && found.is_none() {
-            found = Some(value);
+    while start <= bytes.len() {
+        let end = bytes[start..]
+            .iter()
+            .position(|byte| *byte == b'\t')
+            .map_or(bytes.len(), |offset| start + offset);
+
+        if column == target_column {
+            return Some(&line[start..end]);
         }
-    });
 
-    found
+        if end == bytes.len() {
+            break;
+        }
+        start = end + 1;
+        column += 1;
+    }
+
+    None
 }
 
 pub(crate) fn selected_format_values<'sample>(
@@ -283,27 +309,6 @@ fn for_each_info_value<'a>(info: &'a str, key: &str, mut observe: impl FnMut(&'a
             break;
         }
         entry_start = entry_end + 1;
-    }
-}
-
-fn for_each_tab_column<'a>(value: &'a str, mut observe: impl FnMut(usize, &'a str)) {
-    let bytes = value.as_bytes();
-    let mut start = 0;
-    let mut column = 0;
-
-    while start <= bytes.len() {
-        let end = bytes[start..]
-            .iter()
-            .position(|byte| *byte == b'\t')
-            .map_or(bytes.len(), |offset| start + offset);
-
-        observe(column, &value[start..end]);
-
-        if end == bytes.len() {
-            break;
-        }
-        start = end + 1;
-        column += 1;
     }
 }
 
