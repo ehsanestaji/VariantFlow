@@ -143,7 +143,6 @@ pub fn parse_u64_ascii(value: &str) -> Result<u64> {
     Ok(result)
 }
 
-#[allow(dead_code)]
 pub(crate) fn resolve_sample_column(chrom_header: &str, sample: &str) -> Result<usize> {
     let header = chrom_header.trim_end_matches(['\r', '\n']);
     let mut found = None;
@@ -157,7 +156,6 @@ pub(crate) fn resolve_sample_column(chrom_header: &str, sample: &str) -> Result<
     found.ok_or_else(|| anyhow::anyhow!("sample '{sample}' not found in VCF header"))
 }
 
-#[allow(dead_code)]
 pub(crate) fn column_value(line: &str, target_column: usize) -> Option<&str> {
     let line = line.trim_end_matches(['\r', '\n']);
     let mut found = None;
@@ -171,7 +169,6 @@ pub(crate) fn column_value(line: &str, target_column: usize) -> Option<&str> {
     found
 }
 
-#[allow(dead_code)]
 pub(crate) fn selected_format_values<'sample>(
     format: &str,
     sample: &'sample str,

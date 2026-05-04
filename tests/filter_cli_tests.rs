@@ -244,3 +244,159 @@ fn stress_filter_uses_info_dp_and_any_af_value() {
     assert!(af_text.contains("stressAf"));
     assert!(!af_text.contains("stressPass"));
 }
+
+#[test]
+fn format_filter_uses_selected_sample_and_preserves_records() {
+    let dir = tempdir().unwrap();
+    let output = dir.path().join("format.vcf");
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            fixture("tests/data/format_example.vcf").to_str().unwrap(),
+            "--where",
+            "FORMAT/DP > 20 && FORMAT/GQ >= 30",
+            "--sample",
+            "HG002",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let text = fs::read_to_string(output).unwrap();
+    assert!(
+        text.contains("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tHG002\tNA12878\n")
+    );
+    assert!(text.contains(
+        "1\t200\tfmtPass\tC\tT\t50\tPASS\tDP=20;AF=0.2\tGT:DP:GQ\t0/1:25:40\t0/0:5:10\n"
+    ));
+    assert!(!text.contains("fmtLow"));
+    assert!(!text.contains("fmtOtherSample"));
+    assert!(!text.contains("fmtMissing"));
+    assert!(!text.contains("fmtShort"));
+}
+
+#[test]
+fn format_filter_result_changes_with_sample() {
+    let dir = tempdir().unwrap();
+    let output = dir.path().join("format-na12878.vcf");
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            fixture("tests/data/format_example.vcf").to_str().unwrap(),
+            "--where",
+            "FORMAT/DP > 20 && FORMAT/GQ >= 30",
+            "--sample",
+            "NA12878",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let text = fs::read_to_string(output).unwrap();
+    assert!(text.contains("fmtLow"));
+    assert!(text.contains("fmtOtherSample"));
+    assert!(text.contains("fmtMissing"));
+    assert!(text.contains("fmtShort"));
+    assert!(!text.contains("fmtPass"));
+}
+
+#[test]
+fn format_gt_filter_uses_exact_string_comparison() {
+    let dir = tempdir().unwrap();
+    let output = dir.path().join("format-gt.vcf");
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            fixture("tests/data/format_example.vcf").to_str().unwrap(),
+            "--where",
+            "FORMAT/GT == \"0/1\"",
+            "--sample",
+            "HG002",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let text = fs::read_to_string(output).unwrap();
+    assert!(text.contains("fmtLow"));
+    assert!(text.contains("fmtPass"));
+    assert!(text.contains("fmtShort"));
+    assert!(!text.contains("fmtOtherSample"));
+    assert!(!text.contains("fmtMissing"));
+}
+
+#[test]
+fn format_filter_requires_sample() {
+    let dir = tempdir().unwrap();
+    let output = dir.path().join("missing-sample.vcf");
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            fixture("tests/data/format_example.vcf").to_str().unwrap(),
+            "--where",
+            "FORMAT/DP > 20",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "FORMAT predicates require --sample <name>",
+        ));
+}
+
+#[test]
+fn format_filter_rejects_unknown_sample() {
+    let dir = tempdir().unwrap();
+    let output = dir.path().join("unknown-sample.vcf");
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            fixture("tests/data/format_example.vcf").to_str().unwrap(),
+            "--where",
+            "FORMAT/DP > 20",
+            "--sample",
+            "MISSING",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "sample 'MISSING' not found in VCF header",
+        ));
+}
+
+#[test]
+fn sample_argument_is_allowed_for_site_only_filters() {
+    let dir = tempdir().unwrap();
+    let output = dir.path().join("site-with-sample.vcf");
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            fixture("tests/data/example.vcf").to_str().unwrap(),
+            "--where",
+            "QUAL > 30",
+            "--sample",
+            "HG002",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+}
