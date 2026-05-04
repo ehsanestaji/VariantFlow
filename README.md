@@ -1,6 +1,41 @@
 # VCF-Fast
 
-VCF-Fast is an experimental high-performance engine for genomic variant data. It treats VCF/BCF as exchange formats and focuses on selective parsing, typed execution, original-record preservation, and competitor-checked benchmarks.
+VCF-Fast is a selective execution engine for post-calling variant operations. It treats VCF/BCF as exchange formats, avoids parsing unused fields, preserves original records where possible, and tracks correctness/performance against trusted tools such as bcftools.
+
+The current boost strategy is **Evidence First**: prove correctness and speed on reproducible synthetic and public datasets before claiming broader superiority or moving deeper into parallel, vectorized, or columnar internals.
+
+## Why It Can Be Faster
+
+- Selective parsing avoids unused INFO/FORMAT work.
+- Original-record preservation avoids reconstruction cost for passing VCF records.
+- Typed predicates avoid ad hoc string evaluation.
+- The benchmark harness checks outputs against `bcftools`.
+- Future gains should come from larger public evidence, stress datasets, parallel/vectorized execution, and Arrow/Parquet export.
+
+## Current Evidence
+
+| scenario | competitor | correctness check | current result | caveat |
+|---|---|---|---|---|
+| Synthetic 100k filters | `bcftools filter` | matched filtered core records | `1.50x` to `1.81x` faster | one-run container smoke |
+| Synthetic 100k TSV conversion | `bcftools query` | matched normalized TSV rows | `1.29x` faster | selected columns only |
+| GIAB HG002 10k public QUAL filters | `bcftools filter` | matched filtered core records | `2.08x` to `2.11x` faster | first public smoke only |
+| GIAB HG002 10k public TSV conversion | `bcftools query` | matched normalized TSV rows | `1.12x` faster | GIAB lacks `INFO/AF`; baseline uses `bcftools query -u` |
+
+Detailed evidence lives in:
+
+- `benchmark/reports/synthetic-filter-benchmark.md`
+- `benchmark/reports/public-dataset-benchmark.md`
+- `docs/contribution-map.md`
+
+Public evidence is still early. IGSR public-region, repeated runs, larger public/synthetic inputs, and memory/throughput reporting are next.
+
+## Milestones
+
+1. `v0.1 Evidence Baseline`: streaming filter, stats/diff, TSV conversion, synthetic and GIAB benchmark reports.
+2. `v0.2 Public Benchmark Expansion`: IGSR chr22 public-region, repeated hyperfine runs, 1M-record public/synthetic cases, memory/throughput reporting.
+3. `v0.3 Stress And Speed`: synthetic stress VCFs with many unused INFO/FORMAT fields, profiling, parser hot-path improvements.
+4. `v0.4 FORMAT-Aware Filtering`: support `FORMAT/GT`, `FORMAT/DP`, `FORMAT/GQ`, selected sample predicates, bcftools comparison.
+5. `v0.5 Columnar Bridge`: Parquet/Arrow export for repeated analytical workloads and DuckDB-style workflows.
 
 ## Quickstart
 
@@ -9,10 +44,12 @@ cargo build
 cargo test
 make verify
 
+vcf-fast filter input.vcf.gz --where "QUAL > 30" -o output.vcf.gz
+vcf-fast stats input.vcf.gz
+vcf-fast diff a.vcf.gz b.vcf.gz -o diff.tsv
+vcf-fast convert input.vcf.gz --to tsv -o variants.tsv
+
 cargo run -- filter tests/data/example.vcf --where "QUAL > 30" -o tests/output/filtered.vcf
-cargo run -- stats tests/data/example.vcf
-cargo run -- diff tests/data/diff_a.vcf tests/data/diff_b.vcf -o tests/output/diff.tsv
-cargo run -- convert tests/data/example.vcf --to tsv -o tests/output/variants.tsv
 
 docker build -t vcf-fast .
 docker run --rm -v "$PWD:/work" vcf-fast cargo test
