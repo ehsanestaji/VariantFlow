@@ -27,7 +27,7 @@ pub(crate) struct RequiredFields {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct RequiredFormatFields {
+pub struct RequiredFormatFields {
     pub gt: bool,
     pub dp: bool,
     pub gq: bool,
