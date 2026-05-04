@@ -8,6 +8,11 @@ mkdir -p "$(dirname "$OUTPUT")"
 
 {
   echo '##fileformat=VCFv4.3'
+  for chrom in {1..22}; do
+    echo "##contig=<ID=${chrom}>"
+  done
+  echo '##FILTER=<ID=PASS,Description="All filters passed">'
+  echo '##FILTER=<ID=q10,Description="Synthetic low-quality marker">'
   echo '##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">'
   echo '##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">'
   echo -e '#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO'
