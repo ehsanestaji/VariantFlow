@@ -28,6 +28,38 @@ tool_version() {
   fi
 }
 
+variants_per_second() {
+  local records="$1"
+  local mean="$2"
+
+  python3 - "$records" "$mean" <<'PY'
+import sys
+
+records = int(sys.argv[1])
+mean = sys.argv[2]
+
+if mean == "n/a" or not mean.endswith("s"):
+    print("n/a")
+    raise SystemExit
+
+seconds = float(mean[:-1])
+print("n/a" if seconds <= 0 else f"{records / seconds:.0f}")
+PY
+}
+
+measure_peak_rss_kb() {
+  local raw_output="$1"
+  shift
+
+  if [[ "${VCF_FAST_BENCH_GNU_TIME:-0}" == "1" ]]; then
+    /usr/bin/time -v -o "$raw_output" "$@"
+    awk -F ':' '/Maximum resident set size/ { gsub(/ /, "", $2); print $2 }' "$raw_output"
+  else
+    "$@"
+    echo "n/a"
+  fi
+}
+
 extract_core_records() {
   awk -F '\t' 'BEGIN { OFS = "\t" } !/^#/ { print $1, $2, $3, $4, $5, $6, $7 }' "$1"
 }
@@ -107,7 +139,7 @@ configure_inputs() {
         echo "missing $giab; run benchmark/download_public_data.sh giab-hg002 first" >&2
         exit 2
       fi
-      echo "GIAB HG002 v4.2.1 first ${PUBLIC_RECORDS} records|$giab"
+      echo "GIAB HG002 v4.2.1 requested record subsets|$giab"
       ;;
     public-region)
       local igsr="tests/output/public-data/1kGP_high_coverage_Illumina.chr22.filtered.SNV_INDEL_SV_phased_panel.vcf.gz"
@@ -115,7 +147,7 @@ configure_inputs() {
         echo "missing $igsr; run benchmark/download_public_data.sh igsr-chr22 first" >&2
         exit 2
       fi
-      echo "1000 Genomes high-coverage chr22 region ${PUBLIC_REGION}, first ${PUBLIC_RECORDS} records|$igsr"
+      echo "1000 Genomes high-coverage chr22 region ${PUBLIC_REGION}, requested record subsets|$igsr"
       ;;
     *)
       echo "unsupported VCF_FAST_BENCH_MODE=$MODE; expected synthetic, public-small, or public-region" >&2
@@ -125,6 +157,11 @@ configure_inputs() {
 }
 
 mkdir -p "$OUT_DIR" "$DATA_DIR"
+if /usr/bin/time -v -o "$OUT_DIR/time-probe.txt" true >/dev/null 2>&1; then
+  VCF_FAST_BENCH_GNU_TIME=1
+else
+  VCF_FAST_BENCH_GNU_TIME=0
+fi
 cargo build --release
 IFS='|' read -r DATASET_SOURCE PUBLIC_SOURCE < <(configure_inputs)
 
@@ -153,8 +190,8 @@ fi
   echo "- VCF-Fast convert TSV: \`./target/release/vcf-fast convert <input> --to tsv -o <output.tsv>\`"
   echo "- bcftools query TSV: \`bcftools query -u -f '%CHROM\\t%POS\\t%ID\\t%REF\\t%ALT\\t%QUAL\\t%FILTER\\t%INFO/DP\\t%INFO/AF\\n' <input>\`"
   echo
-  echo "| case | records | input | Output equivalence | vcf-fast mean | bcftools mean | speedup | notes |"
-  echo "|---|---:|---|---|---:|---:|---:|---|"
+  echo "| case | records | input | Output equivalence | vcf-fast mean | bcftools mean | speedup | vcf-fast variants/s | bcftools variants/s | vcf-fast peak RSS KB | bcftools peak RSS KB | notes |"
+  echo "|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---|"
 } >"$REPORT"
 
 for records in $SIZES; do
@@ -193,6 +230,10 @@ for records in $SIZES; do
     fast_mean="n/a"
     bcftools_mean="n/a"
     speedup="n/a"
+    fast_variants_per_second="n/a"
+    bcftools_variants_per_second="n/a"
+    fast_peak_rss_kb="n/a"
+    bcftools_peak_rss_kb="n/a"
 
     if [[ "$fast_expr" == "convert-tsv" ]]; then
       fast_out="$OUT_DIR/fast-${case_slug}-${records}.tsv"
@@ -231,6 +272,8 @@ for records in $SIZES; do
           "./target/release/vcf-fast convert $dataset --to tsv -o $OUT_DIR/fast-${case_slug}-${records}.timed.tsv" \
           "bcftools query -u -f '%CHROM\t%POS\t%ID\t%REF\t%ALT\t%QUAL\t%FILTER\t%INFO/DP\t%INFO/AF\n' $dataset > $OUT_DIR/bcftools-${case_slug}-${records}.timed.tsv"
         read -r fast_mean bcftools_mean speedup < <(python3 benchmark/summarize_hyperfine.py "$hyperfine_json")
+        fast_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-fast-${case_slug}-${records}.txt" bash -c './target/release/vcf-fast convert "$1" --to tsv -o "$2"' _ "$dataset" "$OUT_DIR/fast-${case_slug}-${records}.rss.tsv")"
+        bcftools_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-bcftools-${case_slug}-${records}.txt" bash -c 'bcftools query -u -f "%CHROM\t%POS\t%ID\t%REF\t%ALT\t%QUAL\t%FILTER\t%INFO/DP\t%INFO/AF\n" "$1" > "$2"' _ "$dataset" "$OUT_DIR/bcftools-${case_slug}-${records}.rss.tsv")"
       elif command -v bcftools >/dev/null 2>&1; then
         hyperfine \
           --warmup "${VCF_FAST_BENCH_WARMUP:-1}" \
@@ -239,23 +282,30 @@ for records in $SIZES; do
           "./target/release/vcf-fast filter $dataset --where '$fast_expr' -o $OUT_DIR/fast-${case_slug}-${records}.timed.vcf" \
           "bcftools filter -i '$bcftools_expr' $dataset -o $OUT_DIR/bcftools-${case_slug}-${records}.timed.vcf"
         read -r fast_mean bcftools_mean speedup < <(python3 benchmark/summarize_hyperfine.py "$hyperfine_json")
+        fast_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-fast-${case_slug}-${records}.txt" bash -c './target/release/vcf-fast filter "$1" --where "$2" -o "$3"' _ "$dataset" "$fast_expr" "$OUT_DIR/fast-${case_slug}-${records}.rss.vcf")"
+        bcftools_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-bcftools-${case_slug}-${records}.txt" bash -c 'bcftools filter -i "$1" "$2" -o "$3"' _ "$bcftools_expr" "$dataset" "$OUT_DIR/bcftools-${case_slug}-${records}.rss.vcf")"
       elif [[ "$fast_expr" == "convert-tsv" ]]; then
         hyperfine \
           --warmup "${VCF_FAST_BENCH_WARMUP:-1}" \
           --runs "${VCF_FAST_BENCH_RUNS:-3}" \
           "./target/release/vcf-fast convert $dataset --to tsv -o $OUT_DIR/fast-${case_slug}-${records}.timed.tsv"
+        fast_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-fast-${case_slug}-${records}.txt" bash -c './target/release/vcf-fast convert "$1" --to tsv -o "$2"' _ "$dataset" "$OUT_DIR/fast-${case_slug}-${records}.rss.tsv")"
       else
         hyperfine \
           --warmup "${VCF_FAST_BENCH_WARMUP:-1}" \
           --runs "${VCF_FAST_BENCH_RUNS:-3}" \
           "./target/release/vcf-fast filter $dataset --where '$fast_expr' -o $OUT_DIR/fast-${case_slug}-${records}.timed.vcf"
+        fast_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-fast-${case_slug}-${records}.txt" bash -c './target/release/vcf-fast filter "$1" --where "$2" -o "$3"' _ "$dataset" "$fast_expr" "$OUT_DIR/fast-${case_slug}-${records}.rss.vcf")"
       fi
     else
       note="${note:+$note; }hyperfine unavailable"
     fi
 
-    printf '| %s | %s | %s | %s | %s | %s | %s | %s |\n' \
-      "$case_name" "$records" "$input_label" "$equivalence" "$fast_mean" "$bcftools_mean" "$speedup" "${note:-}" >>"$REPORT"
+    fast_variants_per_second="$(variants_per_second "$records" "$fast_mean")"
+    bcftools_variants_per_second="$(variants_per_second "$records" "$bcftools_mean")"
+
+    printf '| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n' \
+      "$case_name" "$records" "$input_label" "$equivalence" "$fast_mean" "$bcftools_mean" "$speedup" "$fast_variants_per_second" "$bcftools_variants_per_second" "$fast_peak_rss_kb" "$bcftools_peak_rss_kb" "${note:-}" >>"$REPORT"
   done
 done
 
@@ -263,8 +313,9 @@ done
   echo
   echo "### Raw Artifacts"
   echo
-  echo "- Synthetic datasets: \`$DATA_DIR\`"
+  echo "- Working datasets: \`$DATA_DIR\`"
   echo "- Hyperfine JSON files: \`$OUT_DIR/hyperfine-*.json\`"
+  echo "- Peak RSS files: \`$OUT_DIR/rss-*.txt\`"
   echo "- Equivalence diffs: \`$OUT_DIR/equivalence-*.diff\`"
 } >>"$REPORT"
 

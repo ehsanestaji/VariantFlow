@@ -12,14 +12,20 @@ The current boost strategy is **Evidence First**: prove correctness and speed on
 - The benchmark harness checks outputs against `bcftools`.
 - Future gains should come from larger public evidence, stress datasets, parallel/vectorized execution, and Arrow/Parquet export.
 
+## Language And Engine Direction
+
+VCF-Fast stays Rust-first. Rust gives the project C-like performance, strict memory control, and safer concurrency without making memory safety a permanent tax on development speed. C/htslib interop is reserved for targeted compatibility work such as BGZF output, BCF input, tabix-indexed reads, and cases where htslib is clearly the fastest correct path.
+
 ## Current Evidence
 
 | scenario | competitor | correctness check | current result | caveat |
 |---|---|---|---|---|
-| Synthetic 100k filters | `bcftools filter` | matched filtered core records | `1.50x` to `1.81x` faster | one-run container smoke |
-| Synthetic 100k TSV conversion | `bcftools query` | matched normalized TSV rows | `1.29x` faster | selected columns only |
+| Synthetic 1M filters | `bcftools filter` | matched filtered core records | `1.62x` to `1.82x` faster | three-run container benchmark |
+| Synthetic 1M TSV conversion | `bcftools query` | matched normalized TSV rows | `1.57x` faster | selected columns only |
 | GIAB HG002 10k public QUAL filters | `bcftools filter` | matched filtered core records | `2.08x` to `2.11x` faster | first public smoke only |
 | GIAB HG002 10k public TSV conversion | `bcftools query` | matched normalized TSV rows | `1.12x` faster | GIAB lacks `INFO/AF`; baseline uses `bcftools query -u` |
+| IGSR chr22 100k public-region QUAL filters | `bcftools filter` | matched filtered core records | `5.35x` to `8.33x` faster | region subset, not whole cohort |
+| IGSR chr22 100k public-region TSV conversion | `bcftools query` | matched normalized TSV rows | `1.11x` faster | selected columns only |
 
 Detailed evidence lives in:
 
@@ -27,12 +33,12 @@ Detailed evidence lives in:
 - `benchmark/reports/public-dataset-benchmark.md`
 - `docs/contribution-map.md`
 
-Public evidence is still early. IGSR public-region, repeated runs, larger public/synthetic inputs, and memory/throughput reporting are next.
+Public evidence is still early. Larger public/synthetic inputs, stress VCFs with many unused fields, and memory/throughput trend reporting are next.
 
 ## Milestones
 
 1. `v0.1 Evidence Baseline`: streaming filter, stats/diff, TSV conversion, synthetic and GIAB benchmark reports.
-2. `v0.2 Public Benchmark Expansion`: IGSR chr22 public-region, repeated hyperfine runs, 1M-record public/synthetic cases, memory/throughput reporting.
+2. `v0.2 Public Benchmark Expansion`: IGSR chr22 public-region, repeated hyperfine runs, 1M-record synthetic cases, memory/throughput reporting.
 3. `v0.3 Stress And Speed`: synthetic stress VCFs with many unused INFO/FORMAT fields, profiling, parser hot-path improvements.
 4. `v0.4 FORMAT-Aware Filtering`: support `FORMAT/GT`, `FORMAT/DP`, `FORMAT/GQ`, selected sample predicates, bcftools comparison.
 5. `v0.5 Columnar Bridge`: Parquet/Arrow export for repeated analytical workloads and DuckDB-style workflows.

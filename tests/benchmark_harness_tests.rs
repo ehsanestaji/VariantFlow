@@ -16,6 +16,11 @@ fn benchmark_harness_defines_report_and_correctness_contract() {
     assert!(script.contains("benchmark/normalize_tsv.py"));
     assert!(script.contains("normalized bcftools query TSV rows"));
     assert!(script.contains("Output equivalence"));
+    assert!(script.contains("vcf-fast variants/s"));
+    assert!(script.contains("bcftools variants/s"));
+    assert!(script.contains("vcf-fast peak RSS"));
+    assert!(script.contains("bcftools peak RSS"));
+    assert!(script.contains("measure_peak_rss_kb"));
     assert!(script.contains("Convert TSV"));
     assert!(script.contains("QUAL plain"));
     assert!(script.contains("DP plain"));

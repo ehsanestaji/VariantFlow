@@ -1,6 +1,6 @@
 ## Public Dataset Benchmark Report
 
-Status: GIAB HG002 public-small run completed locally on 2026-05-04. 1000 Genomes/IGSR public-region remains pending download/run.
+Status: GIAB HG002 public-small and 1000 Genomes/IGSR public-region runs completed locally on 2026-05-04.
 
 ### Pinned Sources
 
@@ -13,11 +13,34 @@ Status: GIAB HG002 public-small run completed locally on 2026-05-04. 1000 Genome
 
 - Mode: `public-small`
 - Dataset source: GIAB HG002 v4.2.1 first 10000 records
-- Input cache: `tests/output/public-data/HG002_GRCh38_1_22_v4.2.1_benchmark.vcf.gz`
-- Input compression: source gzip; harness also creates a plain 10k-record subset and a gzip subset
 - hyperfine: hyperfine 1.19.0
 - bcftools: bcftools 1.21
 - Correctness: all generated `equivalence-*.diff` files were empty
+
+| case | records | input | Output equivalence | vcf-fast mean | bcftools mean | speedup | notes |
+|---|---:|---|---|---:|---:|---:|---|
+| QUAL plain | 10000 | plain | matches bcftools filtered core records | 0.062302s | 0.131183s | 2.11x | one-run smoke |
+| QUAL gzip input | 10000 | gzip | matches bcftools filtered core records | 0.066260s | 0.137709s | 2.08x | one-run smoke |
+| Convert TSV | 10000 | plain | matches normalized bcftools query TSV rows | 0.016483s | 0.018540s | 1.12x | `bcftools query -u` used because GIAB lacks `INFO/AF` |
+
+### 1000 Genomes/IGSR Public-Region Result
+
+- Mode: `public-region`
+- Dataset source: 1000 Genomes high-coverage chr22 region `chr22:1-20000000`
+- Dataset sizes: `10000 100000`
+- hyperfine: hyperfine 1.19.0
+- bcftools: bcftools 1.21
+- Runs: 3 with 1 warmup
+- Correctness: all generated `equivalence-*.diff` files were empty
+
+| case | records | input | Output equivalence | vcf-fast mean | bcftools mean | speedup | vcf-fast variants/s | bcftools variants/s | vcf-fast peak RSS KB | bcftools peak RSS KB | notes |
+|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---|
+| QUAL plain | 10000 | plain | matches bcftools filtered core records | 0.052220s | 0.375829s | 7.20x | 191498 | 26608 | 2672 | 4260 |  |
+| QUAL gzip input | 10000 | gzip | matches bcftools filtered core records | 0.079282s | 0.414785s | 5.23x | 126132 | 24109 | 2660 | 4572 |  |
+| Convert TSV | 10000 | plain | matches normalized bcftools query TSV rows | 0.070793s | 0.079173s | 1.12x | 141257 | 126306 | 2676 | 4124 |  |
+| QUAL plain | 100000 | plain | matches bcftools filtered core records | 0.423681s | 3.530514s | 8.33x | 236027 | 28324 | 2656 | 4272 |  |
+| QUAL gzip input | 100000 | gzip | matches bcftools filtered core records | 0.773240s | 4.140379s | 5.35x | 129326 | 24152 | 2676 | 4592 |  |
+| Convert TSV | 100000 | plain | matches normalized bcftools query TSV rows | 0.577931s | 0.639262s | 1.11x | 173031 | 156430 | 2676 | 4124 |  |
 
 ### Command Templates
 
@@ -27,29 +50,6 @@ Status: GIAB HG002 public-small run completed locally on 2026-05-04. 1000 Genome
 - bcftools query TSV: `bcftools query -u -f '%CHROM\t%POS\t%ID\t%REF\t%ALT\t%QUAL\t%FILTER\t%INFO/DP\t%INFO/AF\n' <input>`
 - Region slicing for IGSR mode: `bcftools view -H -r "$VCF_FAST_PUBLIC_REGION" <input>`
 
-| case | records | input | Output equivalence | vcf-fast mean | bcftools mean | speedup | notes |
-|---|---:|---|---|---:|---:|---:|---|
-| QUAL plain | 10000 | plain | matches bcftools filtered core records | 0.062302s | 0.131183s | 2.11x | one-run smoke |
-| QUAL gzip input | 10000 | gzip | matches bcftools filtered core records | 0.066260s | 0.137709s | 2.08x | one-run smoke |
-| Convert TSV | 10000 | plain | matches normalized bcftools query TSV rows | 0.016483s | 0.018540s | 1.12x | `bcftools query -u` used because GIAB lacks `INFO/AF` |
-
-### How To Reproduce
-
-```bash
-benchmark/download_public_data.sh giab-hg002
-docker run --rm -v "$PWD:/work" \
-  -e VCF_FAST_BENCH_MODE=public-small \
-  -e VCF_FAST_BENCH_SIZES="10000" \
-  -e VCF_FAST_BENCH_RUNS=1 \
-  -e VCF_FAST_BENCH_WARMUP=0 \
-  vcf-fast make bench-smoke
-```
-
-```bash
-benchmark/download_public_data.sh igsr-chr22
-VCF_FAST_BENCH_MODE=public-region VCF_FAST_BENCH_SIZES="10000" make bench-smoke
-```
-
 ### Caveats
 
-This is the first public-data smoke, not a full public benchmark suite. It uses one run, one GIAB 10k-record subset, and only the currently supported filter/convert cases. The 1000 Genomes/IGSR chr22 region benchmark is still pending.
+These are public benchmark subsets, not whole-cohort claims. GIAB remains a one-run smoke. IGSR uses repeated runs and includes memory/throughput fields, but still covers only the currently supported QUAL filter and TSV conversion cases.
