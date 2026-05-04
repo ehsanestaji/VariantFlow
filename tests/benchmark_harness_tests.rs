@@ -11,5 +11,9 @@ fn benchmark_harness_defines_report_and_correctness_contract() {
     assert!(script.contains("VCF_FAST_BENCH_SIZES"));
     assert!(script.contains("bcftools filter"));
     assert!(script.contains("Output equivalence"));
+    assert!(script.contains("QUAL plain"));
+    assert!(script.contains("DP plain"));
+    assert!(script.contains("AF plain"));
+    assert!(script.contains("QUAL gzip input"));
     assert!(script.contains("hyperfine"));
 }

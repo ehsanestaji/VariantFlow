@@ -72,7 +72,7 @@ make bench-smoke
 
 Set `VCF_FAST_BENCH_SIZES` to control synthetic dataset sizes. If `hyperfine` and `bcftools` are installed, the harness times VCF-Fast against the comparable bcftools filter command and compares filtered core records.
 
-The current tracked benchmark report is in `benchmark/reports/synthetic-qual-filter.md`.
+The current tracked benchmark report is in `benchmark/reports/synthetic-filter-benchmark.md`.
 
 ## Docker
 
