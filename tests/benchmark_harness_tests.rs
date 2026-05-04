@@ -10,8 +10,9 @@ fn benchmark_harness_defines_report_and_correctness_contract() {
     assert!(script.contains("## VCF-Fast Benchmark Report"));
     assert!(script.contains("VCF_FAST_BENCH_SIZES"));
     assert!(script.contains("bcftools filter"));
-    assert!(script.contains("bcftools query"));
+    assert!(script.contains("bcftools query -u"));
     assert!(script.contains("bcftools view -H -r"));
+    assert!(script.contains("gzip_dataset=\"${plain_dataset}.gz\""));
     assert!(script.contains("benchmark/normalize_tsv.py"));
     assert!(script.contains("normalized bcftools query TSV rows"));
     assert!(script.contains("Output equivalence"));

@@ -13,7 +13,7 @@
 - VCF-Fast filter: `./target/release/vcf-fast filter <input> --where '<expr>' -o <output>`
 - bcftools filter: `bcftools filter -i '<expr>' <input> -o <output>`
 - VCF-Fast convert TSV: `./target/release/vcf-fast convert <input> --to tsv -o <output.tsv>`
-- bcftools query TSV: `bcftools query -f '%CHROM\t%POS\t%ID\t%REF\t%ALT\t%QUAL\t%FILTER\t%INFO/DP\t%INFO/AF\n' <input>`
+- bcftools query TSV: `bcftools query -u -f '%CHROM\t%POS\t%ID\t%REF\t%ALT\t%QUAL\t%FILTER\t%INFO/DP\t%INFO/AF\n' <input>`
 
 | case | records | input | Output equivalence | vcf-fast mean | bcftools mean | speedup | notes |
 |---|---:|---|---|---:|---:|---:|---|

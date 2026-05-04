@@ -101,7 +101,7 @@ Run the synthetic benchmark and correctness smoke harness:
 make bench-smoke
 ```
 
-Set `VCF_FAST_BENCH_SIZES` to control synthetic dataset sizes. If `hyperfine` and `bcftools` are installed, the harness times VCF-Fast against the comparable bcftools filter command and compares filtered core records.
+Set `VCF_FAST_BENCH_SIZES` to control synthetic dataset sizes. If `hyperfine` and `bcftools` are installed, the harness times VCF-Fast against the comparable bcftools filter/query command and compares filtered core records or normalized TSV rows. The TSV baseline uses `bcftools query -u` so public VCFs without optional `INFO/DP` or `INFO/AF` header definitions still produce `.` values for those columns.
 
 The current tracked benchmark report is in `benchmark/reports/synthetic-filter-benchmark.md`.
 
