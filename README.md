@@ -64,6 +64,14 @@ Run the smoke command:
 cargo run -- filter tests/data/example.vcf --where "QUAL > 30" -o tests/output/filtered.vcf
 ```
 
+Run the synthetic benchmark and correctness smoke harness:
+
+```bash
+make bench-smoke
+```
+
+Set `VCF_FAST_BENCH_RECORDS` to control synthetic dataset size. If `hyperfine` is installed, the harness times filter/stats/diff. If `bcftools` is also installed, it times the comparable filter command and compares non-header VCF records.
+
 ## Docker
 
 ```bash
