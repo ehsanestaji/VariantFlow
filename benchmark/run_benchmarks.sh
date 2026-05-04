@@ -151,7 +151,7 @@ fi
   echo "- VCF-Fast filter: \`./target/release/vcf-fast filter <input> --where '<expr>' -o <output>\`"
   echo "- bcftools filter: \`bcftools filter -i '<expr>' <input> -o <output>\`"
   echo "- VCF-Fast convert TSV: \`./target/release/vcf-fast convert <input> --to tsv -o <output.tsv>\`"
-  echo "- bcftools query TSV: \`bcftools query -f '%CHROM\\t%POS\\t%ID\\t%REF\\t%ALT\\t%QUAL\\t%FILTER\\t%INFO/DP\\t%INFO/AF\\n' <input>\`"
+  echo "- bcftools query TSV: \`bcftools query -u -f '%CHROM\\t%POS\\t%ID\\t%REF\\t%ALT\\t%QUAL\\t%FILTER\\t%INFO/DP\\t%INFO/AF\\n' <input>\`"
   echo
   echo "| case | records | input | Output equivalence | vcf-fast mean | bcftools mean | speedup | notes |"
   echo "|---|---:|---|---|---:|---:|---:|---|"
@@ -159,7 +159,6 @@ fi
 
 for records in $SIZES; do
   plain_dataset="$DATA_DIR/synthetic-${records}.vcf"
-  gzip_dataset="$DATA_DIR/synthetic-${records}.vcf.gz"
   if [[ "$MODE" == "synthetic" ]]; then
     ./benchmark/generate_synthetic_vcf.sh "$plain_dataset" "$records"
   elif [[ "$MODE" == "public-region" ]]; then
@@ -169,6 +168,7 @@ for records in $SIZES; do
     plain_dataset="$DATA_DIR/${MODE}-${records}.vcf"
     build_public_small_dataset "$PUBLIC_SOURCE" "$plain_dataset" "$records"
   fi
+  gzip_dataset="${plain_dataset}.gz"
   gzip -c "$plain_dataset" >"$gzip_dataset"
 
   for case_spec in "${CASES[@]}"; do
@@ -199,7 +199,7 @@ for records in $SIZES; do
       bcftools_out="$OUT_DIR/bcftools-${case_slug}-${records}.tsv"
       ./target/release/vcf-fast convert "$dataset" --to tsv -o "$fast_out"
       if command -v bcftools >/dev/null 2>&1; then
-        bcftools query -f '%CHROM\t%POS\t%ID\t%REF\t%ALT\t%QUAL\t%FILTER\t%INFO/DP\t%INFO/AF\n' "$dataset" >"$bcftools_out"
+        bcftools query -u -f '%CHROM\t%POS\t%ID\t%REF\t%ALT\t%QUAL\t%FILTER\t%INFO/DP\t%INFO/AF\n' "$dataset" >"$bcftools_out"
         python3 benchmark/normalize_tsv.py --skip-header "$fast_out" >"$fast_records"
         python3 benchmark/normalize_tsv.py "$bcftools_out" >"$bcftools_records"
         diff -u "$bcftools_records" "$fast_records" >"$OUT_DIR/equivalence-${case_slug}-${records}.diff"
@@ -229,7 +229,7 @@ for records in $SIZES; do
           --runs "${VCF_FAST_BENCH_RUNS:-3}" \
           --export-json "$hyperfine_json" \
           "./target/release/vcf-fast convert $dataset --to tsv -o $OUT_DIR/fast-${case_slug}-${records}.timed.tsv" \
-          "bcftools query -f '%CHROM\t%POS\t%ID\t%REF\t%ALT\t%QUAL\t%FILTER\t%INFO/DP\t%INFO/AF\n' $dataset > $OUT_DIR/bcftools-${case_slug}-${records}.timed.tsv"
+          "bcftools query -u -f '%CHROM\t%POS\t%ID\t%REF\t%ALT\t%QUAL\t%FILTER\t%INFO/DP\t%INFO/AF\n' $dataset > $OUT_DIR/bcftools-${case_slug}-${records}.timed.tsv"
         read -r fast_mean bcftools_mean speedup < <(python3 benchmark/summarize_hyperfine.py "$hyperfine_json")
       elif command -v bcftools >/dev/null 2>&1; then
         hyperfine \
