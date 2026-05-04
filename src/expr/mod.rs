@@ -4,7 +4,14 @@ use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Expression {
-    comparisons: Vec<Comparison>,
+    root: ExprNode,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum ExprNode {
+    Comparison(Comparison),
+    And(Box<ExprNode>, Box<ExprNode>),
+    Or(Box<ExprNode>, Box<ExprNode>),
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -71,41 +78,52 @@ enum Token {
     String(String),
     Op(Operator),
     And,
+    Or,
+    LeftParen,
+    RightParen,
 }
 
 pub fn parse_expression(input: &str) -> Result<Expression, ParseError> {
     let tokens = tokenize(input)?;
     let mut parser = Parser { tokens, cursor: 0 };
-    let expression = parser.parse_expression()?;
+    let root = parser.parse_or()?;
 
     if !parser.is_done() {
         return Err(parser.error("unexpected token"));
     }
 
-    Ok(expression)
+    Ok(Expression { root })
 }
 
 impl Expression {
     pub fn evaluate(&self, record: &EvalRecord<'_>) -> bool {
-        self.comparisons
-            .iter()
-            .all(|comparison| comparison.evaluate(record))
+        self.root.evaluate(record)
     }
 
     pub(crate) fn required_fields(&self) -> RequiredFields {
         let mut required = RequiredFields::default();
+        self.root.collect_required_fields(&mut required);
+        required
+    }
+}
 
-        for comparison in &self.comparisons {
-            match comparison.field {
-                Field::Chrom => required.chrom = true,
-                Field::Pos => required.pos = true,
-                Field::Qual => required.qual = true,
-                Field::Filter => required.filter = true,
-                Field::Dp | Field::Af => required.info = true,
+impl ExprNode {
+    fn evaluate(&self, record: &EvalRecord<'_>) -> bool {
+        match self {
+            ExprNode::Comparison(comparison) => comparison.evaluate(record),
+            ExprNode::And(left, right) => left.evaluate(record) && right.evaluate(record),
+            ExprNode::Or(left, right) => left.evaluate(record) || right.evaluate(record),
+        }
+    }
+
+    fn collect_required_fields(&self, required: &mut RequiredFields) {
+        match self {
+            ExprNode::Comparison(comparison) => comparison.collect_required_fields(required),
+            ExprNode::And(left, right) | ExprNode::Or(left, right) => {
+                left.collect_required_fields(required);
+                right.collect_required_fields(required);
             }
         }
-
-        required
     }
 }
 
@@ -131,6 +149,16 @@ impl Comparison {
                 info_number_any(record.info, "AF", *expected, self.op)
             }
             _ => false,
+        }
+    }
+
+    fn collect_required_fields(&self, required: &mut RequiredFields) {
+        match self.field {
+            Field::Chrom => required.chrom = true,
+            Field::Pos => required.pos = true,
+            Field::Qual => required.qual = true,
+            Field::Filter => required.filter = true,
+            Field::Dp | Field::Af => required.info = true,
         }
     }
 }
@@ -174,14 +202,36 @@ struct Parser {
 }
 
 impl Parser {
-    fn parse_expression(&mut self) -> Result<Expression, ParseError> {
-        let mut comparisons = vec![self.parse_comparison()?];
+    fn parse_or(&mut self) -> Result<ExprNode, ParseError> {
+        let mut node = self.parse_and()?;
 
-        while self.match_and() {
-            comparisons.push(self.parse_comparison()?);
+        while self.match_token(|token| matches!(token, Token::Or)) {
+            let right = self.parse_and()?;
+            node = ExprNode::Or(Box::new(node), Box::new(right));
         }
 
-        Ok(Expression { comparisons })
+        Ok(node)
+    }
+
+    fn parse_and(&mut self) -> Result<ExprNode, ParseError> {
+        let mut node = self.parse_primary()?;
+
+        while self.match_token(|token| matches!(token, Token::And)) {
+            let right = self.parse_primary()?;
+            node = ExprNode::And(Box::new(node), Box::new(right));
+        }
+
+        Ok(node)
+    }
+
+    fn parse_primary(&mut self) -> Result<ExprNode, ParseError> {
+        if self.match_token(|token| matches!(token, Token::LeftParen)) {
+            let expression = self.parse_or()?;
+            self.expect_right_paren()?;
+            return Ok(expression);
+        }
+
+        Ok(ExprNode::Comparison(self.parse_comparison()?))
     }
 
     fn parse_comparison(&mut self) -> Result<Comparison, ParseError> {
@@ -199,8 +249,8 @@ impl Parser {
                 "POS" => Ok(Field::Pos),
                 "QUAL" => Ok(Field::Qual),
                 "FILTER" => Ok(Field::Filter),
-                "DP" => Ok(Field::Dp),
-                "AF" => Ok(Field::Af),
+                "DP" | "INFO/DP" => Ok(Field::Dp),
+                "AF" | "INFO/AF" => Ok(Field::Af),
                 _ => Err(ParseError {
                     message: format!("unsupported field '{value}'"),
                 }),
@@ -224,8 +274,16 @@ impl Parser {
         }
     }
 
-    fn match_and(&mut self) -> bool {
-        if matches!(self.peek(), Some(Token::And)) {
+    fn expect_right_paren(&mut self) -> Result<(), ParseError> {
+        if self.match_token(|token| matches!(token, Token::RightParen)) {
+            Ok(())
+        } else {
+            Err(self.error("expected ')'"))
+        }
+    }
+
+    fn match_token(&mut self, predicate: impl FnOnce(&Token) -> bool) -> bool {
+        if self.peek().is_some_and(predicate) {
             self.cursor += 1;
             true
         } else {
@@ -267,6 +325,18 @@ fn tokenize(input: &str) -> Result<Vec<Token>, ParseError> {
             '&' if chars.get(cursor + 1) == Some(&'&') => {
                 tokens.push(Token::And);
                 cursor += 2;
+            }
+            '|' if chars.get(cursor + 1) == Some(&'|') => {
+                tokens.push(Token::Or);
+                cursor += 2;
+            }
+            '(' => {
+                tokens.push(Token::LeftParen);
+                cursor += 1;
+            }
+            ')' => {
+                tokens.push(Token::RightParen);
+                cursor += 1;
             }
             '>' | '<' | '=' | '!' => {
                 let (op, consumed) = read_operator(&chars, cursor)?;

@@ -25,6 +25,31 @@ fn parses_and_evaluates_numeric_comparisons() {
 }
 
 #[test]
+fn supports_explicit_info_field_names() {
+    let expr = parse_expression("INFO/DP > 10 && INFO/AF > 0.01").unwrap();
+
+    assert!(expr.evaluate(&record("1", 200, Some(35.0), "PASS", "DP=12;AF=0.03")));
+    assert!(!expr.evaluate(&record("1", 100, Some(35.0), "PASS", "DP=8;AF=0.03")));
+}
+
+#[test]
+fn supports_or_with_and_precedence() {
+    let expr = parse_expression("QUAL > 50 || DP > 10 && FILTER == \"PASS\"").unwrap();
+
+    assert!(expr.evaluate(&record("1", 100, Some(20.0), "PASS", "DP=12")));
+    assert!(expr.evaluate(&record("1", 100, Some(60.0), "q10", "DP=1")));
+    assert!(!expr.evaluate(&record("1", 100, Some(20.0), "q10", "DP=12")));
+}
+
+#[test]
+fn supports_parentheses_for_boolean_grouping() {
+    let expr = parse_expression("(QUAL > 50 || DP > 10) && FILTER == \"PASS\"").unwrap();
+
+    assert!(expr.evaluate(&record("1", 100, Some(20.0), "PASS", "DP=12")));
+    assert!(!expr.evaluate(&record("1", 100, Some(60.0), "q10", "DP=1")));
+}
+
+#[test]
 fn parses_and_evaluates_string_comparisons() {
     let expr = parse_expression("CHROM == \"1\" && FILTER != \"q10\"").unwrap();
 

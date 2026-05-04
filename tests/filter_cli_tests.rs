@@ -107,6 +107,31 @@ fn af_filter_accepts_gzip_input_and_gzip_output() {
 }
 
 #[test]
+fn filter_supports_parenthesized_or_expressions() {
+    let dir = tempdir().unwrap();
+    let output = dir.path().join("or.vcf");
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            fixture("tests/data/example.vcf").to_str().unwrap(),
+            "--where",
+            "(QUAL > 55 || INFO/DP > 45) && FILTER == \"PASS\"",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let text = fs::read_to_string(output).unwrap();
+    assert!(text.contains("rsMissing"));
+    assert!(text.contains("rsMulti"));
+    assert!(!text.contains("rsFiltered"));
+    assert!(!text.contains("rsPass"));
+}
+
+#[test]
 fn invalid_where_expression_exits_with_clear_error() {
     let dir = tempdir().unwrap();
     let output = dir.path().join("bad.vcf");
