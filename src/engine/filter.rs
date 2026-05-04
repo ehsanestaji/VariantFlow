@@ -3,7 +3,7 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use crate::expr::{EvalRecord, RequiredFields, parse_expression};
+use crate::expr::{EvalRecord, FormatValues, RequiredFields, parse_expression};
 use crate::io::{open_reader, open_writer};
 use crate::vcf::{SiteRecord, parse_record_fields};
 
@@ -50,6 +50,7 @@ fn parse_eval_record_line(line: &str, required: RequiredFields) -> Result<EvalRe
         qual,
         filter,
         info,
+        format: FormatValues::default(),
     })
 }
 
@@ -61,6 +62,7 @@ impl<'a> From<&'a SiteRecord> for EvalRecord<'a> {
             qual: record.qual,
             filter: &record.filter,
             info: &record.info,
+            format: FormatValues::default(),
         }
     }
 }
@@ -80,6 +82,7 @@ mod tests {
                 qual: true,
                 filter: true,
                 info: true,
+                format: Default::default(),
             },
         )
         .unwrap();
