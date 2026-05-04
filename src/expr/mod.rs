@@ -7,6 +7,15 @@ pub struct Expression {
     comparisons: Vec<Comparison>,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct RequiredFields {
+    pub chrom: bool,
+    pub pos: bool,
+    pub qual: bool,
+    pub filter: bool,
+    pub info: bool,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 struct Comparison {
     field: Field,
@@ -82,6 +91,22 @@ impl Expression {
             .iter()
             .all(|comparison| comparison.evaluate(record))
     }
+
+    pub(crate) fn required_fields(&self) -> RequiredFields {
+        let mut required = RequiredFields::default();
+
+        for comparison in &self.comparisons {
+            match comparison.field {
+                Field::Chrom => required.chrom = true,
+                Field::Pos => required.pos = true,
+                Field::Qual => required.qual = true,
+                Field::Filter => required.filter = true,
+                Field::Dp | Field::Af => required.info = true,
+            }
+        }
+
+        required
+    }
 }
 
 impl Comparison {
@@ -99,12 +124,12 @@ impl Comparison {
             (Field::Qual, Literal::Number(expected)) => record
                 .qual
                 .is_some_and(|actual| compare_numbers(actual, *expected, self.op)),
-            (Field::Dp, Literal::Number(expected)) => info_numbers(record.info, "DP")
-                .iter()
-                .any(|actual| compare_numbers(*actual, *expected, self.op)),
-            (Field::Af, Literal::Number(expected)) => info_numbers(record.info, "AF")
-                .iter()
-                .any(|actual| compare_numbers(*actual, *expected, self.op)),
+            (Field::Dp, Literal::Number(expected)) => {
+                info_number_any(record.info, "DP", *expected, self.op)
+            }
+            (Field::Af, Literal::Number(expected)) => {
+                info_number_any(record.info, "AF", *expected, self.op)
+            }
             _ => false,
         }
     }
@@ -129,23 +154,18 @@ fn compare_strings(actual: &str, expected: &str, op: Operator) -> bool {
     }
 }
 
-fn info_numbers(info: &str, key: &str) -> Vec<f64> {
+fn info_number_any(info: &str, key: &str, expected: f64, op: Operator) -> bool {
     info.split(';')
         .filter_map(|entry| entry.split_once('='))
         .find(|(entry_key, _)| *entry_key == key)
-        .map(|(_, value)| {
-            value
-                .split(',')
-                .filter_map(|part| {
-                    if part == "." {
-                        None
-                    } else {
-                        part.parse::<f64>().ok()
-                    }
-                })
-                .collect()
+        .is_some_and(|(_, value)| {
+            value.split(',').any(|part| {
+                part != "."
+                    && part
+                        .parse::<f64>()
+                        .is_ok_and(|actual| compare_numbers(actual, expected, op))
+            })
         })
-        .unwrap_or_default()
 }
 
 struct Parser {
