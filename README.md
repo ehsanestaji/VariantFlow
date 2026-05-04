@@ -27,6 +27,7 @@ VCF-Fast stays Rust-first. Rust gives the project C-like performance, strict mem
 | IGSR chr22 100k public-region QUAL filters | `bcftools filter` | matched filtered core records | `5.35x` to `8.33x` faster | region subset, not whole cohort |
 | IGSR chr22 100k public-region TSV conversion | `bcftools query` | matched normalized TSV rows | `1.11x` faster | selected columns only |
 | Stress 1M filters with unused INFO/FORMAT/sample payload | `bcftools filter` | matched filtered core records | `1.96x` to `2.45x` faster on plain VCF | synthetic stress shape |
+| Stress 1M selected-sample FORMAT filters | `bcftools filter` | matched filtered core records | `1.99x` to `2.06x` faster | single selected sample, synthetic stress shape |
 | Stress 1M TSV conversion | `bcftools query` | matched normalized TSV rows | `1.20x` faster | selected columns only |
 | Stress 1M stats | `bcftools stats` | matched overlapping record count | `1.53x` faster | richer stats equivalence pending |
 
@@ -35,6 +36,7 @@ Detailed evidence lives in:
 - `benchmark/reports/synthetic-filter-benchmark.md`
 - `benchmark/reports/public-dataset-benchmark.md`
 - `benchmark/reports/stress-speed-benchmark.md`
+- `benchmark/reports/format-filter-benchmark.md`
 - `docs/contribution-map.md`
 
 Public evidence is still early. Stress evidence now supports the selective parsing claim on synthetic records with many unused fields; larger whole-cohort public runs and memory/throughput trend reporting are next.
@@ -92,7 +94,7 @@ Missing numeric values such as `.` or absent INFO fields make that predicate fal
 
 ## Limitations
 
-This release is a line-preserving streaming filter, not the future columnar execution engine. Gzip output is valid gzip-compressed VCF text, but v0.1 does not promise BGZF or tabix-indexable output. FORMAT/sample-specific filtering, BCF, Arrow, and Parquet are deferred.
+This release is a line-preserving streaming filter, not the future columnar execution engine. Gzip output is valid gzip-compressed VCF text, but v0.4 does not promise BGZF or tabix-indexable output. FORMAT support is limited to selected-sample `FORMAT/GT`, `FORMAT/DP`, and `FORMAT/GQ` predicates. Multi-sample FORMAT predicates, ANY/ALL semantics, arbitrary FORMAT keys, BCF, Arrow, and Parquet are deferred.
 
 ## Stats Output
 

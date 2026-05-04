@@ -19,6 +19,8 @@ enum Command {
         input: PathBuf,
         #[arg(long = "where")]
         where_expr: String,
+        #[arg(long)]
+        sample: Option<String>,
         #[arg(short, long)]
         output: PathBuf,
     },
@@ -47,8 +49,9 @@ pub fn run() -> Result<()> {
         Command::Filter {
             input,
             where_expr,
+            sample,
             output,
-        } => filter::run(&input, &where_expr, &output),
+        } => filter::run(&input, &where_expr, sample.as_deref(), &output),
         Command::Stats { input } => stats::run(&input),
         Command::Diff { a, b, output } => diff::run(&a, &b, &output),
         Command::Convert {
