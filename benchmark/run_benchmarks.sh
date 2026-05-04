@@ -283,7 +283,7 @@ for records in $SIZES; do
     case_slug="$(slugify "$case_name")"
     dataset="$plain_dataset"
     input_label="plain"
-    fast_sample_args=()
+    fast_sample_option=""
     fast_sample_hyperfine_arg=""
 
     if [[ "$input_kind" == "gzip" ]]; then
@@ -292,8 +292,8 @@ for records in $SIZES; do
     fi
 
     if [[ -n "${sample_name:-}" ]]; then
-      fast_sample_args=(--sample "$sample_name")
-      fast_sample_hyperfine_arg=" --sample $sample_name"
+      fast_sample_option="$sample_name"
+      fast_sample_hyperfine_arg=" --sample $fast_sample_option"
     fi
 
     fast_out="$OUT_DIR/fast-${case_slug}-${records}.vcf"
@@ -337,7 +337,11 @@ for records in $SIZES; do
         note="bcftools unavailable"
       fi
     else
-      ./target/release/vcf-fast filter "$dataset" "${fast_sample_args[@]}" --where "$fast_expr" -o "$fast_out"
+      if [[ -n "$fast_sample_option" ]]; then
+        ./target/release/vcf-fast filter "$dataset" --sample "$fast_sample_option" --where "$fast_expr" -o "$fast_out"
+      else
+        ./target/release/vcf-fast filter "$dataset" --where "$fast_expr" -o "$fast_out"
+      fi
       predicate_check "$fast_out" "$fast_expr"
 
       if command -v bcftools >/dev/null 2>&1; then
