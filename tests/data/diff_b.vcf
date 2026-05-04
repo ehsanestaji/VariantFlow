@@ -1,0 +1,4 @@
+##fileformat=VCFv4.3
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+1	200	shared_other_id	C	T	55	PASS	DP=16
+2	400	b1	G	A	35	PASS	DP=9

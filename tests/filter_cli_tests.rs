@@ -125,26 +125,3 @@ fn invalid_where_expression_exits_with_clear_error() {
         .failure()
         .stderr(predicate::str::contains("expected literal"));
 }
-
-#[test]
-fn placeholders_exit_with_not_implemented_message() {
-    Command::cargo_bin("vcf-fast")
-        .unwrap()
-        .args(["stats", fixture("tests/data/example.vcf").to_str().unwrap()])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("not implemented in v0.1"));
-
-    Command::cargo_bin("vcf-fast")
-        .unwrap()
-        .args([
-            "diff",
-            fixture("tests/data/example.vcf").to_str().unwrap(),
-            fixture("tests/data/example.vcf").to_str().unwrap(),
-            "-o",
-            "diff.tsv",
-        ])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("not implemented in v0.1"));
-}
