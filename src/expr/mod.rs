@@ -178,6 +178,7 @@ impl Comparison {
             (Field::FormatGt, Literal::String(expected)) => record
                 .format
                 .gt
+                .and_then(parse_format_string)
                 .is_some_and(|actual| compare_strings(actual, expected, self.op)),
             (Field::FormatDp, Literal::Number(expected)) => record
                 .format
@@ -235,6 +236,14 @@ fn parse_format_number(value: &str) -> Option<f64> {
         None
     } else {
         value.parse::<f64>().ok()
+    }
+}
+
+fn parse_format_string(value: &str) -> Option<&str> {
+    if value == "." || value.is_empty() {
+        None
+    } else {
+        Some(value)
     }
 }
 

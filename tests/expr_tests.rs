@@ -122,6 +122,20 @@ fn evaluates_format_gt_as_exact_string() {
         dp: None,
         gq: None,
     })));
+
+    let missing_dot = parse_expression("FORMAT/GT == \".\"").unwrap();
+    assert!(!missing_dot.evaluate(&record_with_format(FormatValues {
+        gt: Some("."),
+        dp: None,
+        gq: None,
+    })));
+
+    let missing_empty = parse_expression("FORMAT/GT == \"\"").unwrap();
+    assert!(!missing_empty.evaluate(&record_with_format(FormatValues {
+        gt: Some(""),
+        dp: None,
+        gq: None,
+    })));
 }
 
 #[test]
