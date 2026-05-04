@@ -152,6 +152,28 @@ fn invalid_where_expression_exits_with_clear_error() {
 }
 
 #[test]
+fn format_predicates_require_sample_selection() {
+    let dir = tempdir().unwrap();
+    let output = dir.path().join("format.vcf");
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            fixture("tests/data/stress_small.vcf").to_str().unwrap(),
+            "--where",
+            "FORMAT/DP > 20",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "FORMAT predicates require --sample <name>",
+        ));
+}
+
+#[test]
 fn stress_filter_preserves_unused_format_and_sample_columns() {
     let dir = tempdir().unwrap();
     let output = dir.path().join("stress.vcf");

@@ -1,7 +1,7 @@
 use std::io::{BufRead, Write};
 use std::path::Path;
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 
 use crate::expr::{EvalRecord, FormatValues, RequiredFields, parse_expression};
 use crate::io::{open_reader, open_writer};
@@ -10,6 +10,10 @@ use crate::vcf::{SiteRecord, parse_record_fields};
 pub fn run(input: &Path, where_expr: &str, output: &Path) -> Result<()> {
     let expr = parse_expression(where_expr)?;
     let required = expr.required_fields();
+    if required.requires_format() {
+        bail!("FORMAT predicates require --sample <name>");
+    }
+
     let mut reader = open_reader(input)?;
     let mut writer = open_writer(output)?;
     let mut line = String::new();

@@ -34,7 +34,6 @@ pub(crate) struct RequiredFormatFields {
 }
 
 impl RequiredFields {
-    #[allow(dead_code)]
     pub(crate) fn requires_format(&self) -> bool {
         self.format.gt || self.format.dp || self.format.gq
     }
