@@ -1,0 +1,13 @@
+##fileformat=VCFv4.3
+##contig=<ID=1>
+##contig=<ID=2>
+##FILTER=<ID=PASS,Description="All filters passed">
+##FILTER=<ID=q10,Description="Low quality">
+##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">
+##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+1	100	rsLow	A	G	10	PASS	DP=20;AF=0.02
+1	200	rsPass	C	T	35	PASS	DP=12;AF=0.03
+1	300	rsMissing	G	A	.	PASS	DP=50
+2	400	rsFiltered	T	C	50	q10	DP=5;AF=0.50
+2	500	rsMulti	A	C,G	60	PASS	DP=22;AF=0.005,0.02

@@ -70,6 +70,17 @@ Evidence:
 - Integration tests cover plain and gzip input.
 - Benchmark harness compares normalized TSV rows against `bcftools query`.
 
+### Compatibility Interop
+
+The default engine remains Rust-native and dependency-light. With `--features htslib` or `--features htslib-static`, VCF-Fast can route compatibility-only operations through HTSlib: BCF input, tabix-indexed region reads, and BGZF output.
+
+Evidence:
+
+- Backend selector tests cover native vs htslib routing.
+- Default-build CLI tests verify clear errors for `.bcf`, `--region`, and `--compression bgzf`.
+- htslib-enabled integration tests cover BCF filtering, BCF TSV conversion, indexed region filtering, indexed BCF region stats, and BGZF output that is gzip-readable and tabix-indexable.
+- Competitor design notes are tracked in `docs/competitor-notes.md`.
+
 ## Claims Supported So Far
 
 - Correctness: VCF-Fast matches bcftools filtered core records for supported synthetic QUAL, INFO/DP, INFO/AF, and gzip-input QUAL cases.
@@ -78,6 +89,7 @@ Evidence:
 - Public region: On the tracked IGSR chr22 100k public-region run, VCF-Fast matched bcftools outputs and measured `5.35x` to `8.33x` faster for QUAL filtering and `1.11x` faster for TSV conversion.
 - Stress speed: On the tracked 1M synthetic stress benchmark with 40 unused INFO fields and 16 samples, VCF-Fast matched bcftools outputs and measured `1.96x` to `2.45x` faster for plain filter cases, `1.20x` faster for TSV conversion, and `1.53x` faster for overlapping stats record counts.
 - FORMAT-aware filtering: On the tracked 1M synthetic stress benchmark, selected-sample `FORMAT/DP`, `FORMAT/GQ`, and `FORMAT/GT` filters matched bcftools filtered core records and measured `1.99x` to `2.06x` faster.
+- Compatibility proof: Optional htslib-backed paths now cover BCF input, indexed region reads, and BGZF output. Performance evidence for these compatibility paths is not yet broad enough for a speed claim.
 
 ## Competitor Scorecard
 
@@ -91,12 +103,13 @@ Evidence:
 | Variant-key diff | `tests/stats_diff_cli_tests.rs` | planned `bcftools isec/query` | Shared/unique key TSV works | No normalized multiallelic decomposition |
 | TSV conversion | `tests/convert_cli_tests.rs` and benchmark harness | `bcftools query` | Stable TSV rows checked in synthetic benchmark; `1.57x` faster at 1M synthetic records | No Parquet/Arrow yet |
 | Public data benchmarking | `benchmark/reports/public-dataset-benchmark.md` | `bcftools filter`, `bcftools query` | GIAB HG002 and IGSR chr22 subsets matched bcftools with runtime, throughput, and RSS reporting | Whole-cohort public runs still pending |
+| Compatibility interop | `tests/compatibility_cli_tests.rs`, `tests/compatibility_unit_tests.rs`, `benchmark/reports/compatibility-benchmark.md` | `bcftools`, `tabix`, HTSlib | BCF input, indexed region reads, and BGZF output are feature-gated and tested | Benchmark report is initial; no broad performance claim yet |
 
 ## Claims Not Yet Proven
 
 - Broader performance across whole public real-world VCFs beyond GIAB/IGSR subsets.
 - Performance on ten-million-record datasets and whole public cohort VCFs.
-- BCF input, BGZF/tabix-compatible compressed output, and tabix-indexed region reads.
+- Broad performance claims for BCF input, BGZF output, and tabix-indexed region reads.
 - Multi-sample FORMAT predicates, ANY/ALL sample semantics, and arbitrary FORMAT keys.
 - Persistent columnar Arrow/Parquet execution.
 
@@ -104,5 +117,5 @@ Evidence:
 
 1. Repeat stress and public-region benchmarks on a quieter dedicated runner.
 2. Expand FORMAT predicates beyond one selected sample.
-3. Evaluate `rust-htslib`/htslib interop for BGZF, BCF, tabix, and indexed reads.
+3. Run repeated compatibility benchmarks for BCF input, indexed region reads, and BGZF output against bcftools.
 4. Arrow/Parquet export for repeated analytical workloads.

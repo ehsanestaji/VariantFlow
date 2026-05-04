@@ -14,7 +14,7 @@ The current boost strategy is **Evidence First**: prove correctness and speed on
 
 ## Language And Engine Direction
 
-VCF-Fast stays Rust-first. Rust gives the project C-like performance, strict memory control, and safer concurrency without making memory safety a permanent tax on development speed. C/htslib interop is reserved for targeted compatibility work such as BGZF output, BCF input, tabix-indexed reads, and cases where htslib is clearly the fastest correct path.
+VCF-Fast stays Rust-first. Rust gives the project C-like performance, strict memory control, and safer concurrency without making memory safety a permanent tax on development speed. Optional C/htslib interop is used only for targeted compatibility work: BCF input, BGZF output, tabix-indexed region reads, and cases where htslib is clearly the fastest correct path.
 
 ## Current Evidence
 
@@ -30,6 +30,7 @@ VCF-Fast stays Rust-first. Rust gives the project C-like performance, strict mem
 | Stress 1M selected-sample FORMAT filters | `bcftools filter` | matched filtered core records | `1.99x` to `2.06x` faster | single selected sample, synthetic stress shape |
 | Stress 1M TSV conversion | `bcftools query` | matched normalized TSV rows | `1.20x` faster | selected columns only |
 | Stress 1M stats | `bcftools stats` | matched overlapping record count | `1.53x` faster | richer stats equivalence pending |
+| Compatibility proof | `bcftools`, `tabix`, HTSlib | BCF/region/BGZF integration tests | feature-gated path implemented | performance benchmark report is initial, not a broad speed claim |
 
 Detailed evidence lives in:
 
@@ -37,6 +38,7 @@ Detailed evidence lives in:
 - `benchmark/reports/public-dataset-benchmark.md`
 - `benchmark/reports/stress-speed-benchmark.md`
 - `benchmark/reports/format-filter-benchmark.md`
+- `benchmark/reports/compatibility-benchmark.md`
 - `docs/contribution-map.md`
 
 Public evidence is still early. Stress evidence now supports the selective parsing claim on synthetic records with many unused fields; larger whole-cohort public runs and memory/throughput trend reporting are next.
@@ -47,7 +49,11 @@ Public evidence is still early. Stress evidence now supports the selective parsi
 2. `v0.2 Public Benchmark Expansion`: IGSR chr22 public-region, repeated hyperfine runs, 1M-record synthetic cases, memory/throughput reporting.
 3. `v0.3 Stress And Speed`: synthetic stress VCFs with many unused INFO/FORMAT/sample fields, parser hot-path improvements, and stress benchmark reporting.
 4. `v0.4 FORMAT-Aware Filtering`: support `FORMAT/GT`, `FORMAT/DP`, `FORMAT/GQ`, selected sample predicates, bcftools comparison.
-5. `v0.5 Columnar Bridge`: Parquet/Arrow export for repeated analytical workloads and DuckDB-style workflows.
+5. `v0.5 Compatibility Proof`: optional htslib-backed BCF input, BGZF output, and tabix-indexed region reads while preserving the Rust-native selective streaming path.
+6. `v0.6 Public Whole-Cohort Evidence`: larger GIAB/IGSR runs, repeated benchmark reports, memory trends, and CI/nightly benchmark automation.
+7. `v0.7 Expression Parity`: arbitrary FORMAT keys, sample lists, `ANY`/`ALL`, vector indices, and bcftools-compatible missing-value semantics where practical.
+8. `v0.8 Columnar Bridge`: Arrow/Parquet export for repeated analytical workloads and DuckDB-style workflows.
+9. `v0.9 Release Hardening`: installer packages, reproducible binaries, versioned docs, and a claim matrix for bcftools, VCFtools, and GATK.
 
 ## Quickstart
 
@@ -60,6 +66,13 @@ vcf-fast filter input.vcf.gz --where "QUAL > 30" -o output.vcf.gz
 vcf-fast stats input.vcf.gz
 vcf-fast diff a.vcf.gz b.vcf.gz -o diff.tsv
 vcf-fast convert input.vcf.gz --to tsv -o variants.tsv
+
+cargo build --features htslib-static
+vcf-fast filter input.vcf.gz --region chr22:1-20000000 --where "QUAL > 30" -o output.vcf
+vcf-fast filter input.bcf --where "QUAL > 30" -o output.vcf
+vcf-fast filter input.vcf --where "QUAL > 30" --compression bgzf -o output.vcf.gz
+vcf-fast convert input.bcf --region chr22:1-20000000 --to tsv -o variants.tsv
+vcf-fast stats input.bcf --region chr22:1-20000000
 
 cargo run -- filter tests/data/example.vcf --where "QUAL > 30" -o tests/output/filtered.vcf
 
@@ -75,6 +88,7 @@ vcf-fast filter tests/data/example.vcf --where "QUAL > 30" -o tests/output/filte
 vcf-fast filter tests/data/example.vcf --where "QUAL >= 30 && DP > 10" -o tests/output/dp.vcf
 vcf-fast filter tests/data/example.vcf --where "(QUAL > 55 || INFO/DP > 45) && FILTER == \"PASS\"" -o tests/output/grouped.vcf
 vcf-fast filter tests/data/example.vcf.gz --where "AF > 0.01 && FILTER == \"PASS\"" -o tests/output/af.vcf.gz
+cargo run --features htslib-static -- filter tests/data/compat_example.vcf --where "QUAL > 30" --compression bgzf -o tests/output/compat.vcf.gz
 vcf-fast stats tests/data/example.vcf
 vcf-fast diff tests/data/diff_a.vcf tests/data/diff_b.vcf -o tests/output/diff.tsv
 vcf-fast convert tests/data/example.vcf --to tsv -o tests/output/variants.tsv
@@ -94,7 +108,7 @@ Missing numeric values such as `.` or absent INFO fields make that predicate fal
 
 ## Limitations
 
-This release is a line-preserving streaming filter, not the future columnar execution engine. Gzip output is valid gzip-compressed VCF text, but v0.4 does not promise BGZF or tabix-indexable output. FORMAT support is limited to selected-sample `FORMAT/GT`, `FORMAT/DP`, and `FORMAT/GQ` predicates. Multi-sample FORMAT predicates, ANY/ALL semantics, arbitrary FORMAT keys, BCF, Arrow, and Parquet are deferred.
+The default build is a line-preserving streaming filter, not the future columnar execution engine. Native gzip output is valid gzip-compressed VCF text but is not promised to be tabix-indexable. With `--features htslib` or `--features htslib-static`, `--compression bgzf`, `.bcf` input, and `--region` use htslib compatibility paths. Those paths guarantee valid VCF output and bcftools-equivalent core records for supported predicates, but they do not preserve original record text byte-for-byte. FORMAT support is limited to selected-sample `FORMAT/GT`, `FORMAT/DP`, and `FORMAT/GQ` predicates. Multi-sample FORMAT predicates, ANY/ALL semantics, arbitrary FORMAT keys, Arrow, and Parquet are deferred.
 
 ## Stats Output
 
@@ -136,6 +150,7 @@ make clippy
 make test
 make build
 make verify
+cargo test --features htslib-static
 ```
 
 Run the smoke command:
@@ -174,6 +189,14 @@ Run public-data benchmark modes after downloading:
 VCF_FAST_BENCH_MODE=public-small VCF_FAST_BENCH_SIZES="10000" make bench-smoke
 VCF_FAST_BENCH_MODE=public-region VCF_FAST_BENCH_SIZES="10000" make bench-smoke
 ```
+
+Run compatibility proof checks:
+
+```bash
+cargo test --features htslib-static
+```
+
+The optional htslib backend is selected automatically for `.bcf` input, `--region`, or `--compression bgzf`. Default builds return a clear error for those htslib-only operations.
 
 ## Docker
 
