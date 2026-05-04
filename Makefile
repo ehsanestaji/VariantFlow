@@ -1,4 +1,4 @@
-.PHONY: build test fmt clippy bench-smoke
+.PHONY: build test fmt clippy verify bench-smoke
 
 build:
 	cargo build
@@ -11,6 +11,16 @@ fmt:
 
 clippy:
 	cargo clippy --all-targets -- -D warnings
+
+verify:
+	cargo fmt --check
+	cargo clippy --all-targets -- -D warnings
+	cargo test
+	bash -n benchmark/download_public_data.sh
+	bash -n benchmark/generate_synthetic_vcf.sh
+	bash -n benchmark/run_benchmarks.sh
+	python3 -m py_compile benchmark/*.py
+	VCF_FAST_BENCH_SIZES="100" VCF_FAST_BENCH_RUNS=1 VCF_FAST_BENCH_WARMUP=0 ./benchmark/run_benchmarks.sh
 
 bench-smoke:
 	./benchmark/run_benchmarks.sh
