@@ -12,7 +12,7 @@ Evidence:
 
 - Filter implementation uses required-field analysis from the expression AST.
 - Tests cover borrowed record parsing that skips unneeded INFO parsing.
-- Benchmarks show speedups for QUAL, INFO/DP, INFO/AF, and gzip-input QUAL cases.
+- Benchmarks show speedups for QUAL, INFO/DP, INFO/AF, and gzip-input QUAL cases in the synthetic benchmark harness.
 
 ### Original-Record Preservation
 
@@ -52,10 +52,30 @@ Evidence:
 - Docker installs `bcftools`, `hyperfine`, and the Rust toolchain.
 - Current benchmark report: `benchmark/reports/synthetic-filter-benchmark.md`.
 
+### TSV Conversion
+
+The `convert --to tsv` command exports VCF records into stable, analysis-friendly columns while preserving missing values and comma-separated INFO/AF values.
+
+Evidence:
+
+- Integration tests cover plain and gzip input.
+- Benchmark harness compares normalized TSV rows against `bcftools query`.
+
 ## Claims Supported So Far
 
 - Correctness: VCF-Fast matches bcftools filtered core records for supported synthetic QUAL, INFO/DP, INFO/AF, and gzip-input QUAL cases.
-- Performance: On the tracked 100k synthetic benchmark run, VCF-Fast was `1.62x` to `1.88x` faster than bcftools across measured supported cases.
+- Performance: On the tracked 100k synthetic benchmark run, VCF-Fast was `1.50x` to `1.81x` faster than bcftools across measured supported filter cases and `1.29x` faster for TSV conversion.
+
+## Competitor Scorecard
+
+| Contribution | Evidence path | Competitor checked | Current result | Caveat |
+|---|---|---|---|---|
+| Selective filter execution | `benchmark/reports/synthetic-filter-benchmark.md` | `bcftools filter` | `1.50x` to `1.81x` faster on supported 100k synthetic cases | Public datasets still pending |
+| Original-record preservation | `tests/filter_cli_tests.rs` | VCF validity by behavior and line preservation | Headers and passing records preserved | BGZF output not promised |
+| Typed expression AST | `tests/expr_tests.rs` | N/A | `&&`, `||`, parentheses, string/numeric comparisons | FORMAT predicates not supported |
+| Variant-key diff | `tests/stats_diff_cli_tests.rs` | planned `bcftools isec/query` | Shared/unique key TSV works | No normalized multiallelic decomposition |
+| TSV conversion | `tests/convert_cli_tests.rs` and benchmark harness | `bcftools query` | Stable TSV rows checked in synthetic benchmark; `1.29x` faster at 100k synthetic records | No Parquet/Arrow yet |
+| Public data benchmarking | `benchmark/download_public_data.sh` and `benchmark/run_benchmarks.sh` | `bcftools filter`, `bcftools query` | Sources pinned; public-small and tabix-backed public-region modes available | Full public report pending local download/run |
 
 ## Claims Not Yet Proven
 
@@ -67,7 +87,7 @@ Evidence:
 
 ## Next Contribution Targets
 
-1. Public dataset benchmark scripts.
+1. Run and publish public GIAB/IGSR benchmark reports from cached downloads.
 2. Larger synthetic stress datasets with many unused INFO/FORMAT fields.
 3. FORMAT-aware selective parsing for sample-level predicates.
 4. Arrow/Parquet export for repeated analytical workloads.

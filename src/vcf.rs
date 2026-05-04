@@ -87,6 +87,13 @@ pub fn info_numbers(info: &str, key: &str) -> Vec<f64> {
         .unwrap_or_default()
 }
 
+pub fn info_value<'a>(info: &'a str, key: &str) -> Option<&'a str> {
+    info.split(';')
+        .filter_map(|entry| entry.split_once('='))
+        .find(|(entry_key, _)| *entry_key == key)
+        .map(|(_, value)| value)
+}
+
 #[cfg(test)]
 mod tests {
     use super::parse_record_line;

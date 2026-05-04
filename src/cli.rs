@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
-use crate::engine::{diff, filter, stats};
+use crate::engine::{convert, diff, filter, stats};
 
 #[derive(Debug, Parser)]
 #[command(name = "vcf-fast")]
@@ -31,6 +31,13 @@ enum Command {
         #[arg(short, long)]
         output: PathBuf,
     },
+    Convert {
+        input: PathBuf,
+        #[arg(long = "to")]
+        target: String,
+        #[arg(short, long)]
+        output: PathBuf,
+    },
 }
 
 pub fn run() -> Result<()> {
@@ -44,5 +51,10 @@ pub fn run() -> Result<()> {
         } => filter::run(&input, &where_expr, &output),
         Command::Stats { input } => stats::run(&input),
         Command::Diff { a, b, output } => diff::run(&a, &b, &output),
+        Command::Convert {
+            input,
+            target,
+            output,
+        } => convert::run(&input, &target, &output),
     }
 }
