@@ -23,6 +23,21 @@ pub(crate) struct RequiredFields {
     pub qual: bool,
     pub filter: bool,
     pub info: bool,
+    pub format: RequiredFormatFields,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct RequiredFormatFields {
+    pub gt: bool,
+    pub dp: bool,
+    pub gq: bool,
+}
+
+impl RequiredFields {
+    #[allow(dead_code)]
+    pub(crate) fn requires_format(&self) -> bool {
+        self.format.gt || self.format.dp || self.format.gq
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -40,6 +55,9 @@ enum Field {
     Filter,
     Dp,
     Af,
+    FormatGt,
+    FormatDp,
+    FormatGq,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,6 +83,14 @@ pub struct EvalRecord<'a> {
     pub qual: Option<f64>,
     pub filter: &'a str,
     pub info: &'a str,
+    pub format: FormatValues<'a>,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FormatValues<'a> {
+    pub gt: Option<&'a str>,
+    pub dp: Option<&'a str>,
+    pub gq: Option<&'a str>,
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -150,6 +176,20 @@ impl Comparison {
             (Field::Af, Literal::Number(expected)) => {
                 info_number_any(record.info, "AF", *expected, self.op)
             }
+            (Field::FormatGt, Literal::String(expected)) => record
+                .format
+                .gt
+                .is_some_and(|actual| compare_strings(actual, expected, self.op)),
+            (Field::FormatDp, Literal::Number(expected)) => record
+                .format
+                .dp
+                .and_then(parse_format_number)
+                .is_some_and(|actual| compare_numbers(actual, *expected, self.op)),
+            (Field::FormatGq, Literal::Number(expected)) => record
+                .format
+                .gq
+                .and_then(parse_format_number)
+                .is_some_and(|actual| compare_numbers(actual, *expected, self.op)),
             _ => false,
         }
     }
@@ -161,6 +201,9 @@ impl Comparison {
             Field::Qual => required.qual = true,
             Field::Filter => required.filter = true,
             Field::Dp | Field::Af => required.info = true,
+            Field::FormatGt => required.format.gt = true,
+            Field::FormatDp => required.format.dp = true,
+            Field::FormatGq => required.format.gq = true,
         }
     }
 }
@@ -186,6 +229,14 @@ fn compare_strings(actual: &str, expected: &str, op: Operator) -> bool {
 
 fn info_number_any(info: &str, key: &str, expected: f64, op: Operator) -> bool {
     vcf::info_number_any(info, key, |actual| compare_numbers(actual, expected, op))
+}
+
+fn parse_format_number(value: &str) -> Option<f64> {
+    if value == "." || value.is_empty() {
+        None
+    } else {
+        value.parse::<f64>().ok()
+    }
 }
 
 struct Parser {
@@ -243,6 +294,9 @@ impl Parser {
                 "FILTER" => Ok(Field::Filter),
                 "DP" | "INFO/DP" => Ok(Field::Dp),
                 "AF" | "INFO/AF" => Ok(Field::Af),
+                "FORMAT/GT" => Ok(Field::FormatGt),
+                "FORMAT/DP" => Ok(Field::FormatDp),
+                "FORMAT/GQ" => Ok(Field::FormatGq),
                 _ => Err(ParseError {
                     message: format!("unsupported field '{value}'"),
                 }),
