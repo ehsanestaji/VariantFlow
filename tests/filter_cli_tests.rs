@@ -150,3 +150,75 @@ fn invalid_where_expression_exits_with_clear_error() {
         .failure()
         .stderr(predicate::str::contains("expected literal"));
 }
+
+#[test]
+fn stress_filter_preserves_unused_format_and_sample_columns() {
+    let dir = tempdir().unwrap();
+    let output = dir.path().join("stress.vcf");
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            fixture("tests/data/stress_small.vcf").to_str().unwrap(),
+            "--where",
+            "QUAL > 30",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let text = fs::read_to_string(output).unwrap();
+    assert!(
+        text.contains(
+            "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSAMPLE_A\tSAMPLE_B\n"
+        )
+    );
+    assert!(text.contains("1\t200\tstressPass\tC\tT\t35\tPASS\tUNUSED0=3;DP=45;UNUSED1=4;AF=0.03\tGT:DP:GQ:AD\t0/1:45:60:20,25\t0/1:41:55:19,22\n"));
+    assert!(text.contains("2\t300\tstressAf\tG\tA\t50\tq10\tUNUSED0=5;DP=5;UNUSED1=6;AF=0.005,0.25\tGT:DP:GQ:AD\t1/1:5:20:0,5\t0/1:8:25:4,4\n"));
+    assert!(!text.contains("stressLow"));
+    assert!(!text.contains("stressMissing"));
+}
+
+#[test]
+fn stress_filter_uses_info_dp_and_any_af_value() {
+    let dir = tempdir().unwrap();
+    let dp_output = dir.path().join("stress-dp.vcf");
+    let af_output = dir.path().join("stress-af.vcf");
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            fixture("tests/data/stress_small.vcf").to_str().unwrap(),
+            "--where",
+            "DP > 40",
+            "-o",
+            dp_output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let dp_text = fs::read_to_string(dp_output).unwrap();
+    assert!(dp_text.contains("stressPass"));
+    assert!(!dp_text.contains("stressLow"));
+    assert!(!dp_text.contains("stressAf"));
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            fixture("tests/data/stress_small.vcf").to_str().unwrap(),
+            "--where",
+            "AF > 0.2",
+            "-o",
+            af_output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let af_text = fs::read_to_string(af_output).unwrap();
+    assert!(af_text.contains("stressAf"));
+    assert!(!af_text.contains("stressPass"));
+}

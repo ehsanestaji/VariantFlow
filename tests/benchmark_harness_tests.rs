@@ -21,12 +21,31 @@ fn benchmark_harness_defines_report_and_correctness_contract() {
     assert!(script.contains("vcf-fast peak RSS"));
     assert!(script.contains("bcftools peak RSS"));
     assert!(script.contains("measure_peak_rss_kb"));
+    assert!(script.contains("VCF_FAST_BENCH_MODE=stress"));
+    assert!(script.contains("VCF_FAST_STRESS_INFO_FIELDS"));
+    assert!(script.contains("VCF_FAST_STRESS_SAMPLES"));
+    assert!(script.contains("generate_stress_vcf.sh"));
+    assert!(script.contains("vcf-fast stats"));
+    assert!(script.contains("bcftools stats"));
+    assert!(script.contains("Stats JSON"));
     assert!(script.contains("Convert TSV"));
     assert!(script.contains("QUAL plain"));
     assert!(script.contains("DP plain"));
     assert!(script.contains("AF plain"));
     assert!(script.contains("QUAL gzip input"));
     assert!(script.contains("hyperfine"));
+}
+
+#[test]
+fn stress_generator_emits_unused_info_format_and_sample_columns() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let script = fs::read_to_string(root.join("benchmark/generate_stress_vcf.sh")).unwrap();
+
+    assert!(script.contains("VCF_FAST_STRESS_INFO_FIELDS"));
+    assert!(script.contains("VCF_FAST_STRESS_SAMPLES"));
+    assert!(script.contains("GT:DP:GQ:AD"));
+    assert!(script.contains("UNUSED"));
+    assert!(script.contains("#CHROM"));
 }
 
 #[test]

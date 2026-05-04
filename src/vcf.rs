@@ -142,37 +142,117 @@ pub fn parse_u64_ascii(value: &str) -> Result<u64> {
 }
 
 pub fn for_each_info_number(info: &str, key: &str, mut observe: impl FnMut(f64)) {
-    if let Some((_, value)) = info
-        .split(';')
-        .filter_map(|entry| entry.split_once('='))
-        .find(|(entry_key, _)| *entry_key == key)
-    {
-        let mut remaining = value;
-        while !remaining.is_empty() {
-            let (part, rest) = remaining.split_once(',').unwrap_or((remaining, ""));
+    for_each_info_value(info, key, |value| {
+        for_each_comma_value(value, |part| {
             if part != "."
+                && !part.is_empty()
                 && let Ok(number) = part.parse::<f64>()
             {
                 observe(number);
             }
-            remaining = rest;
-            if remaining.is_empty() {
-                break;
-            }
+        });
+    });
+}
+
+pub fn info_number_any(info: &str, key: &str, mut predicate: impl FnMut(f64) -> bool) -> bool {
+    let mut matched = false;
+    for_each_info_value(info, key, |value| {
+        if !matched {
+            matched = comma_value_any(value, |part| {
+                part != "." && !part.is_empty() && part.parse::<f64>().is_ok_and(&mut predicate)
+            });
         }
-    }
+    });
+    matched
 }
 
 pub fn info_value<'a>(info: &'a str, key: &str) -> Option<&'a str> {
-    info.split(';')
-        .filter_map(|entry| entry.split_once('='))
-        .find(|(entry_key, _)| *entry_key == key)
-        .map(|(_, value)| value)
+    let mut found = None;
+    for_each_info_value(info, key, |value| {
+        if found.is_none() {
+            found = Some(value);
+        }
+    });
+    found
+}
+
+fn for_each_info_value<'a>(info: &'a str, key: &str, mut observe: impl FnMut(&'a str)) {
+    if info == "." || key.is_empty() {
+        return;
+    }
+
+    let bytes = info.as_bytes();
+    let mut entry_start = 0;
+
+    while entry_start <= bytes.len() {
+        let entry_end = bytes[entry_start..]
+            .iter()
+            .position(|byte| *byte == b';')
+            .map_or(bytes.len(), |offset| entry_start + offset);
+
+        if entry_start < entry_end
+            && let Some(eq_offset) = bytes[entry_start..entry_end]
+                .iter()
+                .position(|byte| *byte == b'=')
+        {
+            let key_end = entry_start + eq_offset;
+            if &info[entry_start..key_end] == key {
+                observe(&info[key_end + 1..entry_end]);
+            }
+        }
+
+        if entry_end == bytes.len() {
+            break;
+        }
+        entry_start = entry_end + 1;
+    }
+}
+
+fn for_each_comma_value<'a>(value: &'a str, mut observe: impl FnMut(&'a str)) {
+    let bytes = value.as_bytes();
+    let mut start = 0;
+
+    while start <= bytes.len() {
+        let end = bytes[start..]
+            .iter()
+            .position(|byte| *byte == b',')
+            .map_or(bytes.len(), |offset| start + offset);
+
+        observe(&value[start..end]);
+
+        if end == bytes.len() {
+            break;
+        }
+        start = end + 1;
+    }
+}
+
+fn comma_value_any(value: &str, mut predicate: impl FnMut(&str) -> bool) -> bool {
+    let bytes = value.as_bytes();
+    let mut start = 0;
+
+    while start <= bytes.len() {
+        let end = bytes[start..]
+            .iter()
+            .position(|byte| *byte == b',')
+            .map_or(bytes.len(), |offset| start + offset);
+
+        if predicate(&value[start..end]) {
+            return true;
+        }
+
+        if end == bytes.len() {
+            break;
+        }
+        start = end + 1;
+    }
+
+    false
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_record_fields, parse_record_line};
+    use super::{for_each_info_number, info_value, parse_record_fields, parse_record_line};
 
     #[test]
     fn borrowed_record_fields_ignore_sample_columns_without_allocating_column_vec() {
@@ -219,5 +299,27 @@ mod tests {
         let record = parse_record_line("1\t20\t.\tA\tG\t.\tPASS\tDP=11\n").unwrap();
 
         assert_eq!(record.qual, None);
+    }
+
+    #[test]
+    fn info_value_scans_exact_keys_and_edge_values() {
+        let info = "FLAG;XDP=999;DP=18;EMPTY=;AF=0.01,0.2;TRAIL=done";
+
+        assert_eq!(info_value(info, "DP"), Some("18"));
+        assert_eq!(info_value(info, "AF"), Some("0.01,0.2"));
+        assert_eq!(info_value(info, "EMPTY"), Some(""));
+        assert_eq!(info_value(info, "FLAG"), None);
+        assert_eq!(info_value(info, "MISSING"), None);
+    }
+
+    #[test]
+    fn info_number_scanner_visits_comma_separated_numeric_values_only() {
+        let mut observed = Vec::new();
+
+        for_each_info_number("AF=.;DP=12;AF2=9;AF=0.005,0.02,bad,.", "AF", |value| {
+            observed.push(value);
+        });
+
+        assert_eq!(observed, vec![0.005, 0.02]);
     }
 }
