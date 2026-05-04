@@ -5,44 +5,58 @@ use std::path::Path;
 use anyhow::Result;
 use serde::Serialize;
 
+use crate::compat::{Backend, Region, select_backend};
 use crate::io::open_reader;
 use crate::vcf::{RecordFields, for_each_info_number, parse_record_fields};
 
 #[derive(Debug, Default, Serialize)]
 pub struct StatsSummary {
-    variants: u64,
-    snps: u64,
-    indels: u64,
-    variants_per_chromosome: BTreeMap<String, u64>,
-    qual: NumericSummary,
-    af: NumericSummary,
-    missing_filter_values: u64,
-    transition_transversion_ratio: Option<f64>,
+    pub(crate) variants: u64,
+    pub(crate) snps: u64,
+    pub(crate) indels: u64,
+    pub(crate) variants_per_chromosome: BTreeMap<String, u64>,
+    pub(crate) qual: NumericSummary,
+    pub(crate) af: NumericSummary,
+    pub(crate) missing_filter_values: u64,
+    pub(crate) transition_transversion_ratio: Option<f64>,
 }
 
 #[derive(Debug, Default, Serialize)]
 pub struct NumericSummary {
-    count: u64,
-    min: Option<f64>,
-    max: Option<f64>,
-    mean: Option<f64>,
+    pub(crate) count: u64,
+    pub(crate) min: Option<f64>,
+    pub(crate) max: Option<f64>,
+    pub(crate) mean: Option<f64>,
     #[serde(skip)]
-    sum: f64,
+    pub(crate) sum: f64,
 }
 
 #[derive(Debug, Default)]
-struct TiTv {
+pub(crate) struct TiTv {
     transitions: u64,
     transversions: u64,
 }
 
-pub fn run(input: &Path) -> Result<()> {
-    let summary = collect(input)?;
+pub fn run(input: &Path, region: Option<&Region>) -> Result<()> {
+    let summary = collect(input, region)?;
     println!("{}", serde_json::to_string_pretty(&summary)?);
     Ok(())
 }
 
-pub fn collect(input: &Path) -> Result<StatsSummary> {
+pub fn collect(input: &Path, region: Option<&Region>) -> Result<StatsSummary> {
+    let selected = select_backend(input, region, Default::default());
+    if selected.backend == Backend::Htslib {
+        #[cfg(feature = "htslib")]
+        {
+            return crate::htslib_backend::stats(input, region);
+        }
+
+        #[cfg(not(feature = "htslib"))]
+        {
+            anyhow::bail!(selected.reason.unwrap().unavailable_message());
+        }
+    }
+
     let mut reader = open_reader(input)?;
     let mut line = String::new();
     let mut summary = StatsSummary::default();
@@ -63,7 +77,7 @@ pub fn collect(input: &Path) -> Result<StatsSummary> {
 }
 
 impl StatsSummary {
-    fn observe(&mut self, record: &RecordFields<'_>, titv: &mut TiTv) -> Result<()> {
+    pub(crate) fn observe(&mut self, record: &RecordFields<'_>, titv: &mut TiTv) -> Result<()> {
         self.variants += 1;
         *self
             .variants_per_chromosome
@@ -94,14 +108,14 @@ impl StatsSummary {
 }
 
 impl NumericSummary {
-    fn observe(&mut self, value: f64) {
+    pub(crate) fn observe(&mut self, value: f64) {
         self.count += 1;
         self.min = Some(self.min.map_or(value, |current| current.min(value)));
         self.max = Some(self.max.map_or(value, |current| current.max(value)));
         self.sum += value;
     }
 
-    fn finish(&mut self) {
+    pub(crate) fn finish(&mut self) {
         self.mean = if self.count == 0 {
             None
         } else {
@@ -111,7 +125,7 @@ impl NumericSummary {
 }
 
 impl TiTv {
-    fn observe(&mut self, reference: &str, alternate: &str) {
+    pub(crate) fn observe(&mut self, reference: &str, alternate: &str) {
         if is_transition(reference, alternate) {
             self.transitions += 1;
         } else {
@@ -119,7 +133,7 @@ impl TiTv {
         }
     }
 
-    fn ratio(&self) -> Option<f64> {
+    pub(crate) fn ratio(&self) -> Option<f64> {
         if self.transversions == 0 {
             None
         } else {

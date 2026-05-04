@@ -3,17 +3,31 @@ use std::path::Path;
 
 use anyhow::{Result, bail};
 
+use crate::compat::{Backend, Region, select_backend};
 use crate::io::{open_reader, open_writer};
 use crate::vcf::{info_value, parse_record_fields};
 
-pub fn run(input: &Path, target: &str, output: &Path) -> Result<()> {
+pub fn run(input: &Path, target: &str, output: &Path, region: Option<&Region>) -> Result<()> {
     match target {
-        "tsv" => convert_to_tsv(input, output),
+        "tsv" => convert_to_tsv(input, output, region),
         other => bail!("unsupported convert target '{other}'; supported targets: tsv"),
     }
 }
 
-fn convert_to_tsv(input: &Path, output: &Path) -> Result<()> {
+fn convert_to_tsv(input: &Path, output: &Path, region: Option<&Region>) -> Result<()> {
+    let selected = select_backend(input, region, Default::default());
+    if selected.backend == Backend::Htslib {
+        #[cfg(feature = "htslib")]
+        {
+            return crate::htslib_backend::convert_to_tsv(input, output, region);
+        }
+
+        #[cfg(not(feature = "htslib"))]
+        {
+            bail!(selected.reason.unwrap().unavailable_message());
+        }
+    }
+
     let mut reader = open_reader(input)?;
     let mut writer = open_writer(output)?;
     let mut line = String::new();

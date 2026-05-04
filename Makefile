@@ -1,10 +1,13 @@
-.PHONY: build test fmt clippy verify bench-smoke bench-stress
+.PHONY: build test test-htslib fmt clippy verify bench-smoke bench-stress
 
 build:
 	cargo build
 
 test:
 	cargo test
+
+test-htslib:
+	cargo test --features htslib-static
 
 fmt:
 	cargo fmt --check
