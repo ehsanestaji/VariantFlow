@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
 use serde::Serialize;
 
+use crate::expr::{FormatValues, RequiredFormatFields};
+
 #[derive(Debug, Clone, Copy)]
 pub struct RecordFields<'a> {
     pub chrom: &'a str,
@@ -141,6 +143,57 @@ pub fn parse_u64_ascii(value: &str) -> Result<u64> {
     Ok(result)
 }
 
+pub fn resolve_sample_column(chrom_header: &str, sample: &str) -> Result<usize> {
+    let header = chrom_header.trim_end_matches(['\r', '\n']);
+    let mut found = None;
+
+    for_each_tab_column(header, |column, value| {
+        if column >= 9 && value == sample && found.is_none() {
+            found = Some(column);
+        }
+    });
+
+    found.ok_or_else(|| anyhow::anyhow!("sample '{sample}' not found in VCF header"))
+}
+
+pub fn column_value(line: &str, target_column: usize) -> Option<&str> {
+    let line = line.trim_end_matches(['\r', '\n']);
+    let mut found = None;
+
+    for_each_tab_column(line, |column, value| {
+        if column == target_column && found.is_none() {
+            found = Some(value);
+        }
+    });
+
+    found
+}
+
+pub fn selected_format_values<'a>(
+    format: &'a str,
+    sample: &'a str,
+    required: RequiredFormatFields,
+) -> FormatValues<'a> {
+    if sample == "." {
+        return FormatValues::default();
+    }
+
+    FormatValues {
+        gt: required
+            .gt
+            .then(|| format_value(format, sample, "GT"))
+            .flatten(),
+        dp: required
+            .dp
+            .then(|| format_value(format, sample, "DP"))
+            .flatten(),
+        gq: required
+            .gq
+            .then(|| format_value(format, sample, "GQ"))
+            .flatten(),
+    }
+}
+
 pub fn for_each_info_number(info: &str, key: &str, mut observe: impl FnMut(f64)) {
     for_each_info_value(info, key, |value| {
         for_each_comma_value(value, |part| {
@@ -176,6 +229,31 @@ pub fn info_value<'a>(info: &'a str, key: &str) -> Option<&'a str> {
     found
 }
 
+fn format_value<'a>(format: &'a str, sample: &'a str, key: &str) -> Option<&'a str> {
+    let mut key_index = None;
+    let mut index = 0;
+
+    for_each_colon_value(format, |value| {
+        if value == key && key_index.is_none() {
+            key_index = Some(index);
+        }
+        index += 1;
+    });
+
+    let target_index = key_index?;
+    let mut found = None;
+    let mut index = 0;
+
+    for_each_colon_value(sample, |value| {
+        if index == target_index && found.is_none() {
+            found = Some(value);
+        }
+        index += 1;
+    });
+
+    found
+}
+
 fn for_each_info_value<'a>(info: &'a str, key: &str, mut observe: impl FnMut(&'a str)) {
     if info == "." || key.is_empty() {
         return;
@@ -205,6 +283,46 @@ fn for_each_info_value<'a>(info: &'a str, key: &str, mut observe: impl FnMut(&'a
             break;
         }
         entry_start = entry_end + 1;
+    }
+}
+
+fn for_each_tab_column<'a>(value: &'a str, mut observe: impl FnMut(usize, &'a str)) {
+    let bytes = value.as_bytes();
+    let mut start = 0;
+    let mut column = 0;
+
+    while start <= bytes.len() {
+        let end = bytes[start..]
+            .iter()
+            .position(|byte| *byte == b'\t')
+            .map_or(bytes.len(), |offset| start + offset);
+
+        observe(column, &value[start..end]);
+
+        if end == bytes.len() {
+            break;
+        }
+        start = end + 1;
+        column += 1;
+    }
+}
+
+fn for_each_colon_value<'a>(value: &'a str, mut observe: impl FnMut(&'a str)) {
+    let bytes = value.as_bytes();
+    let mut start = 0;
+
+    while start <= bytes.len() {
+        let end = bytes[start..]
+            .iter()
+            .position(|byte| *byte == b':')
+            .map_or(bytes.len(), |offset| start + offset);
+
+        observe(&value[start..end]);
+
+        if end == bytes.len() {
+            break;
+        }
+        start = end + 1;
     }
 }
 
@@ -252,7 +370,10 @@ fn comma_value_any(value: &str, mut predicate: impl FnMut(&str) -> bool) -> bool
 
 #[cfg(test)]
 mod tests {
-    use super::{for_each_info_number, info_value, parse_record_fields, parse_record_line};
+    use super::{
+        column_value, for_each_info_number, info_value, parse_record_fields, parse_record_line,
+        resolve_sample_column, selected_format_values,
+    };
 
     #[test]
     fn borrowed_record_fields_ignore_sample_columns_without_allocating_column_vec() {
@@ -321,5 +442,67 @@ mod tests {
         });
 
         assert_eq!(observed, vec![0.005, 0.02]);
+    }
+
+    #[test]
+    fn resolves_sample_column_from_chrom_header() {
+        let header = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tHG002\tNA12878\n";
+
+        assert_eq!(resolve_sample_column(header, "HG002").unwrap(), 9);
+        assert_eq!(resolve_sample_column(header, "NA12878").unwrap(), 10);
+    }
+
+    #[test]
+    fn unknown_sample_reports_clear_error() {
+        let header = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tHG002\n";
+        let error = resolve_sample_column(header, "MISSING")
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("sample 'MISSING' not found in VCF header"));
+    }
+
+    #[test]
+    fn reads_absolute_record_columns_by_index() {
+        let line = "1\t100\t.\tA\tG\t50\tPASS\t.\tGT:DP:GQ\t0/1:25:40\t0/0:5:10\n";
+
+        assert_eq!(column_value(line, 8), Some("GT:DP:GQ"));
+        assert_eq!(column_value(line, 9), Some("0/1:25:40"));
+        assert_eq!(column_value(line, 10), Some("0/0:5:10"));
+        assert_eq!(column_value(line, 11), None);
+    }
+
+    #[test]
+    fn extracts_selected_sample_format_values() {
+        let values = selected_format_values(
+            "GT:DP:GQ",
+            "0/1:25:40",
+            crate::expr::RequiredFormatFields {
+                gt: true,
+                dp: true,
+                gq: true,
+            },
+        );
+
+        assert_eq!(values.gt, Some("0/1"));
+        assert_eq!(values.dp, Some("25"));
+        assert_eq!(values.gq, Some("40"));
+    }
+
+    #[test]
+    fn missing_format_values_return_none() {
+        let values = selected_format_values(
+            "GT:DP:GQ",
+            "0/1:.",
+            crate::expr::RequiredFormatFields {
+                gt: true,
+                dp: true,
+                gq: true,
+            },
+        );
+
+        assert_eq!(values.gt, Some("0/1"));
+        assert_eq!(values.dp, Some("."));
+        assert_eq!(values.gq, None);
     }
 }
