@@ -26,20 +26,24 @@ VCF-Fast stays Rust-first. Rust gives the project C-like performance, strict mem
 | GIAB HG002 10k public TSV conversion | `bcftools query` | matched normalized TSV rows | `1.12x` faster | GIAB lacks `INFO/AF`; baseline uses `bcftools query -u` |
 | IGSR chr22 100k public-region QUAL filters | `bcftools filter` | matched filtered core records | `5.35x` to `8.33x` faster | region subset, not whole cohort |
 | IGSR chr22 100k public-region TSV conversion | `bcftools query` | matched normalized TSV rows | `1.11x` faster | selected columns only |
+| Stress 1M filters with unused INFO/FORMAT/sample payload | `bcftools filter` | matched filtered core records | `1.96x` to `2.45x` faster on plain VCF | synthetic stress shape |
+| Stress 1M TSV conversion | `bcftools query` | matched normalized TSV rows | `1.20x` faster | selected columns only |
+| Stress 1M stats | `bcftools stats` | matched overlapping record count | `1.53x` faster | richer stats equivalence pending |
 
 Detailed evidence lives in:
 
 - `benchmark/reports/synthetic-filter-benchmark.md`
 - `benchmark/reports/public-dataset-benchmark.md`
+- `benchmark/reports/stress-speed-benchmark.md`
 - `docs/contribution-map.md`
 
-Public evidence is still early. Larger public/synthetic inputs, stress VCFs with many unused fields, and memory/throughput trend reporting are next.
+Public evidence is still early. Stress evidence now supports the selective parsing claim on synthetic records with many unused fields; larger whole-cohort public runs and memory/throughput trend reporting are next.
 
 ## Milestones
 
 1. `v0.1 Evidence Baseline`: streaming filter, stats/diff, TSV conversion, synthetic and GIAB benchmark reports.
 2. `v0.2 Public Benchmark Expansion`: IGSR chr22 public-region, repeated hyperfine runs, 1M-record synthetic cases, memory/throughput reporting.
-3. `v0.3 Stress And Speed`: synthetic stress VCFs with many unused INFO/FORMAT fields, profiling, parser hot-path improvements.
+3. `v0.3 Stress And Speed`: synthetic stress VCFs with many unused INFO/FORMAT/sample fields, parser hot-path improvements, and stress benchmark reporting.
 4. `v0.4 FORMAT-Aware Filtering`: support `FORMAT/GT`, `FORMAT/DP`, `FORMAT/GQ`, selected sample predicates, bcftools comparison.
 5. `v0.5 Columnar Bridge`: Parquet/Arrow export for repeated analytical workloads and DuckDB-style workflows.
 
@@ -147,6 +151,13 @@ make bench-smoke
 Set `VCF_FAST_BENCH_SIZES` to control synthetic dataset sizes. If `hyperfine` and `bcftools` are installed, the harness times VCF-Fast against the comparable bcftools filter/query command and compares filtered core records or normalized TSV rows. The TSV baseline uses `bcftools query -u` so public VCFs without optional `INFO/DP` or `INFO/AF` header definitions still produce `.` values for those columns.
 
 The current tracked benchmark report is in `benchmark/reports/synthetic-filter-benchmark.md`.
+
+Run the synthetic stress benchmark with unused INFO/FORMAT/sample payloads:
+
+```bash
+make bench-stress
+VCF_FAST_BENCH_MODE=stress VCF_FAST_BENCH_SIZES="100000 1000000" make bench-smoke
+```
 
 Download public benchmark data into the ignored local cache:
 

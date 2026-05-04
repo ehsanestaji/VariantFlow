@@ -1,0 +1,14 @@
+##fileformat=VCFv4.3
+##INFO=<ID=DP,Number=1,Type=Integer,Description="Total Depth">
+##INFO=<ID=AF,Number=A,Type=Float,Description="Allele Frequency">
+##INFO=<ID=UNUSED0,Number=1,Type=Integer,Description="Unused stress field">
+##INFO=<ID=UNUSED1,Number=1,Type=Integer,Description="Unused stress field">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Sample depth">
+##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">
+##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allelic depths">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	SAMPLE_A	SAMPLE_B
+1	100	stressLow	A	G	10	PASS	UNUSED0=1;DP=20;UNUSED1=2;AF=0.02	GT:DP:GQ:AD	0/1:20:50:10,10	0/0:18:45:18,0
+1	200	stressPass	C	T	35	PASS	UNUSED0=3;DP=45;UNUSED1=4;AF=0.03	GT:DP:GQ:AD	0/1:45:60:20,25	0/1:41:55:19,22
+2	300	stressAf	G	A	50	q10	UNUSED0=5;DP=5;UNUSED1=6;AF=0.005,0.25	GT:DP:GQ:AD	1/1:5:20:0,5	0/1:8:25:4,4
+2	400	stressMissing	T	C	.	PASS	UNUSED0=7;UNUSED1=8	GT:DP:GQ:AD	0/0:30:70:30,0	0/1:32:65:16,16

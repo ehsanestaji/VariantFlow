@@ -35,6 +35,30 @@ fn stats_outputs_json_summary_for_site_level_metrics() {
 }
 
 #[test]
+fn stats_counts_stress_fixture_without_parsing_samples() {
+    let output = Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "stats",
+            fixture("tests/data/stress_small.vcf").to_str().unwrap(),
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let json: Value = serde_json::from_slice(&output).unwrap();
+
+    assert_eq!(json["variants"], 4);
+    assert_eq!(json["snps"], 4);
+    assert_eq!(json["indels"], 0);
+    assert_eq!(json["variants_per_chromosome"]["1"], 2);
+    assert_eq!(json["variants_per_chromosome"]["2"], 2);
+    assert_eq!(json["qual"]["count"], 3);
+    assert_eq!(json["af"]["count"], 4);
+}
+
+#[test]
 fn diff_writes_shared_and_unique_variant_keys_to_tsv() {
     let dir = tempdir().unwrap();
     let output = dir.path().join("diff.tsv");

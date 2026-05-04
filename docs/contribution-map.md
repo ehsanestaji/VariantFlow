@@ -13,7 +13,9 @@ Evidence:
 - Filter implementation uses required-field analysis from the expression AST.
 - Tests cover borrowed record parsing that skips unneeded INFO parsing.
 - Shared borrowed VCF field parsing avoids per-record column vectors in filter, stats, and TSV conversion paths.
+- Shared byte-based INFO scanning avoids repeated allocation-heavy `split` chains for filter predicates, TSV conversion, and stats.
 - Benchmarks show speedups for QUAL, INFO/DP, INFO/AF, and gzip-input QUAL cases in the synthetic benchmark harness.
+- Stress benchmarks show speedups when records contain many unused INFO/FORMAT/sample fields.
 
 ### Original-Record Preservation
 
@@ -68,12 +70,14 @@ Evidence:
 - Performance: On the tracked 1M synthetic benchmark run, VCF-Fast was `1.62x` to `1.82x` faster than bcftools across measured supported filter cases and `1.57x` faster for TSV conversion.
 - Public smoke: On the first 10k GIAB HG002 public-small run, VCF-Fast matched bcftools outputs and measured `2.08x` to `2.11x` faster for QUAL filtering and `1.12x` faster for TSV conversion.
 - Public region: On the tracked IGSR chr22 100k public-region run, VCF-Fast matched bcftools outputs and measured `5.35x` to `8.33x` faster for QUAL filtering and `1.11x` faster for TSV conversion.
+- Stress speed: On the tracked 1M synthetic stress benchmark with 40 unused INFO fields and 16 samples, VCF-Fast matched bcftools outputs and measured `1.96x` to `2.45x` faster for plain filter cases, `1.20x` faster for TSV conversion, and `1.53x` faster for overlapping stats record counts.
 
 ## Competitor Scorecard
 
 | Contribution | Evidence path | Competitor checked | Current result | Caveat |
 |---|---|---|---|---|
 | Selective filter execution | `benchmark/reports/synthetic-filter-benchmark.md` and `benchmark/reports/public-dataset-benchmark.md` | `bcftools filter` | `1.62x` to `1.82x` faster on supported 1M synthetic cases; `5.35x` to `8.33x` faster on IGSR chr22 100k QUAL public-region cases | Whole-cohort public runs still pending |
+| Stress selective parsing | `benchmark/reports/stress-speed-benchmark.md` | `bcftools filter`, `bcftools query`, `bcftools stats` | `1.96x` to `2.45x` faster on 1M plain stress filters; `1.20x` TSV speedup; `1.53x` stats speedup | Synthetic stress shape, not a public cohort |
 | Original-record preservation | `tests/filter_cli_tests.rs` | VCF validity by behavior and line preservation | Headers and passing records preserved | BGZF output not promised |
 | Typed expression AST | `tests/expr_tests.rs` | N/A | `&&`, `||`, parentheses, string/numeric comparisons | FORMAT predicates not supported |
 | Variant-key diff | `tests/stats_diff_cli_tests.rs` | planned `bcftools isec/query` | Shared/unique key TSV works | No normalized multiallelic decomposition |
@@ -90,7 +94,7 @@ Evidence:
 
 ## Next Contribution Targets
 
-1. Larger synthetic stress datasets with many unused INFO/FORMAT fields.
+1. Repeat stress and public-region benchmarks on a quieter dedicated runner.
 2. FORMAT-aware selective parsing for sample-level predicates.
 3. Evaluate `rust-htslib`/htslib interop for BGZF, BCF, tabix, and indexed reads.
 4. Arrow/Parquet export for repeated analytical workloads.

@@ -2,6 +2,8 @@ use std::fmt;
 
 use thiserror::Error;
 
+use crate::vcf;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Expression {
     root: ExprNode,
@@ -183,17 +185,7 @@ fn compare_strings(actual: &str, expected: &str, op: Operator) -> bool {
 }
 
 fn info_number_any(info: &str, key: &str, expected: f64, op: Operator) -> bool {
-    info.split(';')
-        .filter_map(|entry| entry.split_once('='))
-        .find(|(entry_key, _)| *entry_key == key)
-        .is_some_and(|(_, value)| {
-            value.split(',').any(|part| {
-                part != "."
-                    && part
-                        .parse::<f64>()
-                        .is_ok_and(|actual| compare_numbers(actual, expected, op))
-            })
-        })
+    vcf::info_number_any(info, key, |actual| compare_numbers(actual, expected, op))
 }
 
 struct Parser {
