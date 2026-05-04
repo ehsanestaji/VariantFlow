@@ -8,13 +8,8 @@ VCF-Fast is an experimental high-performance engine for genomic variant data. Th
 vcf-fast filter tests/data/example.vcf --where "QUAL > 30" -o tests/output/filtered.vcf
 vcf-fast filter tests/data/example.vcf --where "QUAL >= 30 && DP > 10" -o tests/output/dp.vcf
 vcf-fast filter tests/data/example.vcf.gz --where "AF > 0.01 && FILTER == \"PASS\"" -o tests/output/af.vcf.gz
-```
-
-`stats` and `diff` are present as explicit v0.1 placeholders:
-
-```bash
 vcf-fast stats tests/data/example.vcf
-vcf-fast diff a.vcf b.vcf -o diff.tsv
+vcf-fast diff tests/data/diff_a.vcf tests/data/diff_b.vcf -o tests/output/diff.tsv
 ```
 
 ## v0.1 Filter Support
@@ -31,6 +26,28 @@ Missing numeric values such as `.` or absent INFO fields make that predicate fal
 ## Limitations
 
 This release is a line-preserving streaming filter, not the future columnar execution engine. Gzip output is valid gzip-compressed VCF text, but v0.1 does not promise BGZF or tabix-indexable output. FORMAT/sample-specific filtering, `||`, parentheses, BCF, Arrow, and Parquet are deferred.
+
+## Stats Output
+
+`stats` writes JSON to stdout with site-level and allele-level metrics:
+
+- record count in `variants`
+- allele-level `snps` and `indels`
+- `variants_per_chromosome`
+- `qual` and `af` count/min/max/mean summaries
+- `missing_filter_values`
+- `transition_transversion_ratio`
+
+## Diff Output
+
+`diff` compares variant keys as `CHROM + POS + REF + ALT`, writes a TSV to `-o`, and prints summary counts to stderr:
+
+```text
+status	chrom	pos	ref	alt
+only_in_a	1	100	A	G
+shared	1	200	C	T
+only_in_b	2	400	G	A
+```
 
 ## Development
 

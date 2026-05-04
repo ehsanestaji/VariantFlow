@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 use clap::{Parser, Subcommand};
 
-use crate::engine::filter;
+use crate::engine::{diff, filter, stats};
 
 #[derive(Debug, Parser)]
 #[command(name = "vcf-fast")]
@@ -29,7 +29,7 @@ enum Command {
         a: PathBuf,
         b: PathBuf,
         #[arg(short, long)]
-        output: Option<PathBuf>,
+        output: PathBuf,
     },
 }
 
@@ -42,11 +42,7 @@ pub fn run() -> Result<()> {
             where_expr,
             output,
         } => filter::run(&input, &where_expr, &output),
-        Command::Stats { input: _ } => bail!("stats not implemented in v0.1"),
-        Command::Diff {
-            a: _,
-            b: _,
-            output: _,
-        } => bail!("diff not implemented in v0.1"),
+        Command::Stats { input } => stats::run(&input),
+        Command::Diff { a, b, output } => diff::run(&a, &b, &output),
     }
 }
