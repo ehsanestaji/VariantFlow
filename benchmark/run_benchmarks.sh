@@ -11,12 +11,15 @@ MODE="${VCF_FAST_BENCH_MODE:-synthetic}"
 SIZES="${VCF_FAST_BENCH_SIZES:-10000 100000}"
 PUBLIC_RECORDS="${VCF_FAST_PUBLIC_RECORDS:-10000}"
 PUBLIC_REGION="${VCF_FAST_PUBLIC_REGION:-chr22:1-20000000}"
+STRESS_INFO_FIELDS="${VCF_FAST_STRESS_INFO_FIELDS:-40}"
+STRESS_SAMPLES="${VCF_FAST_STRESS_SAMPLES:-16}"
 CASES=(
   "QUAL plain|plain|QUAL > 30|QUAL>30"
   "DP plain|plain|DP > 40|INFO/DP>40"
   "AF plain|plain|AF > 0.2|INFO/AF>0.2"
   "QUAL gzip input|gzip|QUAL > 30|QUAL>30"
   "Convert TSV|plain|convert-tsv|query-tsv"
+  "Stats JSON|plain|stats-json|stats"
 )
 
 tool_version() {
@@ -62,6 +65,34 @@ measure_peak_rss_kb() {
 
 extract_core_records() {
   awk -F '\t' 'BEGIN { OFS = "\t" } !/^#/ { print $1, $2, $3, $4, $5, $6, $7 }' "$1"
+}
+
+compare_stats_counts() {
+  local fast_json="$1"
+  local bcftools_stats="$2"
+  local diff_output="$3"
+  local fast_variants
+  local bcftools_records
+
+  fast_variants="$(python3 - "$fast_json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    print(json.load(handle)["variants"])
+PY
+)"
+  bcftools_records="$(awk -F '\t' '$1 == "SN" && $3 == "number of records:" { print $4; found = 1 } END { exit found ? 0 : 1 }' "$bcftools_stats")"
+
+  if [[ "$fast_variants" == "$bcftools_records" ]]; then
+    : >"$diff_output"
+  else
+    {
+      echo "vcf-fast variants: $fast_variants"
+      echo "bcftools records: $bcftools_records"
+    } >"$diff_output"
+    return 1
+  fi
 }
 
 slugify() {
@@ -149,8 +180,11 @@ configure_inputs() {
       fi
       echo "1000 Genomes high-coverage chr22 region ${PUBLIC_REGION}, requested record subsets|$igsr"
       ;;
+    stress)
+      echo "stress synthetic data|"
+      ;;
     *)
-      echo "unsupported VCF_FAST_BENCH_MODE=$MODE; expected synthetic, public-small, or public-region" >&2
+      echo "unsupported VCF_FAST_BENCH_MODE=$MODE; expected synthetic, stress, public-small, or public-region" >&2
       exit 2
       ;;
   esac
@@ -164,6 +198,11 @@ else
 fi
 cargo build --release
 IFS='|' read -r DATASET_SOURCE PUBLIC_SOURCE < <(configure_inputs)
+DATASET_SHAPE="records only"
+
+if [[ "$MODE" == "stress" ]]; then
+  DATASET_SHAPE="stress INFO fields=${STRESS_INFO_FIELDS}, samples=${STRESS_SAMPLES}, FORMAT=GT:DP:GQ:AD"
+fi
 
 if [[ "$MODE" != "synthetic" ]]; then
   CASES=(
@@ -173,12 +212,24 @@ if [[ "$MODE" != "synthetic" ]]; then
   )
 fi
 
+if [[ "$MODE" == "stress" ]]; then
+  CASES=(
+    "QUAL plain|plain|QUAL > 30|QUAL>30"
+    "DP plain|plain|DP > 40|INFO/DP>40"
+    "AF plain|plain|AF > 0.2|INFO/AF>0.2"
+    "QUAL gzip input|gzip|QUAL > 30|QUAL>30"
+    "Convert TSV|plain|convert-tsv|query-tsv"
+    "Stats JSON|plain|stats-json|stats"
+  )
+fi
+
 {
   echo "## VCF-Fast Benchmark Report"
   echo
   echo "- Generated: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   echo "- Mode: \`$MODE\`"
   echo "- Dataset source: $DATASET_SOURCE"
+  echo "- Dataset shape: $DATASET_SHAPE"
   echo "- Dataset sizes: \`$SIZES\`"
   echo "- hyperfine: $(tool_version hyperfine)"
   echo "- bcftools: $(tool_version bcftools)"
@@ -189,6 +240,9 @@ fi
   echo "- bcftools filter: \`bcftools filter -i '<expr>' <input> -o <output>\`"
   echo "- VCF-Fast convert TSV: \`./target/release/vcf-fast convert <input> --to tsv -o <output.tsv>\`"
   echo "- bcftools query TSV: \`bcftools query -u -f '%CHROM\\t%POS\\t%ID\\t%REF\\t%ALT\\t%QUAL\\t%FILTER\\t%INFO/DP\\t%INFO/AF\\n' <input>\`"
+  echo "- VCF-Fast stats: \`./target/release/vcf-fast stats <input> > <output.json>\`"
+  echo "- bcftools stats: \`bcftools stats <input> > <output.txt>\`"
+  echo "- Stress mode: \`VCF_FAST_BENCH_MODE=stress make bench-smoke\`"
   echo
   echo "| case | records | input | Output equivalence | vcf-fast mean | bcftools mean | speedup | vcf-fast variants/s | bcftools variants/s | vcf-fast peak RSS KB | bcftools peak RSS KB | notes |"
   echo "|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---|"
@@ -198,6 +252,9 @@ for records in $SIZES; do
   plain_dataset="$DATA_DIR/synthetic-${records}.vcf"
   if [[ "$MODE" == "synthetic" ]]; then
     ./benchmark/generate_synthetic_vcf.sh "$plain_dataset" "$records"
+  elif [[ "$MODE" == "stress" ]]; then
+    plain_dataset="$DATA_DIR/stress-${records}.vcf"
+    ./benchmark/generate_stress_vcf.sh "$plain_dataset" "$records"
   elif [[ "$MODE" == "public-region" ]]; then
     plain_dataset="$DATA_DIR/${MODE}-${records}.vcf"
     build_public_region_dataset "$PUBLIC_SOURCE" "$plain_dataset" "$records" "$PUBLIC_REGION"
@@ -235,7 +292,18 @@ for records in $SIZES; do
     fast_peak_rss_kb="n/a"
     bcftools_peak_rss_kb="n/a"
 
-    if [[ "$fast_expr" == "convert-tsv" ]]; then
+    if [[ "$fast_expr" == "stats-json" ]]; then
+      fast_out="$OUT_DIR/fast-${case_slug}-${records}.json"
+      bcftools_out="$OUT_DIR/bcftools-${case_slug}-${records}.stats.txt"
+      ./target/release/vcf-fast stats "$dataset" >"$fast_out"
+      if command -v bcftools >/dev/null 2>&1; then
+        bcftools stats "$dataset" >"$bcftools_out"
+        compare_stats_counts "$fast_out" "$bcftools_out" "$OUT_DIR/equivalence-${case_slug}-${records}.diff"
+        equivalence="Stats JSON variants match bcftools stats records"
+      else
+        note="bcftools unavailable"
+      fi
+    elif [[ "$fast_expr" == "convert-tsv" ]]; then
       fast_out="$OUT_DIR/fast-${case_slug}-${records}.tsv"
       bcftools_out="$OUT_DIR/bcftools-${case_slug}-${records}.tsv"
       ./target/release/vcf-fast convert "$dataset" --to tsv -o "$fast_out"
@@ -264,7 +332,17 @@ for records in $SIZES; do
     fi
 
     if command -v hyperfine >/dev/null 2>&1; then
-      if command -v bcftools >/dev/null 2>&1 && [[ "$fast_expr" == "convert-tsv" ]]; then
+      if command -v bcftools >/dev/null 2>&1 && [[ "$fast_expr" == "stats-json" ]]; then
+        hyperfine \
+          --warmup "${VCF_FAST_BENCH_WARMUP:-1}" \
+          --runs "${VCF_FAST_BENCH_RUNS:-3}" \
+          --export-json "$hyperfine_json" \
+          "./target/release/vcf-fast stats $dataset > $OUT_DIR/fast-${case_slug}-${records}.timed.json" \
+          "bcftools stats $dataset > $OUT_DIR/bcftools-${case_slug}-${records}.timed.stats.txt"
+        read -r fast_mean bcftools_mean speedup < <(python3 benchmark/summarize_hyperfine.py "$hyperfine_json")
+        fast_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-fast-${case_slug}-${records}.txt" bash -c './target/release/vcf-fast stats "$1" > "$2"' _ "$dataset" "$OUT_DIR/fast-${case_slug}-${records}.rss.json")"
+        bcftools_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-bcftools-${case_slug}-${records}.txt" bash -c 'bcftools stats "$1" > "$2"' _ "$dataset" "$OUT_DIR/bcftools-${case_slug}-${records}.rss.stats.txt")"
+      elif command -v bcftools >/dev/null 2>&1 && [[ "$fast_expr" == "convert-tsv" ]]; then
         hyperfine \
           --warmup "${VCF_FAST_BENCH_WARMUP:-1}" \
           --runs "${VCF_FAST_BENCH_RUNS:-3}" \
@@ -284,6 +362,12 @@ for records in $SIZES; do
         read -r fast_mean bcftools_mean speedup < <(python3 benchmark/summarize_hyperfine.py "$hyperfine_json")
         fast_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-fast-${case_slug}-${records}.txt" bash -c './target/release/vcf-fast filter "$1" --where "$2" -o "$3"' _ "$dataset" "$fast_expr" "$OUT_DIR/fast-${case_slug}-${records}.rss.vcf")"
         bcftools_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-bcftools-${case_slug}-${records}.txt" bash -c 'bcftools filter -i "$1" "$2" -o "$3"' _ "$bcftools_expr" "$dataset" "$OUT_DIR/bcftools-${case_slug}-${records}.rss.vcf")"
+      elif [[ "$fast_expr" == "stats-json" ]]; then
+        hyperfine \
+          --warmup "${VCF_FAST_BENCH_WARMUP:-1}" \
+          --runs "${VCF_FAST_BENCH_RUNS:-3}" \
+          "./target/release/vcf-fast stats $dataset > $OUT_DIR/fast-${case_slug}-${records}.timed.json"
+        fast_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-fast-${case_slug}-${records}.txt" bash -c './target/release/vcf-fast stats "$1" > "$2"' _ "$dataset" "$OUT_DIR/fast-${case_slug}-${records}.rss.json")"
       elif [[ "$fast_expr" == "convert-tsv" ]]; then
         hyperfine \
           --warmup "${VCF_FAST_BENCH_WARMUP:-1}" \

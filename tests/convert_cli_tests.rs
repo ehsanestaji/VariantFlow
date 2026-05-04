@@ -93,3 +93,32 @@ fn convert_rejects_unsupported_target() {
         .failure()
         .stderr(predicate::str::contains("unsupported convert target"));
 }
+
+#[test]
+fn convert_to_tsv_ignores_stress_format_and_sample_columns() {
+    let dir = tempdir().unwrap();
+    let output = dir.path().join("stress.tsv");
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "convert",
+            fixture("tests/data/stress_small.vcf").to_str().unwrap(),
+            "--to",
+            "tsv",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let text = fs::read_to_string(output).unwrap();
+    assert_eq!(
+        text,
+        "CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO/DP\tINFO/AF\n\
+1\t100\tstressLow\tA\tG\t10\tPASS\t20\t0.02\n\
+1\t200\tstressPass\tC\tT\t35\tPASS\t45\t0.03\n\
+2\t300\tstressAf\tG\tA\t50\tq10\t5\t0.005,0.25\n\
+2\t400\tstressMissing\tT\tC\t.\tPASS\t.\t.\n"
+    );
+}
