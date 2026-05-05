@@ -1,4 +1,4 @@
-.PHONY: build test test-htslib fmt clippy verify bench-smoke bench-stress bench-public bench-public-region bench-heavy bench-compat bench-v09 bench-v10-compressed bench-v10-parquet bench-v06-smoke
+.PHONY: build test test-htslib fmt clippy verify bench-smoke bench-stress bench-public bench-public-region bench-heavy bench-compat bench-v09 bench-v10-compressed bench-v10-parquet bench-v10-columnar bench-v06-smoke
 
 build:
 	cargo build
@@ -26,6 +26,7 @@ verify:
 	bash -n benchmark/run_v09_expression_benchmarks.sh
 	bash -n benchmark/run_v10_compressed_benchmarks.sh
 	bash -n benchmark/run_v10_parquet_benchmarks.sh
+	bash -n benchmark/run_v10_columnar_workflow_benchmarks.sh
 	python3 -m py_compile benchmark/*.py
 	VCF_FAST_BENCH_SIZES="100" VCF_FAST_BENCH_RUNS=1 VCF_FAST_BENCH_WARMUP=0 make bench-v06-smoke
 
@@ -56,6 +57,9 @@ bench-v10-compressed:
 
 bench-v10-parquet:
 	VCF_FAST_V10_PARQUET_SIZES="$${VCF_FAST_V10_PARQUET_SIZES:-10000 100000}" ./benchmark/run_v10_parquet_benchmarks.sh
+
+bench-v10-columnar:
+	VCF_FAST_V10_COLUMNAR_SIZES="$${VCF_FAST_V10_COLUMNAR_SIZES:-10000 100000}" ./benchmark/run_v10_columnar_workflow_benchmarks.sh
 
 bench-v06-smoke:
 	VCF_FAST_BENCH_MODE=synthetic VCF_FAST_BENCH_SIZES="$${VCF_FAST_BENCH_SIZES:-100}" VCF_FAST_BENCH_RUNS="$${VCF_FAST_BENCH_RUNS:-1}" VCF_FAST_BENCH_WARMUP="$${VCF_FAST_BENCH_WARMUP:-0}" ./benchmark/run_benchmarks.sh

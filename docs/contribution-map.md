@@ -71,13 +71,14 @@ Evidence:
 
 ### TSV Conversion
 
-The `convert --to tsv` command exports VCF records into stable, analysis-friendly columns while preserving missing values and comma-separated INFO/AF values. The native `convert --to parquet` command exports the same selected projection with typed `POS`, nullable `QUAL`, nullable `INFO/DP`, and lossless string `INFO/AF`.
+The `convert --to tsv` command exports VCF records into stable, analysis-friendly columns while preserving missing values and comma-separated INFO/AF values. The native `convert --to parquet` command exports the same selected projection with typed `POS`, nullable `QUAL`, nullable `INFO/DP`, and lossless string `INFO/AF`. The first columnar workflow harness measures export-once, repeated-query behavior through DuckDB.
 
 Evidence:
 
 - Integration tests cover plain and gzip input.
 - Parquet integration tests read produced files through Arrow and verify schema, row count, nulls, typed numeric columns, and multi-value AF preservation.
 - Benchmark harness compares normalized TSV rows against `bcftools query`.
+- The v1.0 columnar workflow harness compares DuckDB queries over VCF-Fast Parquet output with repeated `bcftools` scans over the original VCF/BGZF input.
 
 ### Compatibility Interop
 
@@ -103,6 +104,7 @@ Evidence:
 - v0.9 native expression parity: Fixture-backed tests and the v0.9 benchmark report cover arbitrary `INFO/<KEY>`, selected-sample `FORMAT/<KEY>` with `--sample`, and native sample aggregate predicates such as `ANY(FORMAT/DP > 20)` and `ALL(FORMAT/GQ >= 30)`. On deterministic stress VCFs with 40 unused INFO fields and 16 samples, VCF-Fast matched `bcftools filter` core records and measured `2.66x` to `3.90x` faster at 10k records and `2.41x` to `5.18x` faster at 100k records; public v0.9 expression rows are still pending.
 - v1.0 threaded native BGZF input: On bounded IGSR chr22 BGZF input, VCF-Fast matched `bcftools filter` core records. With `VCF_FAST_NATIVE_BGZF_THREADS=4`, it measured `1.85x` to `2.00x` faster than the default native gzip/BGZF path and `9.90x` to `11.87x` faster than `bcftools filter` at 10k/100k/1M records. This is BGZF-only evidence; ordinary gzip remains a single-thread fallback.
 - v1.0 Parquet export: Native `convert --to parquet` writes a typed selected-column Parquet file for `.vcf` and `.vcf.gz` inputs. Correctness is covered by Arrow readback tests. On deterministic stress data, Parquet export measured `1.93x` to `1.94x` faster than the comparable `bcftools query` TSV projection, while native TSV remained faster than native Parquet.
+- v1.0 columnar workflow: On bounded IGSR chr22 public-heavy BGZF data, VCF-Fast Parquet export plus five DuckDB row-count queries matched repeated `bcftools view -H` row counts and measured `23.96x` faster at 10k records and `48.45x` faster at 100k records than five repeated `bcftools view` scans. This supports a narrow export-once, query-many claim for the measured row-count workflow.
 - Compatibility proof: Optional htslib-backed paths cover BCF input, indexed region reads, and BGZF output. v0.7 typed TSV/stats optimization matched correctness and moved several compatibility paths to near parity or faster, including 1M BCF filter `1.05x`, indexed-region filter `1.25x`, and indexed BCF stats `1.05x`; BCF TSV still trails `bcftools query` at `0.50x` for 1M.
 - v0.8 byte-core evidence: On the repeated post-surgery benchmark, VCF-Fast matched supported correctness checks. The measured stress and IGSR public-heavy results are recorded in `benchmark/reports/v08-core-efficiency-benchmark.md`: stress filters were `3.14x` to `6.24x` faster, stress TSV was `2.54x` faster, stress stats were `2.50x` faster, public-heavy QUAL was `6.01x` faster, and public-heavy TSV was `1.13x` faster; all v0.8 rows were measured wins, with caveats limited to synthetic stress shape and bounded chr22 region.
 
@@ -120,6 +122,7 @@ Evidence:
 | Variant-key diff | `tests/stats_diff_cli_tests.rs` | planned `bcftools isec/query` | Shared/unique key TSV works | No normalized multiallelic decomposition |
 | TSV conversion | `tests/convert_cli_tests.rs` and benchmark harness | `bcftools query` | Stable TSV rows checked; synthetic 1M `1.57x`; GIAB 1M `1.13x`; public-heavy 100k/1M gzip `1.08x` to `1.10x` after v0.7 optimization | Mixed public results: GIAB 10k/100k, IGSR 100k, and BCF TSV trail bcftools |
 | Parquet export | `tests/convert_cli_tests.rs`, `benchmark/reports/v10-parquet-export-benchmark.md` | `bcftools query` for TSV projection baseline | Native `.vcf`/`.vcf.gz` selected-column Parquet export works with typed numeric/null semantics and measured `1.93x` to `1.94x` faster than `bcftools query` on stress projection | Native TSV is still faster than native Parquet; downstream workflow checks pending |
+| Columnar workflow | `benchmark/reports/v10-columnar-workflow-benchmark.md` | repeated `bcftools view` scans | Export once plus five DuckDB row-count queries over VCF-Fast Parquet measured `23.96x` to `48.45x` faster than five repeated `bcftools view` scans on bounded IGSR chr22 10k/100k tiers | Row-count workflow only; richer predicate/projection workflows and Polars/PyArrow baselines pending |
 | Public data benchmarking | `benchmark/reports/public-dataset-benchmark.md`, `benchmark/reports/public-whole-cohort-benchmark.md`, `benchmark/reports/v07-heavy-run-benchmark.md` | `bcftools filter`, `bcftools query`, `bcftools stats` | GIAB HG002, IGSR chr22, stress, and bounded public-heavy 100k/1M runs measured with correctness, runtime, throughput, and RSS reporting | Whole-cohort sample-rich public evidence beyond bounded chr22 region still pending |
 | Compatibility interop | `tests/compatibility_cli_tests.rs`, `tests/compatibility_unit_tests.rs`, `benchmark/reports/compatibility-benchmark.md` | `bcftools`, `tabix`, HTSlib | BCF input, indexed region reads, and BGZF output are feature-gated, tested, benchmarked, and near parity/faster on several v0.7 rows | BCF TSV remains slower than bcftools query |
 
@@ -131,7 +134,7 @@ Evidence:
 - Public real-cohort runtime evidence for v0.9 arbitrary expression parity.
 - Threaded native BGZF evidence beyond bounded IGSR chr22 1M, including whole-cohort public rows.
 - Parallel ordinary gzip and parallel native output compression.
-- Parquet export performance on public cohorts and DuckDB/Polars/PyArrow workflows.
+- Parquet export and repeated-query performance beyond the current bounded IGSR row-count workflow, including richer DuckDB/Polars/PyArrow workflows.
 - BCF/region Parquet export through htslib compatibility paths.
 - htslib-backed support for native-only `ANY`/`ALL` FORMAT aggregate predicates.
 - Broader columnar Arrow/Parquet execution beyond the native selected-column first slice.
@@ -146,6 +149,7 @@ The project ambition is to become the best practical VCF tool, but public langua
 | Core record correctness for supported filters | matches filtered core records | later baseline | later baseline | matches for supported comparisons | integration tests and benchmark equivalence diffs | Not byte-for-byte equivalent on htslib compatibility paths. |
 | TSV export for selected columns | mixed: beats synthetic/stress/GIAB 1M/IGSR 10k, trails bcftools on some public and region cases | complements older workflows | complements heavier workflow exports | correctness matches; performance depends on dataset/path | `tests/convert_cli_tests.rs`, benchmark reports, `benchmark/reports/v08-core-efficiency-benchmark.md` | htslib TSV path needs optimization; Parquet is native selected-column only so far. |
 | Parquet export for selected columns | beats measured stress `bcftools query` projection while producing typed columnar output | complements | complements heavier workflow exports | correctness proven for native selected-column export; measured stress projection win | `tests/convert_cli_tests.rs`, `benchmark/reports/v10-parquet-export-benchmark.md` | Native TSV is faster; public workflow benchmarks and BCF/region support are pending. |
+| Export-once repeated-query workflow | beats measured repeated `bcftools view` scans for bounded IGSR row-count workflow | complements | complements heavier cohort workflows | measured DuckDB row-count workflow win after VCF-Fast Parquet export | `benchmark/reports/v10-columnar-workflow-benchmark.md` | Row-count only; richer SQL predicates, public 1M, DuckDB/Polars/PyArrow comparisons, and BCF/region Parquet are pending. |
 | Stats simple counts | matches overlapping counts; beats stress native stats but trails bcftools on public indexed-region stats | later baseline | later baseline | matches overlapping simple counts | `tests/stats_diff_cli_tests.rs`, stress and public reports, `benchmark/reports/v08-core-efficiency-benchmark.md` | Rich `bcftools stats` parity is not claimed. |
 | BCF, BGZF, tabix regions | matches ecosystem compatibility through optional htslib path, but bcftools is faster in measured synthetic compatibility runs | complements | complements | compatibility matches; speed not claimed | `tests/compatibility_cli_tests.rs`, `benchmark/reports/compatibility-benchmark.md` | Optimize or avoid htslib reconstruction overhead. |
 | Native expression parity | beats measured deterministic stress expression cases and matches filtered core records for common expression forms | later baseline | later baseline | supports arbitrary `INFO/<KEY>`, selected-sample `FORMAT/<KEY>`, and native `ANY`/`ALL` aggregate predicates; measured deterministic stress wins | `tests/expr_tests.rs`, `tests/filter_cli_tests.rs`, `benchmark/reports/v09-expression-parity-benchmark.md` | Public benchmark rows and htslib aggregate support are pending. |
@@ -156,5 +160,6 @@ The project ambition is to become the best practical VCF tool, but public langua
 
 1. Keep v0.8 evidence current as new byte-core runs are added, and use `benchmark/reports/v08-core-efficiency-benchmark.md` as the source for README/contribution claims.
 2. Add public v0.9 expression parity benchmark rows before broadening the deterministic stress runtime claim for arbitrary `INFO/<KEY>`, selected `FORMAT/<KEY>`, or sample `ANY`/`ALL` predicates.
-3. Fill v1.0 Parquet export benchmark rows and add a DuckDB/Polars validation path before making columnar workflow claims.
-4. Keep BCF TSV compatibility optimization as a tracked gap.
+3. Expand v1.0 columnar workflow benchmarks from row count to richer DuckDB predicates, public 1M tiers, and Polars/PyArrow baselines before broadening columnar workflow claims.
+4. Start v1.1 Parallel Native Execution, using the existing threaded BGZF evidence as the first scheduling target.
+5. Keep BCF TSV compatibility optimization as a tracked gap.
