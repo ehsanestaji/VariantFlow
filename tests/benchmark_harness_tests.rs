@@ -329,6 +329,47 @@ fn v10_compressed_benchmark_tracks_threaded_bgzf_evidence() {
 }
 
 #[test]
+fn v10_parquet_benchmark_tracks_columnar_export_evidence() {
+    let script = std::fs::read_to_string("benchmark/run_v10_parquet_benchmarks.sh")
+        .expect("read v1.0 parquet benchmark script");
+    let makefile = std::fs::read_to_string("Makefile").expect("read Makefile");
+    let report = std::fs::read_to_string("benchmark/reports/v10-parquet-export-benchmark.md")
+        .expect("read v1.0 parquet benchmark report");
+    let normalized_report = report.to_lowercase();
+
+    for required in [
+        "--to parquet",
+        "--to tsv",
+        "bcftools query",
+        "hyperfine",
+        "Parquet schema/null semantics verified by integration tests",
+        "synthetic stress only",
+    ] {
+        assert!(script.contains(required), "missing {required}");
+    }
+
+    assert!(makefile.contains("bench-v10-parquet:"));
+    assert!(makefile.contains("run_v10_parquet_benchmarks.sh"));
+
+    for required in [
+        "dataset source",
+        "record count",
+        "exact Parquet command",
+        "exact TSV command",
+        "exact competitor command",
+        "correctness result",
+        "variants/sec",
+        "peak RSS",
+        "claim decision",
+    ] {
+        assert!(
+            normalized_report.contains(&required.to_lowercase()),
+            "missing report field {required}"
+        );
+    }
+}
+
+#[test]
 fn v06_reports_track_claim_matrix_and_required_fields() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let public_report =
