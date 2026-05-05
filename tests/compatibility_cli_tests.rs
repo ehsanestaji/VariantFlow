@@ -300,6 +300,48 @@ fn bcf_input_convert_to_tsv_matches_expected_rows() {
 
 #[cfg(feature = "htslib")]
 #[test]
+fn indexed_region_convert_preserves_info_af_precision() {
+    let dir = tempdir().unwrap();
+    let plain = dir.path().join("input.vcf");
+    let input = dir.path().join("input.vcf.gz");
+    let output = dir.path().join("variants.tsv");
+    std::fs::write(
+        &plain,
+        "##fileformat=VCFv4.3\n\
+##contig=<ID=chr22>\n\
+##FILTER=<ID=PASS,Description=\"All filters passed\">\n\
+##INFO=<ID=DP,Number=1,Type=Integer,Description=\"Total Depth\">\n\
+##INFO=<ID=AF,Number=A,Type=Float,Description=\"Allele Frequency\">\n\
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n\
+chr22\t10519265\tprecise\tCA\tC\t.\tPASS\tDP=7;AF=0.000312305\n",
+    )
+    .unwrap();
+    create_bgzf_vcf(&plain, &input);
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "convert",
+            input.to_str().unwrap(),
+            "--region",
+            "chr22:1-20000000",
+            "--to",
+            "tsv",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    assert_eq!(
+        std::fs::read_to_string(output).unwrap(),
+        "CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO/DP\tINFO/AF\n\
+chr22\t10519265\tprecise\tCA\tC\t.\tPASS\t7\t0.000312305\n"
+    );
+}
+
+#[cfg(feature = "htslib")]
+#[test]
 fn indexed_bcf_region_stats_reports_subset_counts() {
     let dir = tempdir().unwrap();
     let input = dir.path().join("input.bcf");

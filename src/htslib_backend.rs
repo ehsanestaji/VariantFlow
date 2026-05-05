@@ -12,7 +12,7 @@ use crate::compat::{CompressionMode, Region};
 use crate::engine::stats::{StatsSummary, TiTv};
 use crate::expr::{EvalRecord, FormatValues, RequiredFields, parse_expression};
 use crate::io::open_writer;
-use crate::vcf::RecordFields;
+use crate::vcf::{RecordFields, info_value};
 
 pub fn filter(
     input: &Path,
@@ -254,15 +254,9 @@ impl OwnedRecordFields {
 }
 
 fn owned_record_fields(record: &Record) -> Result<OwnedRecordFields> {
-    let dp = info_numeric_string(record, b"DP")?;
-    let af = info_numeric_string(record, b"AF")?;
-    let mut info_parts = Vec::new();
-    if let Some(dp) = &dp {
-        info_parts.push(format!("DP={dp}"));
-    }
-    if let Some(af) = &af {
-        info_parts.push(format!("AF={af}"));
-    }
+    let info = record_vcf_column(record, 7)?;
+    let dp = raw_info_value(&info, "DP");
+    let af = raw_info_value(&info, "AF");
 
     Ok(OwnedRecordFields {
         chrom: chrom(record)?,
@@ -274,14 +268,16 @@ fn owned_record_fields(record: &Record) -> Result<OwnedRecordFields> {
             .map(|value| format_float(value as f64))
             .unwrap_or_else(|| ".".to_string()),
         filter: filter_string(record)?,
-        info: if info_parts.is_empty() {
-            ".".to_string()
-        } else {
-            info_parts.join(";")
-        },
+        info,
         dp,
         af,
     })
+}
+
+fn raw_info_value(info: &str, key: &str) -> Option<String> {
+    info_value(info, key)
+        .filter(|value| !value.is_empty() && *value != ".")
+        .map(ToOwned::to_owned)
 }
 
 fn chrom(record: &Record) -> Result<String> {

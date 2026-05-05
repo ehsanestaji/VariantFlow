@@ -6,11 +6,14 @@ cd "$ROOT_DIR"
 
 OUT_DIR="${VCF_FAST_BENCH_OUT_DIR:-tests/output/benchmark-results}"
 DATA_DIR="$OUT_DIR/data"
-REPORT="$OUT_DIR/benchmark-report.md"
+REPORT="${VCF_FAST_BENCH_REPORT:-$OUT_DIR/benchmark-report.md}"
 MODE="${VCF_FAST_BENCH_MODE:-synthetic}"
 SIZES="${VCF_FAST_BENCH_SIZES:-10000 100000}"
+PUBLIC_RECORD_TIERS="${VCF_FAST_PUBLIC_RECORD_TIERS:-10000 100000 1000000}"
+PUBLIC_SOURCE_KIND="${VCF_FAST_PUBLIC_SOURCE:-giab-hg002}"
 PUBLIC_RECORDS="${VCF_FAST_PUBLIC_RECORDS:-10000}"
 PUBLIC_REGION="${VCF_FAST_PUBLIC_REGION:-chr22:1-20000000}"
+COMPAT_REGION="${VCF_FAST_COMPAT_REGION:-22:1-20000000}"
 STRESS_INFO_FIELDS="${VCF_FAST_STRESS_INFO_FIELDS:-40}"
 STRESS_SAMPLES="${VCF_FAST_STRESS_SAMPLES:-16}"
 CASES=(
@@ -99,6 +102,11 @@ slugify() {
   echo "$1" | tr '[:upper:] ' '[:lower:]-' | tr -cd '[:alnum:]-'
 }
 
+markdown_cell() {
+  local value="$1"
+  printf '%s\n' "$value" | sed 's/|/\&#124;/g'
+}
+
 predicate_check() {
   local output="$1"
   local expression="$2"
@@ -160,6 +168,16 @@ build_public_region_dataset() {
   fi
 }
 
+sort_vcf_for_indexing() {
+  local input="$1"
+  local output="$2"
+
+  {
+    awk '/^#/ { print }' "$input"
+    awk '!/^#/ { print }' "$input" | sort -t "$(printf '\t')" -k1,1V -k2,2n
+  } >"$output"
+}
+
 require_tool() {
   local tool="$1"
   if ! command -v "$tool" >/dev/null 2>&1; then
@@ -189,35 +207,84 @@ configure_inputs() {
       fi
       echo "1000 Genomes high-coverage chr22 region ${PUBLIC_REGION}, requested record subsets|$igsr"
       ;;
+    public-whole)
+      local source=""
+      local source_label=""
+      case "$PUBLIC_SOURCE_KIND" in
+        giab-hg002)
+          source="tests/output/public-data/HG002_GRCh38_1_22_v4.2.1_benchmark.vcf.gz"
+          source_label="GIAB HG002 v4.2.1 whole-file record-count tiers"
+          ;;
+        igsr-chr22)
+          source="tests/output/public-data/1kGP_high_coverage_Illumina.chr22.filtered.SNV_INDEL_SV_phased_panel.vcf.gz"
+          source_label="1000 Genomes high-coverage chr22 whole-file record-count tiers"
+          ;;
+        *)
+          echo "unsupported VCF_FAST_PUBLIC_SOURCE=$PUBLIC_SOURCE_KIND; expected giab-hg002 or igsr-chr22" >&2
+          exit 2
+          ;;
+      esac
+      if [[ ! -s "$source" ]]; then
+        echo "missing $source; run benchmark/download_public_data.sh $PUBLIC_SOURCE_KIND first" >&2
+        exit 2
+      fi
+      echo "$source_label|$source"
+      ;;
+    public-region-repeated)
+      local igsr="tests/output/public-data/1kGP_high_coverage_Illumina.chr22.filtered.SNV_INDEL_SV_phased_panel.vcf.gz"
+      if [[ ! -s "$igsr" ]]; then
+        echo "missing $igsr; run benchmark/download_public_data.sh igsr-chr22 first" >&2
+        exit 2
+      fi
+      echo "1000 Genomes high-coverage chr22 repeated indexed region ${PUBLIC_REGION}|$igsr"
+      ;;
     stress)
       echo "stress synthetic data|"
       ;;
+    compatibility)
+      echo "compatibility synthetic BCF/BGZF/indexed data|"
+      ;;
     *)
-      echo "unsupported VCF_FAST_BENCH_MODE=$MODE; expected synthetic, stress, public-small, or public-region" >&2
+      echo "unsupported VCF_FAST_BENCH_MODE=$MODE; expected synthetic, stress, public-small, public-region, public-whole, public-region-repeated, or compatibility" >&2
       exit 2
       ;;
   esac
 }
 
 mkdir -p "$OUT_DIR" "$DATA_DIR"
+mkdir -p "$(dirname "$REPORT")"
 if /usr/bin/time -v -o "$OUT_DIR/time-probe.txt" true >/dev/null 2>&1; then
   VCF_FAST_BENCH_GNU_TIME=1
 else
   VCF_FAST_BENCH_GNU_TIME=0
 fi
-cargo build --release
+if [[ "$MODE" == "compatibility" || "$MODE" == "public-region-repeated" ]]; then
+  cargo build --release --features htslib-static
+else
+  cargo build --release
+fi
 IFS='|' read -r DATASET_SOURCE PUBLIC_SOURCE < <(configure_inputs)
 DATASET_SHAPE="records only"
 
 if [[ "$MODE" == "stress" ]]; then
   DATASET_SHAPE="stress INFO fields=${STRESS_INFO_FIELDS}, samples=${STRESS_SAMPLES}, FORMAT=GT:DP:GQ:AD"
+elif [[ "$MODE" == "compatibility" ]]; then
+  DATASET_SHAPE="synthetic VCF plus BCF, BGZF, tabix index, and region ${COMPAT_REGION}"
 fi
 
-if [[ "$MODE" != "synthetic" ]]; then
+if [[ "$MODE" == "public-small" || "$MODE" == "public-whole" || "$MODE" == "public-region" || "$MODE" == "public-region-repeated" ]]; then
   CASES=(
     "QUAL plain|plain|QUAL > 30|QUAL>30"
     "QUAL gzip input|gzip|QUAL > 30|QUAL>30"
     "Convert TSV|plain|convert-tsv|query-tsv"
+  )
+fi
+
+if [[ "$MODE" == "public-region-repeated" ]]; then
+  CASES=(
+    "Region QUAL|region|QUAL > 30|QUAL>30"
+    "Region Convert TSV|region-convert-tsv|convert-tsv|query-tsv"
+    "Region Stats JSON|region-stats-json|stats-json|stats"
   )
 fi
 
@@ -235,16 +302,33 @@ if [[ "$MODE" == "stress" ]]; then
   )
 fi
 
+if [[ "$MODE" == "compatibility" ]]; then
+  CASES=(
+    "BCF input QUAL|bcf|QUAL > 30|QUAL>30"
+    "BCF input TSV|bcf-convert-tsv|convert-tsv|query-tsv"
+    "Indexed VCF region QUAL|region|QUAL > 30|QUAL>30"
+    "Indexed BCF region stats|bcf-region-stats-json|stats-json|stats"
+    "BGZF output QUAL|bgzf-output|QUAL > 30|QUAL>30"
+  )
+fi
+
 {
   echo "## VCF-Fast Benchmark Report"
   echo
   echo "- Generated: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   echo "- Mode: \`$MODE\`"
   echo "- Dataset source: $DATASET_SOURCE"
+  echo "- Dataset source URL: see \`benchmark/download_public_data.sh\` for pinned GIAB/IGSR URLs when public modes are used"
   echo "- Dataset shape: $DATASET_SHAPE"
-  echo "- Dataset sizes: \`$SIZES\`"
+  echo "- Dataset sizes: \`${SIZES}\`"
+  echo "- Public record tiers: \`${PUBLIC_RECORD_TIERS}\`"
+  echo "- Repeated runs: \`${VCF_FAST_BENCH_RUNS:-3}\`"
+  echo "- Warmup runs: \`${VCF_FAST_BENCH_WARMUP:-1}\`"
   echo "- hyperfine: $(tool_version hyperfine)"
   echo "- bcftools: $(tool_version bcftools)"
+  echo "- Output equivalence: correctness result records whether VCF-Fast matched the bcftools baseline for the supported comparison."
+  echo "- Throughput labels: vcf-fast variants/s and bcftools variants/s are reported together in the variants/sec column."
+  echo "- Memory labels: vcf-fast peak RSS and bcftools peak RSS are reported together in the peak RSS column."
   echo
   echo "### Command Templates"
   echo
@@ -255,10 +339,14 @@ fi
   echo "- bcftools query TSV: \`bcftools query -u -f '%CHROM\\t%POS\\t%ID\\t%REF\\t%ALT\\t%QUAL\\t%FILTER\\t%INFO/DP\\t%INFO/AF\\n' <input>\`"
   echo "- VCF-Fast stats: \`./target/release/vcf-fast stats <input> > <output.json>\`"
   echo "- bcftools stats: \`bcftools stats <input> > <output.txt>\`"
+  echo "- VCF-Fast region filter: \`./target/release/vcf-fast filter <input> --region '${PUBLIC_REGION}' --where '<expr>' -o <output>\`"
+  echo "- bcftools region filter: \`bcftools view -r '${PUBLIC_REGION}' <input> | bcftools filter -i '<expr>' -Ov -o <output>\`"
+  echo "- VCF-Fast BGZF output: \`./target/release/vcf-fast filter <input> --where '<expr>' --compression bgzf -o <output.vcf.gz>\`"
+  echo "- BGZF validation: \`tabix -p vcf <output.vcf.gz> && bcftools view <output.vcf.gz> >/dev/null\`"
   echo "- Stress mode: \`VCF_FAST_BENCH_MODE=stress make bench-smoke\`"
   echo
-  echo "| case | records | input | Output equivalence | vcf-fast mean | bcftools mean | speedup | vcf-fast variants/s | bcftools variants/s | vcf-fast peak RSS KB | bcftools peak RSS KB | notes |"
-  echo "|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---|"
+  echo "| case | record count | dataset size bytes | input format | input compression | exact VCF-Fast command | exact competitor command | correctness result | vcf-fast mean | vcf-fast stddev | bcftools mean | bcftools stddev | speedup | variants/sec | peak RSS | caveats |"
+  echo "|---|---:|---:|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---|---|"
 } >"$REPORT"
 
 for records in $SIZES; do
@@ -268,27 +356,73 @@ for records in $SIZES; do
   elif [[ "$MODE" == "stress" ]]; then
     plain_dataset="$DATA_DIR/stress-${records}.vcf"
     ./benchmark/generate_stress_vcf.sh "$plain_dataset" "$records"
-  elif [[ "$MODE" == "public-region" ]]; then
+  elif [[ "$MODE" == "public-region" || "$MODE" == "public-region-repeated" ]]; then
     plain_dataset="$DATA_DIR/${MODE}-${records}.vcf"
     build_public_region_dataset "$PUBLIC_SOURCE" "$plain_dataset" "$records" "$PUBLIC_REGION"
+  elif [[ "$MODE" == "compatibility" ]]; then
+    plain_dataset="$DATA_DIR/compatibility-${records}.vcf"
+    unsorted_dataset="$DATA_DIR/compatibility-${records}.unsorted.vcf"
+    ./benchmark/generate_synthetic_vcf.sh "$unsorted_dataset" "$records"
+    sort_vcf_for_indexing "$unsorted_dataset" "$plain_dataset"
   else
     plain_dataset="$DATA_DIR/${MODE}-${records}.vcf"
     build_public_small_dataset "$PUBLIC_SOURCE" "$plain_dataset" "$records"
   fi
   gzip_dataset="${plain_dataset}.gz"
   gzip -c "$plain_dataset" >"$gzip_dataset"
+  bgzf_dataset="${plain_dataset%.vcf}.bgzf.vcf.gz"
+  bcf_dataset="${plain_dataset%.vcf}.bcf"
+
+  if [[ "$MODE" == "compatibility" ]]; then
+    require_tool bcftools
+    require_tool bgzip
+    require_tool tabix
+    bgzip -c "$plain_dataset" >"$bgzf_dataset"
+    tabix -f -p vcf "$bgzf_dataset"
+    bcftools view -Ob -o "$bcf_dataset" "$plain_dataset"
+    bcftools index -f "$bcf_dataset"
+  fi
+  base_dataset_size_bytes="$(wc -c <"$plain_dataset" | tr -d ' ')"
 
   for case_spec in "${CASES[@]}"; do
     IFS='|' read -r case_name input_kind fast_expr bcftools_expr sample_name <<<"$case_spec"
     case_slug="$(slugify "$case_name")"
     dataset="$plain_dataset"
+    dataset_size_bytes="$base_dataset_size_bytes"
     input_label="plain"
+    input_format="VCF"
+    input_compression="none"
+    region_option=""
+    output_compression_option=""
     fast_sample_option=""
     fast_sample_hyperfine_arg=""
 
     if [[ "$input_kind" == "gzip" ]]; then
       dataset="$gzip_dataset"
       input_label="gzip"
+      input_compression="gzip"
+    elif [[ "$input_kind" == "bcf" || "$input_kind" == "bcf-convert-tsv" || "$input_kind" == "bcf-region-stats-json" ]]; then
+      dataset="$bcf_dataset"
+      input_label="bcf"
+      input_format="BCF"
+      input_compression="BGZF"
+      dataset_size_bytes="$(wc -c <"$dataset" | tr -d ' ')"
+      if [[ "$input_kind" == "bcf-region-stats-json" ]]; then
+        region_option="$COMPAT_REGION"
+      fi
+    elif [[ "$input_kind" == "region" || "$input_kind" == "region-convert-tsv" || "$input_kind" == "region-stats-json" ]]; then
+      dataset="${PUBLIC_SOURCE:-$bgzf_dataset}"
+      input_label="indexed-region"
+      input_compression="BGZF"
+      region_option="$PUBLIC_REGION"
+      if [[ "$MODE" == "compatibility" ]]; then
+        dataset="$bgzf_dataset"
+        region_option="$COMPAT_REGION"
+      fi
+      dataset_size_bytes="$(wc -c <"$dataset" | tr -d ' ')"
+    elif [[ "$input_kind" == "bgzf-output" ]]; then
+      input_label="plain-to-bgzf"
+      output_compression_option="bgzf"
     fi
 
     if [[ -n "${sample_name:-}" ]]; then
@@ -305,19 +439,35 @@ for records in $SIZES; do
     note=""
     equivalence="vcf-fast predicate check"
     fast_mean="n/a"
+    fast_stddev="n/a"
     bcftools_mean="n/a"
+    bcftools_stddev="n/a"
     speedup="n/a"
     fast_variants_per_second="n/a"
     bcftools_variants_per_second="n/a"
     fast_peak_rss_kb="n/a"
     bcftools_peak_rss_kb="n/a"
+    fast_command=""
+    competitor_command=""
 
     if [[ "$fast_expr" == "stats-json" ]]; then
       fast_out="$OUT_DIR/fast-${case_slug}-${records}.json"
       bcftools_out="$OUT_DIR/bcftools-${case_slug}-${records}.stats.txt"
-      ./target/release/vcf-fast stats "$dataset" >"$fast_out"
+      if [[ -n "$region_option" ]]; then
+        fast_command="./target/release/vcf-fast stats $dataset --region $region_option > $fast_out"
+        ./target/release/vcf-fast stats "$dataset" --region "$region_option" >"$fast_out"
+      else
+        fast_command="./target/release/vcf-fast stats $dataset > $fast_out"
+        ./target/release/vcf-fast stats "$dataset" >"$fast_out"
+      fi
       if command -v bcftools >/dev/null 2>&1; then
-        bcftools stats "$dataset" >"$bcftools_out"
+        if [[ -n "$region_option" ]]; then
+          competitor_command="bcftools view -r $region_option $dataset | bcftools stats - > $bcftools_out"
+          bcftools view -r "$region_option" "$dataset" | bcftools stats - >"$bcftools_out"
+        else
+          competitor_command="bcftools stats $dataset > $bcftools_out"
+          bcftools stats "$dataset" >"$bcftools_out"
+        fi
         compare_stats_counts "$fast_out" "$bcftools_out" "$OUT_DIR/equivalence-${case_slug}-${records}.diff"
         equivalence="Stats JSON variants match bcftools stats records"
       else
@@ -326,9 +476,21 @@ for records in $SIZES; do
     elif [[ "$fast_expr" == "convert-tsv" ]]; then
       fast_out="$OUT_DIR/fast-${case_slug}-${records}.tsv"
       bcftools_out="$OUT_DIR/bcftools-${case_slug}-${records}.tsv"
-      ./target/release/vcf-fast convert "$dataset" --to tsv -o "$fast_out"
+      if [[ -n "$region_option" ]]; then
+        fast_command="./target/release/vcf-fast convert $dataset --region $region_option --to tsv -o $fast_out"
+        ./target/release/vcf-fast convert "$dataset" --region "$region_option" --to tsv -o "$fast_out"
+      else
+        fast_command="./target/release/vcf-fast convert $dataset --to tsv -o $fast_out"
+        ./target/release/vcf-fast convert "$dataset" --to tsv -o "$fast_out"
+      fi
       if command -v bcftools >/dev/null 2>&1; then
-        bcftools query -u -f '%CHROM\t%POS\t%ID\t%REF\t%ALT\t%QUAL\t%FILTER\t%INFO/DP\t%INFO/AF\n' "$dataset" >"$bcftools_out"
+        if [[ -n "$region_option" ]]; then
+          competitor_command="bcftools view -r $region_option $dataset | bcftools query -u -f '%CHROM\\t%POS\\t%ID\\t%REF\\t%ALT\\t%QUAL\\t%FILTER\\t%INFO/DP\\t%INFO/AF\\n' > $bcftools_out"
+          bcftools view -r "$region_option" "$dataset" | bcftools query -u -f '%CHROM\t%POS\t%ID\t%REF\t%ALT\t%QUAL\t%FILTER\t%INFO/DP\t%INFO/AF\n' >"$bcftools_out"
+        else
+          competitor_command="bcftools query -u -f '%CHROM\\t%POS\\t%ID\\t%REF\\t%ALT\\t%QUAL\\t%FILTER\\t%INFO/DP\\t%INFO/AF\\n' $dataset > $bcftools_out"
+          bcftools query -u -f '%CHROM\t%POS\t%ID\t%REF\t%ALT\t%QUAL\t%FILTER\t%INFO/DP\t%INFO/AF\n' "$dataset" >"$bcftools_out"
+        fi
         python3 benchmark/normalize_tsv.py --skip-header "$fast_out" >"$fast_records"
         python3 benchmark/normalize_tsv.py "$bcftools_out" >"$bcftools_records"
         diff -u "$bcftools_records" "$fast_records" >"$OUT_DIR/equivalence-${case_slug}-${records}.diff"
@@ -338,15 +500,46 @@ for records in $SIZES; do
       fi
     else
       if [[ -n "$fast_sample_option" ]]; then
+        fast_command="./target/release/vcf-fast filter $dataset --sample $fast_sample_option --where '$fast_expr' -o $fast_out"
         ./target/release/vcf-fast filter "$dataset" --sample "$fast_sample_option" --where "$fast_expr" -o "$fast_out"
+      elif [[ -n "$region_option" ]]; then
+        fast_command="./target/release/vcf-fast filter $dataset --region $region_option --where '$fast_expr' -o $fast_out"
+        ./target/release/vcf-fast filter "$dataset" --region "$region_option" --where "$fast_expr" -o "$fast_out"
+      elif [[ "$output_compression_option" == "bgzf" ]]; then
+        fast_out="$OUT_DIR/fast-${case_slug}-${records}.vcf.gz"
+        fast_command="./target/release/vcf-fast filter $dataset --where '$fast_expr' --compression bgzf -o $fast_out"
+        ./target/release/vcf-fast filter "$dataset" --where "$fast_expr" --compression bgzf -o "$fast_out"
       else
+        fast_command="./target/release/vcf-fast filter $dataset --where '$fast_expr' -o $fast_out"
         ./target/release/vcf-fast filter "$dataset" --where "$fast_expr" -o "$fast_out"
       fi
-      predicate_check "$fast_out" "$fast_expr"
+      if [[ "$output_compression_option" == "bgzf" ]]; then
+        gzip -t "$fast_out"
+        tabix -f -p vcf "$fast_out"
+        bcftools view "$fast_out" >/dev/null
+        bcftools view "$fast_out" -Ov -o "$OUT_DIR/fast-${case_slug}-${records}.decompressed.vcf"
+        predicate_check "$OUT_DIR/fast-${case_slug}-${records}.decompressed.vcf" "$fast_expr"
+      else
+        predicate_check "$fast_out" "$fast_expr"
+      fi
 
       if command -v bcftools >/dev/null 2>&1; then
-        bcftools filter -i "$bcftools_expr" "$dataset" -o "$bcftools_out"
-        extract_core_records "$fast_out" >"$fast_records"
+        if [[ -n "$region_option" ]]; then
+          competitor_command="bcftools view -r $region_option $dataset | bcftools filter -i '$bcftools_expr' -Ov -o $bcftools_out"
+          bcftools view -r "$region_option" "$dataset" | bcftools filter -i "$bcftools_expr" -Ov -o "$bcftools_out"
+        elif [[ "$output_compression_option" == "bgzf" ]]; then
+          competitor_command="bcftools filter -i '$bcftools_expr' $dataset -Oz -o $bcftools_out.gz"
+          bcftools filter -i "$bcftools_expr" "$dataset" -Oz -o "$bcftools_out.gz"
+          bcftools view "$bcftools_out.gz" -Ov -o "$bcftools_out"
+        else
+          competitor_command="bcftools filter -i '$bcftools_expr' $dataset -o $bcftools_out"
+          bcftools filter -i "$bcftools_expr" "$dataset" -o "$bcftools_out"
+        fi
+        if [[ "$output_compression_option" == "bgzf" ]]; then
+          extract_core_records "$OUT_DIR/fast-${case_slug}-${records}.decompressed.vcf" >"$fast_records"
+        else
+          extract_core_records "$fast_out" >"$fast_records"
+        fi
         extract_core_records "$bcftools_out" >"$bcftools_records"
         diff -u "$bcftools_records" "$fast_records" >"$OUT_DIR/equivalence-${case_slug}-${records}.diff"
         equivalence="matches bcftools filtered core records"
@@ -357,35 +550,64 @@ for records in $SIZES; do
 
     if command -v hyperfine >/dev/null 2>&1; then
       if command -v bcftools >/dev/null 2>&1 && [[ "$fast_expr" == "stats-json" ]]; then
-        hyperfine \
-          --warmup "${VCF_FAST_BENCH_WARMUP:-1}" \
-          --runs "${VCF_FAST_BENCH_RUNS:-3}" \
-          --export-json "$hyperfine_json" \
-          "./target/release/vcf-fast stats $dataset > $OUT_DIR/fast-${case_slug}-${records}.timed.json" \
-          "bcftools stats $dataset > $OUT_DIR/bcftools-${case_slug}-${records}.timed.stats.txt"
-        read -r fast_mean bcftools_mean speedup < <(python3 benchmark/summarize_hyperfine.py "$hyperfine_json")
-        fast_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-fast-${case_slug}-${records}.txt" bash -c './target/release/vcf-fast stats "$1" > "$2"' _ "$dataset" "$OUT_DIR/fast-${case_slug}-${records}.rss.json")"
-        bcftools_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-bcftools-${case_slug}-${records}.txt" bash -c 'bcftools stats "$1" > "$2"' _ "$dataset" "$OUT_DIR/bcftools-${case_slug}-${records}.rss.stats.txt")"
+        if [[ -n "$region_option" ]]; then
+          hyperfine \
+            --warmup "${VCF_FAST_BENCH_WARMUP:-1}" \
+            --runs "${VCF_FAST_BENCH_RUNS:-3}" \
+            --export-json "$hyperfine_json" \
+            "./target/release/vcf-fast stats $dataset --region $region_option > $OUT_DIR/fast-${case_slug}-${records}.timed.json" \
+            "bcftools view -r $region_option $dataset | bcftools stats - > $OUT_DIR/bcftools-${case_slug}-${records}.timed.stats.txt"
+        else
+          hyperfine \
+            --warmup "${VCF_FAST_BENCH_WARMUP:-1}" \
+            --runs "${VCF_FAST_BENCH_RUNS:-3}" \
+            --export-json "$hyperfine_json" \
+            "./target/release/vcf-fast stats $dataset > $OUT_DIR/fast-${case_slug}-${records}.timed.json" \
+            "bcftools stats $dataset > $OUT_DIR/bcftools-${case_slug}-${records}.timed.stats.txt"
+        fi
+        read -r fast_mean fast_stddev bcftools_mean bcftools_stddev speedup < <(python3 benchmark/summarize_hyperfine.py "$hyperfine_json")
+        fast_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-fast-${case_slug}-${records}.txt" bash -c 'if [[ -n "$3" ]]; then ./target/release/vcf-fast stats "$1" --region "$3" > "$2"; else ./target/release/vcf-fast stats "$1" > "$2"; fi' _ "$dataset" "$OUT_DIR/fast-${case_slug}-${records}.rss.json" "$region_option")"
+        bcftools_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-bcftools-${case_slug}-${records}.txt" bash -c 'if [[ -n "$3" ]]; then bcftools view -r "$3" "$1" | bcftools stats - > "$2"; else bcftools stats "$1" > "$2"; fi' _ "$dataset" "$OUT_DIR/bcftools-${case_slug}-${records}.rss.stats.txt" "$region_option")"
       elif command -v bcftools >/dev/null 2>&1 && [[ "$fast_expr" == "convert-tsv" ]]; then
-        hyperfine \
-          --warmup "${VCF_FAST_BENCH_WARMUP:-1}" \
-          --runs "${VCF_FAST_BENCH_RUNS:-3}" \
-          --export-json "$hyperfine_json" \
-          "./target/release/vcf-fast convert $dataset --to tsv -o $OUT_DIR/fast-${case_slug}-${records}.timed.tsv" \
-          "bcftools query -u -f '%CHROM\t%POS\t%ID\t%REF\t%ALT\t%QUAL\t%FILTER\t%INFO/DP\t%INFO/AF\n' $dataset > $OUT_DIR/bcftools-${case_slug}-${records}.timed.tsv"
-        read -r fast_mean bcftools_mean speedup < <(python3 benchmark/summarize_hyperfine.py "$hyperfine_json")
-        fast_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-fast-${case_slug}-${records}.txt" bash -c './target/release/vcf-fast convert "$1" --to tsv -o "$2"' _ "$dataset" "$OUT_DIR/fast-${case_slug}-${records}.rss.tsv")"
-        bcftools_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-bcftools-${case_slug}-${records}.txt" bash -c 'bcftools query -u -f "%CHROM\t%POS\t%ID\t%REF\t%ALT\t%QUAL\t%FILTER\t%INFO/DP\t%INFO/AF\n" "$1" > "$2"' _ "$dataset" "$OUT_DIR/bcftools-${case_slug}-${records}.rss.tsv")"
+        if [[ -n "$region_option" ]]; then
+          hyperfine \
+            --warmup "${VCF_FAST_BENCH_WARMUP:-1}" \
+            --runs "${VCF_FAST_BENCH_RUNS:-3}" \
+            --export-json "$hyperfine_json" \
+            "./target/release/vcf-fast convert $dataset --region $region_option --to tsv -o $OUT_DIR/fast-${case_slug}-${records}.timed.tsv" \
+            "bcftools view -r $region_option $dataset | bcftools query -u -f '%CHROM\t%POS\t%ID\t%REF\t%ALT\t%QUAL\t%FILTER\t%INFO/DP\t%INFO/AF\n' > $OUT_DIR/bcftools-${case_slug}-${records}.timed.tsv"
+        else
+          hyperfine \
+            --warmup "${VCF_FAST_BENCH_WARMUP:-1}" \
+            --runs "${VCF_FAST_BENCH_RUNS:-3}" \
+            --export-json "$hyperfine_json" \
+            "./target/release/vcf-fast convert $dataset --to tsv -o $OUT_DIR/fast-${case_slug}-${records}.timed.tsv" \
+            "bcftools query -u -f '%CHROM\t%POS\t%ID\t%REF\t%ALT\t%QUAL\t%FILTER\t%INFO/DP\t%INFO/AF\n' $dataset > $OUT_DIR/bcftools-${case_slug}-${records}.timed.tsv"
+        fi
+        read -r fast_mean fast_stddev bcftools_mean bcftools_stddev speedup < <(python3 benchmark/summarize_hyperfine.py "$hyperfine_json")
+        fast_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-fast-${case_slug}-${records}.txt" bash -c 'if [[ -n "$3" ]]; then ./target/release/vcf-fast convert "$1" --region "$3" --to tsv -o "$2"; else ./target/release/vcf-fast convert "$1" --to tsv -o "$2"; fi' _ "$dataset" "$OUT_DIR/fast-${case_slug}-${records}.rss.tsv" "$region_option")"
+        bcftools_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-bcftools-${case_slug}-${records}.txt" bash -c 'if [[ -n "$3" ]]; then bcftools view -r "$3" "$1" | bcftools query -u -f "%CHROM\t%POS\t%ID\t%REF\t%ALT\t%QUAL\t%FILTER\t%INFO/DP\t%INFO/AF\n" > "$2"; else bcftools query -u -f "%CHROM\t%POS\t%ID\t%REF\t%ALT\t%QUAL\t%FILTER\t%INFO/DP\t%INFO/AF\n" "$1" > "$2"; fi' _ "$dataset" "$OUT_DIR/bcftools-${case_slug}-${records}.rss.tsv" "$region_option")"
       elif command -v bcftools >/dev/null 2>&1; then
+        fast_timed_output="$OUT_DIR/fast-${case_slug}-${records}.timed.vcf"
+        fast_timed_command="./target/release/vcf-fast filter $dataset$fast_sample_hyperfine_arg --where '$fast_expr' -o $fast_timed_output"
+        bcftools_timed_command="bcftools filter -i '$bcftools_expr' $dataset -o $OUT_DIR/bcftools-${case_slug}-${records}.timed.vcf"
+        if [[ -n "$region_option" ]]; then
+          fast_timed_command="./target/release/vcf-fast filter $dataset --region $region_option --where '$fast_expr' -o $fast_timed_output"
+          bcftools_timed_command="bcftools view -r $region_option $dataset | bcftools filter -i '$bcftools_expr' -Ov -o $OUT_DIR/bcftools-${case_slug}-${records}.timed.vcf"
+        elif [[ "$output_compression_option" == "bgzf" ]]; then
+          fast_timed_output="$OUT_DIR/fast-${case_slug}-${records}.timed.vcf.gz"
+          fast_timed_command="./target/release/vcf-fast filter $dataset --where '$fast_expr' --compression bgzf -o $fast_timed_output"
+          bcftools_timed_command="bcftools filter -i '$bcftools_expr' $dataset -Oz -o $OUT_DIR/bcftools-${case_slug}-${records}.timed.vcf.gz"
+        fi
         hyperfine \
           --warmup "${VCF_FAST_BENCH_WARMUP:-1}" \
           --runs "${VCF_FAST_BENCH_RUNS:-3}" \
           --export-json "$hyperfine_json" \
-          "./target/release/vcf-fast filter $dataset$fast_sample_hyperfine_arg --where '$fast_expr' -o $OUT_DIR/fast-${case_slug}-${records}.timed.vcf" \
-          "bcftools filter -i '$bcftools_expr' $dataset -o $OUT_DIR/bcftools-${case_slug}-${records}.timed.vcf"
-        read -r fast_mean bcftools_mean speedup < <(python3 benchmark/summarize_hyperfine.py "$hyperfine_json")
-        fast_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-fast-${case_slug}-${records}.txt" bash -c 'if [[ -n "$4" ]]; then ./target/release/vcf-fast filter "$1" --sample "$4" --where "$2" -o "$3"; else ./target/release/vcf-fast filter "$1" --where "$2" -o "$3"; fi' _ "$dataset" "$fast_expr" "$OUT_DIR/fast-${case_slug}-${records}.rss.vcf" "${sample_name:-}")"
-        bcftools_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-bcftools-${case_slug}-${records}.txt" bash -c 'bcftools filter -i "$1" "$2" -o "$3"' _ "$bcftools_expr" "$dataset" "$OUT_DIR/bcftools-${case_slug}-${records}.rss.vcf")"
+          "$fast_timed_command" \
+          "$bcftools_timed_command"
+        read -r fast_mean fast_stddev bcftools_mean bcftools_stddev speedup < <(python3 benchmark/summarize_hyperfine.py "$hyperfine_json")
+        fast_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-fast-${case_slug}-${records}.txt" bash -c 'if [[ -n "$6" ]]; then ./target/release/vcf-fast filter "$1" --where "$2" --compression bgzf -o "$3"; elif [[ -n "$5" ]]; then ./target/release/vcf-fast filter "$1" --region "$5" --where "$2" -o "$3"; elif [[ -n "$4" ]]; then ./target/release/vcf-fast filter "$1" --sample "$4" --where "$2" -o "$3"; else ./target/release/vcf-fast filter "$1" --where "$2" -o "$3"; fi' _ "$dataset" "$fast_expr" "$OUT_DIR/fast-${case_slug}-${records}.rss.vcf" "${sample_name:-}" "$region_option" "$output_compression_option")"
+        bcftools_peak_rss_kb="$(measure_peak_rss_kb "$OUT_DIR/rss-bcftools-${case_slug}-${records}.txt" bash -c 'if [[ -n "$4" ]]; then bcftools view -r "$4" "$2" | bcftools filter -i "$1" -Ov -o "$3"; elif [[ -n "$5" ]]; then bcftools filter -i "$1" "$2" -Oz -o "$3.gz"; else bcftools filter -i "$1" "$2" -o "$3"; fi' _ "$bcftools_expr" "$dataset" "$OUT_DIR/bcftools-${case_slug}-${records}.rss.vcf" "$region_option" "$output_compression_option")"
       elif [[ "$fast_expr" == "stats-json" ]]; then
         hyperfine \
           --warmup "${VCF_FAST_BENCH_WARMUP:-1}" \
@@ -411,9 +633,15 @@ for records in $SIZES; do
 
     fast_variants_per_second="$(variants_per_second "$records" "$fast_mean")"
     bcftools_variants_per_second="$(variants_per_second "$records" "$bcftools_mean")"
+    [[ -n "$fast_command" ]] || fast_command="n/a"
+    [[ -n "$competitor_command" ]] || competitor_command="bcftools unavailable"
+    fast_command_cell="$(markdown_cell "\`$fast_command\`")"
+    competitor_command_cell="$(markdown_cell "\`$competitor_command\`")"
+    variants_per_second_cell="${fast_variants_per_second} / ${bcftools_variants_per_second}"
+    peak_rss_cell="${fast_peak_rss_kb} / ${bcftools_peak_rss_kb}"
 
-    printf '| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n' \
-      "$case_name" "$records" "$input_label" "$equivalence" "$fast_mean" "$bcftools_mean" "$speedup" "$fast_variants_per_second" "$bcftools_variants_per_second" "$fast_peak_rss_kb" "$bcftools_peak_rss_kb" "${note:-}" >>"$REPORT"
+    printf '| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n' \
+      "$case_name" "$records" "$dataset_size_bytes" "$input_format" "$input_compression" "$fast_command_cell" "$competitor_command_cell" "$equivalence" "$fast_mean" "$fast_stddev" "$bcftools_mean" "$bcftools_stddev" "$speedup" "$variants_per_second_cell" "$peak_rss_cell" "${note:-}" >>"$REPORT"
   done
 done
 
