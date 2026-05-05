@@ -736,6 +736,84 @@ fn bioconda_packaging_prep_tracks_recipe_template_and_release_blockers() {
 }
 
 #[test]
+fn joss_paper_scaffold_tracks_evidence_and_submission_blockers() {
+    let root = repo_root();
+    let makefile = fs::read_to_string(root.join("Makefile")).unwrap();
+    let paper = fs::read_to_string(root.join("paper/paper.md")).unwrap();
+    let bib = fs::read_to_string(root.join("paper/paper.bib")).unwrap();
+    let readiness = fs::read_to_string(root.join("docs/paper-readiness.md")).unwrap();
+    let checker = fs::read_to_string(root.join("paper/check_paper.py")).unwrap();
+
+    assert!(makefile.contains("paper-check:"));
+    assert!(makefile.contains("paper/check_paper.py"));
+    assert!(makefile.contains("make paper-check"));
+
+    for required in [
+        "VariantFlow: a selective Rust execution engine for evidence-tracked VCF filtering and analytical export",
+        "# Summary",
+        "# Statement of need",
+        "# State of the field",
+        "# Software design",
+        "# Research impact statement",
+        "# AI usage disclosure",
+        "# Acknowledgements",
+        "# References",
+        "benchmark/reports/v14-public-parallel-scale-benchmark.md",
+        "benchmark/reports/v12-public-parallel-workflow-benchmark.md",
+        "13.44x to 13.47x",
+        "1.77x to 2.01x",
+        "3.18x to 25.67x",
+        "not a claim that VariantFlow replaces bcftools or GATK",
+    ] {
+        assert!(paper.contains(required), "missing paper text {required}");
+    }
+
+    for required in [
+        "@article{bcftools",
+        "@article{htslib",
+        "@article{bioconda",
+        "@misc{joss",
+        "@misc{apache_arrow",
+        "@misc{parquet",
+        "@misc{duckdb",
+        "@misc{vcf_spec",
+    ] {
+        assert!(bib.contains(required), "missing paper.bib entry {required}");
+    }
+
+    for required in [
+        "JOSS Submission Readiness",
+        "Current blockers",
+        "OSI-approved license",
+        "public repository history",
+        "tagged release",
+        "Zenodo DOI",
+        "Bioconda Launch Coordination",
+        "Benchmark rows used by the manuscript",
+        "Author metadata needed",
+    ] {
+        assert!(
+            readiness.contains(required),
+            "missing readiness text {required}"
+        );
+    }
+
+    for required in [
+        "required_sections",
+        "750",
+        "1750",
+        "paper.bib",
+        "benchmark/reports/v14-public-parallel-scale-benchmark.md",
+        "benchmark/reports/v12-public-parallel-workflow-benchmark.md",
+    ] {
+        assert!(
+            checker.contains(required),
+            "missing checker text {required}"
+        );
+    }
+}
+
+#[test]
 fn v13_release_hardening_tracks_install_docs_and_generated_benchmark_table() {
     let root = repo_root();
     let cargo_toml = fs::read_to_string(root.join("Cargo.toml")).unwrap();
