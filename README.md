@@ -22,15 +22,17 @@ VCF-Fast stays Rust-first. Rust gives the project C-like performance, strict mem
 |---|---|---|---|---|
 | Synthetic 1M filters | `bcftools filter` | matched filtered core records | `1.62x` to `1.82x` faster | three-run container benchmark |
 | Synthetic 1M TSV conversion | `bcftools query` | matched normalized TSV rows | `1.57x` faster | selected columns only |
-| GIAB HG002 10k public QUAL filters | `bcftools filter` | matched filtered core records | `2.08x` to `2.11x` faster | first public smoke only |
-| GIAB HG002 10k public TSV conversion | `bcftools query` | matched normalized TSV rows | `1.12x` faster | GIAB lacks `INFO/AF`; baseline uses `bcftools query -u` |
-| IGSR chr22 100k public-region QUAL filters | `bcftools filter` | matched filtered core records | `5.35x` to `8.33x` faster | region subset, not whole cohort |
-| IGSR chr22 100k public-region TSV conversion | `bcftools query` | matched normalized TSV rows | `1.11x` faster | selected columns only |
+| GIAB HG002 public-whole QUAL filters | `bcftools filter` | matched filtered core records | `1.80x` to `2.38x` faster on plain tiers; `1.89x` faster on 1M gzip | 100k gzip was `0.94x`, so gzip wins are tier-dependent |
+| GIAB HG002 public-whole TSV conversion | `bcftools query` | matched normalized TSV rows | `1.13x` faster at 1M | 10k/100k were `0.80x` and `0.96x` |
+| IGSR chr22 public-whole QUAL filters | `bcftools filter` | matched filtered core records | `4.85x` to `5.71x` faster on measured 10k/100k tiers | 1M deferred after >13 GB generated intermediate |
+| IGSR chr22 public-whole TSV conversion | `bcftools query` | matched normalized TSV rows | `1.22x` faster at 10k; `0.87x` at 100k | TSV path is mixed |
+| IGSR chr22 indexed-region QUAL filters | `bcftools view -r` + `bcftools filter` | matched filtered core records | `1.47x` faster at 10k and 100k | htslib-backed path, not line-preserving native output |
+| IGSR chr22 indexed-region TSV/stats | `bcftools query` / `bcftools stats` | matched TSV rows / overlapping counts | `0.71x` to `0.72x` | bcftools faster; compatibility path needs optimization |
 | Stress 1M filters with unused INFO/FORMAT/sample payload | `bcftools filter` | matched filtered core records | `1.96x` to `2.45x` faster on plain VCF | synthetic stress shape |
 | Stress 1M selected-sample FORMAT filters | `bcftools filter` | matched filtered core records | `1.99x` to `2.06x` faster | single selected sample, synthetic stress shape |
 | Stress 1M TSV conversion | `bcftools query` | matched normalized TSV rows | `1.20x` faster | selected columns only |
 | Stress 1M stats | `bcftools stats` | matched overlapping record count | `1.53x` faster | richer stats equivalence pending |
-| Compatibility proof | `bcftools`, `tabix`, HTSlib | BCF/region/BGZF integration tests | feature-gated path implemented | performance benchmark report is initial, not a broad speed claim |
+| Compatibility proof | `bcftools`, `tabix`, HTSlib | BCF/region/BGZF correctness and indexability | correctness matched; bcftools faster on measured synthetic compatibility cases | compatibility works, speed leadership not claimed |
 
 Detailed evidence lives in:
 
@@ -39,9 +41,10 @@ Detailed evidence lives in:
 - `benchmark/reports/stress-speed-benchmark.md`
 - `benchmark/reports/format-filter-benchmark.md`
 - `benchmark/reports/compatibility-benchmark.md`
+- `benchmark/reports/public-whole-cohort-benchmark.md`
 - `docs/contribution-map.md`
 
-Public evidence is still early. Stress evidence now supports the selective parsing claim on synthetic records with many unused fields; larger whole-cohort public runs and memory/throughput trend reporting are next.
+Public evidence now supports the native selective-filter claim on measured GIAB and IGSR tiers, while also showing honest gaps: TSV is mixed, indexed-region TSV/stats trail `bcftools`, and BCF/BGZF compatibility paths are correctness-first rather than speed-leading.
 
 ## Milestones
 
@@ -50,7 +53,7 @@ Public evidence is still early. Stress evidence now supports the selective parsi
 3. `v0.3 Stress And Speed`: synthetic stress VCFs with many unused INFO/FORMAT/sample fields, parser hot-path improvements, and stress benchmark reporting.
 4. `v0.4 FORMAT-Aware Filtering`: support `FORMAT/GT`, `FORMAT/DP`, `FORMAT/GQ`, selected sample predicates, bcftools comparison.
 5. `v0.5 Compatibility Proof`: optional htslib-backed BCF input, BGZF output, and tabix-indexed region reads while preserving the Rust-native selective streaming path.
-6. `v0.6 Public Whole-Cohort Evidence`: larger GIAB/IGSR runs, repeated benchmark reports, memory trends, and CI/nightly benchmark automation.
+6. `v0.6 Public Whole-Cohort Evidence`: tiered local GIAB/IGSR runs, repeated benchmark reports, memory trends, compatibility benchmarks, and exact claim matrix updates.
 7. `v0.7 Expression Parity`: arbitrary FORMAT keys, sample lists, `ANY`/`ALL`, vector indices, and bcftools-compatible missing-value semantics where practical.
 8. `v0.8 Columnar Bridge`: Arrow/Parquet export for repeated analytical workloads and DuckDB-style workflows.
 9. `v0.9 Release Hardening`: installer packages, reproducible binaries, versioned docs, and a claim matrix for bcftools, VCFtools, and GATK.
@@ -79,6 +82,12 @@ cargo run -- filter tests/data/example.vcf --where "QUAL > 30" -o tests/output/f
 docker build -t vcf-fast .
 docker run --rm -v "$PWD:/work" vcf-fast cargo test
 docker run --rm -v "$PWD:/work" -e VCF_FAST_BENCH_SIZES="10000 100000" vcf-fast make bench-smoke
+
+benchmark/download_public_data.sh all
+make bench-public
+make bench-public-region
+make bench-compat
+make bench-v06-smoke
 ```
 
 ## Current CLI

@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 
 #[test]
 fn benchmark_harness_defines_report_and_correctness_contract() {
@@ -92,4 +93,93 @@ fn compatibility_report_tracks_required_benchmark_fields() {
     assert!(report.contains("peak RSS"));
     assert!(report.contains("correctness result"));
     assert!(report.contains("not a broad speed claim"));
+}
+
+#[test]
+fn v06_benchmark_modes_and_make_targets_are_declared() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let script = fs::read_to_string(root.join("benchmark/run_benchmarks.sh")).unwrap();
+    let makefile = fs::read_to_string(root.join("Makefile")).unwrap();
+
+    assert!(script.contains("public-whole"));
+    assert!(script.contains("public-region-repeated"));
+    assert!(script.contains("compatibility"));
+    assert!(script.contains("VCF_FAST_PUBLIC_RECORD_TIERS"));
+    assert!(script.contains("cargo build --release --features htslib-static"));
+    assert!(script.contains("\"$MODE\" == \"public-region-repeated\""));
+    assert!(script.contains("bcftools view -r"));
+    assert!(script.contains("--compression bgzf"));
+    assert!(script.contains("tabix -p vcf"));
+    assert!(script.contains("sort_vcf_for_indexing"));
+    assert!(script.contains("sort -t"));
+    assert!(makefile.contains("bench-public:"));
+    assert!(makefile.contains("bench-public-region:"));
+    assert!(makefile.contains("bench-compat:"));
+    assert!(makefile.contains("bench-v06-smoke:"));
+}
+
+#[test]
+fn v06_reports_track_claim_matrix_and_required_fields() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let public_report =
+        fs::read_to_string(root.join("benchmark/reports/public-whole-cohort-benchmark.md"))
+            .unwrap();
+    let contribution_map = fs::read_to_string(root.join("docs/contribution-map.md")).unwrap();
+
+    for required in [
+        "dataset source URL",
+        "dataset size bytes",
+        "record count",
+        "exact VCF-Fast command",
+        "exact competitor command",
+        "competitor version",
+        "runtime mean/stddev",
+        "speedup",
+        "variants/sec",
+        "peak RSS",
+        "correctness result",
+        "caveats",
+    ] {
+        assert!(public_report.contains(required), "{required}");
+    }
+
+    assert!(contribution_map.contains("Claim Matrix"));
+    assert!(contribution_map.contains("beats"));
+    assert!(contribution_map.contains("matches"));
+    assert!(contribution_map.contains("complements"));
+    assert!(contribution_map.contains("VCFtools"));
+    assert!(contribution_map.contains("GATK"));
+}
+
+#[test]
+fn hyperfine_summary_handles_null_stddev_from_single_run() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let temp = tempfile::tempdir().unwrap();
+    let json_path = temp.path().join("single-run-hyperfine.json");
+    fs::write(
+        &json_path,
+        r#"{
+  "results": [
+    { "command": "vcf-fast", "mean": 0.010, "stddev": null },
+    { "command": "bcftools", "mean": 0.020, "stddev": null }
+  ]
+}"#,
+    )
+    .unwrap();
+
+    let output = Command::new("python3")
+        .arg(root.join("benchmark/summarize_hyperfine.py"))
+        .arg(&json_path)
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        "0.010000s 0.000000s 0.020000s 0.000000s 2.00x"
+    );
 }

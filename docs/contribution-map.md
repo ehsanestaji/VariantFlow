@@ -85,37 +85,51 @@ Evidence:
 
 - Correctness: VCF-Fast matches bcftools filtered core records for supported synthetic QUAL, INFO/DP, INFO/AF, and gzip-input QUAL cases.
 - Performance: On the tracked 1M synthetic benchmark run, VCF-Fast was `1.62x` to `1.82x` faster than bcftools across measured supported filter cases and `1.57x` faster for TSV conversion.
-- Public smoke: On the first 10k GIAB HG002 public-small run, VCF-Fast matched bcftools outputs and measured `2.08x` to `2.11x` faster for QUAL filtering and `1.12x` faster for TSV conversion.
-- Public region: On the tracked IGSR chr22 100k public-region run, VCF-Fast matched bcftools outputs and measured `5.35x` to `8.33x` faster for QUAL filtering and `1.11x` faster for TSV conversion.
+- Public whole-cohort tiers: On the v0.6 Docker run, GIAB HG002 matched bcftools outputs and measured `1.80x` to `2.38x` faster for plain QUAL filtering, `1.89x` faster for 1M gzip QUAL filtering, and `1.13x` faster for 1M TSV conversion; smaller GIAB TSV/gzip tiers were mixed.
+- Public IGSR tiers: On the v0.6 Docker run, IGSR chr22 10k/100k tiers matched bcftools outputs and measured `4.85x` to `5.71x` faster for QUAL filtering; TSV measured `1.22x` at 10k and `0.87x` at 100k. IGSR 1M whole-file is deferred because the generated plain VCF exceeded 13 GB during the balanced run.
+- Public indexed region: On the v0.6 Docker run, IGSR chr22 indexed-region filtering matched bcftools and measured `1.47x` faster at 10k and 100k; region TSV and stats matched correctness but measured `0.71x` to `0.72x`, so bcftools is faster there.
 - Stress speed: On the tracked 1M synthetic stress benchmark with 40 unused INFO fields and 16 samples, VCF-Fast matched bcftools outputs and measured `1.96x` to `2.45x` faster for plain filter cases, `1.20x` faster for TSV conversion, and `1.53x` faster for overlapping stats record counts.
 - FORMAT-aware filtering: On the tracked 1M synthetic stress benchmark, selected-sample `FORMAT/DP`, `FORMAT/GQ`, and `FORMAT/GT` filters matched bcftools filtered core records and measured `1.99x` to `2.06x` faster.
-- Compatibility proof: Optional htslib-backed paths now cover BCF input, indexed region reads, and BGZF output. Performance evidence for these compatibility paths is not yet broad enough for a speed claim.
+- Compatibility proof: Optional htslib-backed paths cover BCF input, indexed region reads, and BGZF output. v0.6 repeated compatibility benchmarks matched correctness but measured `0.36x` to `0.82x` versus bcftools, so compatibility is proven but speed is not claimed for these paths.
 
 ## Competitor Scorecard
 
 | Contribution | Evidence path | Competitor checked | Current result | Caveat |
 |---|---|---|---|---|
-| Selective filter execution | `benchmark/reports/synthetic-filter-benchmark.md` and `benchmark/reports/public-dataset-benchmark.md` | `bcftools filter` | `1.62x` to `1.82x` faster on supported 1M synthetic cases; `5.35x` to `8.33x` faster on IGSR chr22 100k QUAL public-region cases | Whole-cohort public runs still pending |
+| Selective filter execution | `benchmark/reports/synthetic-filter-benchmark.md`, `benchmark/reports/public-dataset-benchmark.md`, and `benchmark/reports/public-whole-cohort-benchmark.md` | `bcftools filter` | `1.62x` to `1.82x` faster on supported 1M synthetic cases; GIAB public tiers up to `2.38x`; IGSR public tiers up to `5.71x`; indexed-region filtering `1.47x` | IGSR whole 1M deferred after >13 GB intermediate |
 | Stress selective parsing | `benchmark/reports/stress-speed-benchmark.md` | `bcftools filter`, `bcftools query`, `bcftools stats` | `1.96x` to `2.45x` faster on 1M plain stress filters; `1.20x` TSV speedup; `1.53x` stats speedup | Synthetic stress shape, not a public cohort |
 | Selected-sample FORMAT filtering | `benchmark/reports/format-filter-benchmark.md` | `bcftools filter` | `1.99x` to `2.06x` faster on 1M selected-sample FORMAT filters | Single selected sample only; synthetic stress shape |
 | Original-record preservation | `tests/filter_cli_tests.rs` | VCF validity by behavior and line preservation | Headers and passing records preserved | BGZF output not promised |
 | Typed expression AST | `tests/expr_tests.rs` | N/A | `&&`, `||`, parentheses, string/numeric comparisons, selected-sample `FORMAT/GT`, `FORMAT/DP`, and `FORMAT/GQ` | Multi-sample FORMAT predicates and arbitrary FORMAT keys not supported |
 | Variant-key diff | `tests/stats_diff_cli_tests.rs` | planned `bcftools isec/query` | Shared/unique key TSV works | No normalized multiallelic decomposition |
-| TSV conversion | `tests/convert_cli_tests.rs` and benchmark harness | `bcftools query` | Stable TSV rows checked in synthetic benchmark; `1.57x` faster at 1M synthetic records | No Parquet/Arrow yet |
-| Public data benchmarking | `benchmark/reports/public-dataset-benchmark.md` | `bcftools filter`, `bcftools query` | GIAB HG002 and IGSR chr22 subsets matched bcftools with runtime, throughput, and RSS reporting | Whole-cohort public runs still pending |
-| Compatibility interop | `tests/compatibility_cli_tests.rs`, `tests/compatibility_unit_tests.rs`, `benchmark/reports/compatibility-benchmark.md` | `bcftools`, `tabix`, HTSlib | BCF input, indexed region reads, and BGZF output are feature-gated and tested | Benchmark report is initial; no broad performance claim yet |
+| TSV conversion | `tests/convert_cli_tests.rs` and benchmark harness | `bcftools query` | Stable TSV rows checked; synthetic 1M `1.57x`; GIAB 1M `1.13x`; IGSR 10k `1.22x` | Mixed public results: GIAB 10k/100k, IGSR 100k, and indexed-region TSV trail bcftools |
+| Public data benchmarking | `benchmark/reports/public-dataset-benchmark.md`, `benchmark/reports/public-whole-cohort-benchmark.md` | `bcftools filter`, `bcftools query`, `bcftools stats` | GIAB HG002 and IGSR chr22 measured with correctness, runtime, throughput, and RSS reporting | Large sample-rich IGSR 1M needs a heavy-run mode |
+| Compatibility interop | `tests/compatibility_cli_tests.rs`, `tests/compatibility_unit_tests.rs`, `benchmark/reports/compatibility-benchmark.md` | `bcftools`, `tabix`, HTSlib | BCF input, indexed region reads, and BGZF output are feature-gated, tested, and benchmarked | Correct but slower than bcftools in measured compatibility cases |
 
 ## Claims Not Yet Proven
 
-- Broader performance across whole public real-world VCFs beyond GIAB/IGSR subsets.
+- Broader performance across public real-world VCFs beyond GIAB/IGSR measured tiers.
 - Performance on ten-million-record datasets and whole public cohort VCFs.
-- Broad performance claims for BCF input, BGZF output, and tabix-indexed region reads.
+- Speed claims for BCF input, BGZF output, and compatibility TSV/stats paths.
 - Multi-sample FORMAT predicates, ANY/ALL sample semantics, and arbitrary FORMAT keys.
 - Persistent columnar Arrow/Parquet execution.
 
+## Claim Matrix
+
+The project ambition is to become the best practical VCF tool, but public language must stay exact: VCF-Fast only says it beats, matches, or complements competitors where the evidence supports that word.
+
+| Claim area | bcftools/HTSlib | VCFtools | GATK | Current claim | Evidence path | Caveat |
+|---|---|---|---|---|---|---|
+| Streaming selective filter on supported predicates | beats on tracked synthetic, stress, GIAB, and IGSR measured tiers | later baseline | later heavier baseline | beats for measured supported native/public filter cases | `benchmark/reports/synthetic-filter-benchmark.md`, `benchmark/reports/public-dataset-benchmark.md`, `benchmark/reports/public-whole-cohort-benchmark.md`, `benchmark/reports/stress-speed-benchmark.md` | IGSR whole 1M heavy run still pending. |
+| Core record correctness for supported filters | matches filtered core records | later baseline | later baseline | matches for supported comparisons | integration tests and benchmark equivalence diffs | Not byte-for-byte equivalent on htslib compatibility paths. |
+| TSV export for selected columns | mixed: beats synthetic/stress/GIAB 1M/IGSR 10k, trails bcftools on some public and region cases | complements older workflows | complements heavier workflow exports | correctness matches; performance depends on dataset/path | `tests/convert_cli_tests.rs`, benchmark reports | Arrow/Parquet not implemented yet; htslib TSV path needs optimization. |
+| Stats simple counts | matches overlapping counts; beats stress native stats but trails bcftools on public indexed-region stats | later baseline | later baseline | matches overlapping simple counts | `tests/stats_diff_cli_tests.rs`, stress and public reports | Rich `bcftools stats` parity is not claimed. |
+| BCF, BGZF, tabix regions | matches ecosystem compatibility through optional htslib path, but bcftools is faster in measured synthetic compatibility runs | complements | complements | compatibility matches; speed not claimed | `tests/compatibility_cli_tests.rs`, `benchmark/reports/compatibility-benchmark.md` | Optimize or avoid htslib reconstruction overhead. |
+| Whole public cohort performance | beats bcftools on measured GIAB/IGSR native filter tiers | later baseline | later heavy baseline | partially proven for supported filter cases | `benchmark/reports/public-whole-cohort-benchmark.md` | IGSR whole 1M deferred; broader cohorts still pending. |
+
 ## Next Contribution Targets
 
-1. Repeat stress and public-region benchmarks on a quieter dedicated runner.
-2. Expand FORMAT predicates beyond one selected sample.
-3. Run repeated compatibility benchmarks for BCF input, indexed region reads, and BGZF output against bcftools.
+1. Optimize htslib-backed TSV/stats/BCF/BGZF paths or route less work through htslib.
+2. Add a heavy-run public benchmark mode for sample-rich IGSR 1M+ without huge plain intermediates.
+3. Expand FORMAT predicates beyond one selected sample.
 4. Arrow/Parquet export for repeated analytical workloads.
