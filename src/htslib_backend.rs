@@ -23,6 +23,9 @@ pub fn filter(
 ) -> Result<()> {
     let expr = parse_expression(where_expr)?;
     let required = expr.required_fields();
+    if required.has_non_legacy_format_keys() {
+        bail!("arbitrary FORMAT predicates are not implemented for htslib-backed input in v0.9");
+    }
     if required.requires_format() && sample.is_none() {
         bail!("FORMAT predicates require --sample <name>");
     }

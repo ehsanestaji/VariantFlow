@@ -44,6 +44,13 @@ impl RequiredFields {
         !self.format_keys.is_empty() || self.format_aggregates
     }
 
+    #[cfg(feature = "htslib")]
+    pub(crate) fn has_non_legacy_format_keys(&self) -> bool {
+        self.format_keys
+            .iter()
+            .any(|key| !matches!(key.as_slice(), b"GT" | b"DP" | b"GQ"))
+    }
+
     #[allow(dead_code)]
     pub(crate) fn legacy_format_fields(&self) -> RequiredFormatFields {
         RequiredFormatFields {
