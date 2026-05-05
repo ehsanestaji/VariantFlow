@@ -16,6 +16,11 @@ enum ExprNode {
         quantifier: SampleQuantifier,
         comparison: Comparison,
     },
+    CountAggregate {
+        comparison: Comparison,
+        op: Operator,
+        literal: Literal,
+    },
     And(Box<ExprNode>, Box<ExprNode>),
     Or(Box<ExprNode>, Box<ExprNode>),
 }
@@ -117,8 +122,8 @@ enum Field {
     Pos,
     Qual,
     Filter,
-    Info(Vec<u8>),
-    Format(Vec<u8>),
+    Info { key: Vec<u8>, index: Option<usize> },
+    Format { key: Vec<u8>, index: Option<usize> },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -188,6 +193,7 @@ pub(crate) trait EvalContext {
     fn format_value(&self, key: &[u8]) -> Option<&[u8]>;
     fn any_format_value(&self, key: &[u8], predicate: &mut dyn FnMut(&[u8]) -> bool) -> bool;
     fn all_format_value(&self, key: &[u8], predicate: &mut dyn FnMut(&[u8]) -> bool) -> bool;
+    fn count_format_value(&self, key: &[u8], predicate: &mut dyn FnMut(&[u8]) -> bool) -> u64;
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -283,14 +289,37 @@ impl ExprNode {
                 quantifier,
                 comparison,
             } => {
-                let Field::Format(key) = &comparison.field else {
+                let Field::Format { key, index } = &comparison.field else {
                     return false;
                 };
-                let mut predicate = |value: &[u8]| evaluate_format_value(comparison, value);
+                let mut predicate = |value: &[u8]| {
+                    selected_vector_value(value, *index)
+                        .is_some_and(|value| evaluate_present_value(comparison, value))
+                };
                 match quantifier {
                     SampleQuantifier::Any => record.any_format_value(key, &mut predicate),
                     SampleQuantifier::All => record.all_format_value(key, &mut predicate),
                 }
+            }
+            ExprNode::CountAggregate {
+                comparison,
+                op,
+                literal,
+            } => {
+                let (Field::Format { key, index }, Literal::Number(expected)) =
+                    (&comparison.field, literal)
+                else {
+                    return false;
+                };
+                let mut predicate = |value: &[u8]| {
+                    selected_vector_value(value, *index)
+                        .is_some_and(|value| evaluate_present_value(comparison, value))
+                };
+                compare_numbers(
+                    record.count_format_value(key, &mut predicate) as f64,
+                    *expected,
+                    *op,
+                )
             }
             ExprNode::And(left, right) => left.evaluate(record) && right.evaluate(record),
             ExprNode::Or(left, right) => left.evaluate(record) || right.evaluate(record),
@@ -301,6 +330,10 @@ impl ExprNode {
         match self {
             ExprNode::Comparison(comparison) => comparison.collect_required_fields(required),
             ExprNode::SampleAggregate { comparison, .. } => {
+                required.format_aggregates = true;
+                mark_aggregate_required_field(required, &comparison.field);
+            }
+            ExprNode::CountAggregate { comparison, .. } => {
                 required.format_aggregates = true;
                 mark_aggregate_required_field(required, &comparison.field);
             }
@@ -327,20 +360,28 @@ impl Comparison {
             (Field::Qual, Literal::Number(expected)) => record
                 .qual()
                 .is_some_and(|actual| compare_numbers(actual, *expected, self.op)),
-            (Field::Info(key), Literal::Number(expected)) => {
+            (Field::Info { key, index }, Literal::Number(expected)) => {
                 let mut predicate = |actual| compare_numbers(actual, *expected, self.op);
-                record.info_number_any(key, &mut predicate)
+                match index {
+                    Some(index) => record
+                        .info_value(key)
+                        .and_then(|value| vector_value_at(value, *index))
+                        .is_some_and(|value| number_list_any(value, &mut predicate)),
+                    None => record.info_number_any(key, &mut predicate),
+                }
             }
-            (Field::Info(key), Literal::String(expected)) => record
+            (Field::Info { key, index }, Literal::String(expected)) => record
                 .info_value(key)
-                .filter(|value| is_present_value(value))
+                .and_then(|value| selected_vector_value(value, *index))
                 .is_some_and(|actual| compare_bytes(actual, expected.as_bytes(), self.op)),
-            (Field::Format(key), Literal::Number(_)) => record
+            (Field::Format { key, index }, Literal::Number(_)) => record
                 .format_value(key)
-                .is_some_and(|actual| evaluate_format_value(self, actual)),
-            (Field::Format(key), Literal::String(_)) => record
+                .and_then(|value| selected_vector_value(value, *index))
+                .is_some_and(|actual| evaluate_present_value(self, actual)),
+            (Field::Format { key, index }, Literal::String(_)) => record
                 .format_value(key)
-                .is_some_and(|actual| evaluate_format_value(self, actual)),
+                .and_then(|value| selected_vector_value(value, *index))
+                .is_some_and(|actual| evaluate_present_value(self, actual)),
             _ => false,
         }
     }
@@ -356,14 +397,14 @@ fn mark_required_field(required: &mut RequiredFields, field: &Field) {
         Field::Pos => required.pos = true,
         Field::Qual => required.qual = true,
         Field::Filter => required.filter = true,
-        Field::Info(key) => required.add_info_key(key),
-        Field::Format(key) => required.add_selected_format_key(key),
+        Field::Info { key, .. } => required.add_info_key(key),
+        Field::Format { key, .. } => required.add_selected_format_key(key),
     }
 }
 
 fn mark_aggregate_required_field(required: &mut RequiredFields, field: &Field) {
     match field {
-        Field::Format(key) => required.add_format_key(key),
+        Field::Format { key, .. } => required.add_format_key(key),
         _ => mark_required_field(required, field),
     }
 }
@@ -404,6 +445,10 @@ impl EvalContext for EvalRecord<'_> {
     fn all_format_value(&self, key: &[u8], predicate: &mut dyn FnMut(&[u8]) -> bool) -> bool {
         self.format.get(key).is_some_and(predicate)
     }
+
+    fn count_format_value(&self, key: &[u8], predicate: &mut dyn FnMut(&[u8]) -> bool) -> u64 {
+        u64::from(self.format.get(key).is_some_and(predicate))
+    }
 }
 
 fn compare_numbers(actual: f64, expected: f64, op: Operator) -> bool {
@@ -429,7 +474,7 @@ fn is_present_value(value: &[u8]) -> bool {
     !value.is_empty() && value != b"."
 }
 
-fn evaluate_format_value(comparison: &Comparison, value: &[u8]) -> bool {
+fn evaluate_present_value(comparison: &Comparison, value: &[u8]) -> bool {
     if !is_present_value(value) {
         return false;
     }
@@ -459,6 +504,22 @@ where
         }
     }
     false
+}
+
+fn selected_vector_value(value: &[u8], index: Option<usize>) -> Option<&[u8]> {
+    match index {
+        Some(index) => vector_value_at(value, index).filter(|value| is_present_value(value)),
+        None => is_present_value(value).then_some(value),
+    }
+}
+
+fn vector_value_at(value: &[u8], target_index: usize) -> Option<&[u8]> {
+    for (index, part) in value.split(|byte| *byte == b',').enumerate() {
+        if index == target_index {
+            return Some(part);
+        }
+    }
+    None
 }
 
 struct Parser {
@@ -500,7 +561,7 @@ impl Parser {
             self.expect_left_paren()?;
             let comparison = self.parse_comparison()?;
             self.expect_right_paren()?;
-            if !matches!(comparison.field, Field::Format(_)) {
+            if !matches!(comparison.field, Field::Format { .. }) {
                 return Err(ParseError {
                     message: "ANY/ALL predicates require a FORMAT field".to_string(),
                 });
@@ -508,6 +569,29 @@ impl Parser {
             return Ok(ExprNode::SampleAggregate {
                 quantifier,
                 comparison,
+            });
+        }
+
+        if self.match_ident("N_PASS") {
+            self.expect_left_paren()?;
+            let comparison = self.parse_comparison()?;
+            self.expect_right_paren()?;
+            if !matches!(comparison.field, Field::Format { .. }) {
+                return Err(ParseError {
+                    message: "N_PASS predicates require a FORMAT field".to_string(),
+                });
+            }
+            let op = self.parse_operator()?;
+            let literal = self.parse_literal()?;
+            if !matches!(literal, Literal::Number(_)) {
+                return Err(ParseError {
+                    message: "N_PASS comparisons require a numeric literal".to_string(),
+                });
+            }
+            return Ok(ExprNode::CountAggregate {
+                comparison,
+                op,
+                literal,
             });
         }
 
@@ -574,6 +658,16 @@ impl Parser {
         }
     }
 
+    fn match_ident(&mut self, expected: &str) -> bool {
+        match self.peek() {
+            Some(Token::Ident(value)) if value == expected => {
+                self.cursor += 1;
+                true
+            }
+            _ => false,
+        }
+    }
+
     fn match_token(&mut self, predicate: impl FnOnce(&Token) -> bool) -> bool {
         if self.peek().is_some_and(predicate) {
             self.cursor += 1;
@@ -612,18 +706,51 @@ fn parse_field_name(name: &str) -> Result<Field, ParseError> {
         "POS" => Ok(Field::Pos),
         "QUAL" => Ok(Field::Qual),
         "FILTER" => Ok(Field::Filter),
-        "DP" => Ok(Field::Info(b"DP".to_vec())),
-        "AF" => Ok(Field::Info(b"AF".to_vec())),
+        "DP" | "AF" if !name.contains('[') => Ok(Field::Info {
+            key: name.as_bytes().to_vec(),
+            index: None,
+        }),
+        _ if name.starts_with("DP[") || name.starts_with("AF[") => {
+            let (key, index) = parse_field_key_with_index(name)?;
+            Ok(Field::Info {
+                key: key.as_bytes().to_vec(),
+                index,
+            })
+        }
         _ if name.starts_with("INFO/") && name.len() > "INFO/".len() => {
-            Ok(Field::Info(name.as_bytes()["INFO/".len()..].to_vec()))
+            let (key, index) = parse_field_key_with_index(&name["INFO/".len()..])?;
+            Ok(Field::Info {
+                key: key.as_bytes().to_vec(),
+                index,
+            })
         }
         _ if name.starts_with("FORMAT/") && name.len() > "FORMAT/".len() => {
-            Ok(Field::Format(name.as_bytes()["FORMAT/".len()..].to_vec()))
+            let (key, index) = parse_field_key_with_index(&name["FORMAT/".len()..])?;
+            Ok(Field::Format {
+                key: key.as_bytes().to_vec(),
+                index,
+            })
         }
         _ => Err(ParseError {
             message: format!("unsupported field '{name}'"),
         }),
     }
+}
+
+fn parse_field_key_with_index(raw: &str) -> Result<(&str, Option<usize>), ParseError> {
+    let Some(open) = raw.find('[') else {
+        return Ok((raw, None));
+    };
+    if !raw.ends_with(']') || open == 0 {
+        return Err(ParseError {
+            message: format!("malformed vector field '{raw}'"),
+        });
+    }
+    let index_text = &raw[open + 1..raw.len() - 1];
+    let index = index_text.parse::<usize>().map_err(|_| ParseError {
+        message: format!("invalid vector index '{index_text}'"),
+    })?;
+    Ok((&raw[..open], Some(index)))
 }
 
 fn tokenize(input: &str) -> Result<Vec<Token>, ParseError> {
@@ -753,7 +880,7 @@ fn is_ident_start(char: char) -> bool {
 }
 
 fn is_ident_continue(char: char) -> bool {
-    char.is_ascii_alphanumeric() || char == '_' || char == '/'
+    char.is_ascii_alphanumeric() || char == '_' || char == '/' || char == '[' || char == ']'
 }
 
 impl fmt::Display for Expression {
@@ -820,6 +947,10 @@ mod tests {
 
         fn all_format_value(&self, key: &[u8], predicate: &mut dyn FnMut(&[u8]) -> bool) -> bool {
             self.format.get(key).is_some_and(predicate)
+        }
+
+        fn count_format_value(&self, key: &[u8], predicate: &mut dyn FnMut(&[u8]) -> bool) -> u64 {
+            u64::from(self.format.get(key).is_some_and(predicate))
         }
     }
 

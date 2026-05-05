@@ -198,6 +198,22 @@ fn arbitrary_format_numeric_selected_sample_predicate_passes() {
 }
 
 #[test]
+fn vector_index_predicates_select_info_and_format_values() {
+    let first_af = parse_expression("INFO/AF[0] > 0.05").unwrap();
+    let second_af = parse_expression("INFO/AF[1] > 0.05").unwrap();
+    let second_ad = parse_expression("FORMAT/AD[1] > 10").unwrap();
+    let missing_index = parse_expression("FORMAT/AD[2] > 0").unwrap();
+    let record = EvalRecord::new(b"chr1", Some(101), Some(60.0), b"PASS")
+        .with_info(b"AF=0.01,0.20")
+        .with_format_value(b"AD", b"4,11");
+
+    assert!(!first_af.evaluate_record(&record));
+    assert!(second_af.evaluate_record(&record));
+    assert!(second_ad.evaluate_record(&record));
+    assert!(!missing_index.evaluate_record(&record));
+}
+
+#[test]
 fn arbitrary_format_string_selected_sample_predicate_passes() {
     let expr = parse_expression("FORMAT/FT == \"PASS\"").unwrap();
     let record =
@@ -222,6 +238,15 @@ fn parses_any_and_all_format_aggregate_predicates() {
     parse_expression("ANY(FORMAT/DP > 20)").unwrap();
     parse_expression("ALL(FORMAT/GQ >= 30)").unwrap();
     parse_expression("QUAL > 30 && ANY(FORMAT/AD > 12)").unwrap();
+}
+
+#[test]
+fn n_pass_counts_matching_format_values() {
+    let expr = parse_expression("N_PASS(FORMAT/AD[1] > 10) >= 2").unwrap();
+    let record =
+        EvalRecord::new(b"chr1", Some(101), Some(60.0), b"PASS").with_format_value(b"AD", b"4,11");
+
+    assert!(!expr.evaluate_record(&record));
 }
 
 #[test]

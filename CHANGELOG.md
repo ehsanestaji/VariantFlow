@@ -8,6 +8,13 @@ All notable VCF-Fast changes are tracked here. Claims remain evidence-bound: per
 - Added `variantflow` as the primary CLI binary while keeping `vcf-fast` as a compatibility alias.
 - Added `docs/rename-plan.md` and updated release TODOs for Bioconda packaging under `variantflow`.
 - Added a local Bioconda recipe scaffold, packaging checker, and `docs/bioconda-packaging.md` with current release blockers.
+- Added `make release-candidate-check`, Bioinformatics workflow docs, Snakemake/Nextflow examples, and `docs/claim-matrix.md`.
+- Strengthened the Bioinformatics Application Note LaTeX draft around selective execution, public evidence, columnar workflows, and caveats.
+- Added vector-index predicates such as `INFO/AF[1]` and `FORMAT/AD[1]`.
+- Added `N_PASS(FORMAT/<KEY>[i] op value)` aggregate filtering for cohort/sample-heavy predicates.
+- Added diff modes and key modes through `variantflow diff --mode ... --key ...`.
+- Added `filter_counts` to native stats JSON summaries.
+- Added the v1.7 public FORMAT-heavy and optional ecosystem-baseline harness scaffold.
 
 ## v1.4.0 - Public Parallel Scale
 

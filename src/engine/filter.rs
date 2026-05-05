@@ -348,4 +348,20 @@ impl EvalContext for ByteEvalRecord<'_> {
         });
         saw_sample && all_match
     }
+
+    fn count_format_value(&self, key: &[u8], predicate: &mut dyn FnMut(&[u8]) -> bool) -> u64 {
+        let Some(format) = self.format_column else {
+            return 0;
+        };
+
+        let mut count = 0;
+        self.record.for_each_sample_column(|sample| {
+            if let Some(value) = vcf::format_value_bytes(format, sample, key)
+                && predicate(value)
+            {
+                count += 1;
+            }
+        });
+        count
+    }
 }

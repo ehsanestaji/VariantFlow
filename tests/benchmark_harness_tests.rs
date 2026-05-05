@@ -989,3 +989,95 @@ fn hyperfine_summary_handles_null_stddev_from_single_run() {
         "0.010000s 0.000000s 0.020000s 0.000000s 2.00x"
     );
 }
+
+#[test]
+fn bioinformatics_readiness_tracks_release_docs_workflows_and_claim_matrix() {
+    let root = repo_root();
+    let makefile = fs::read_to_string(root.join("Makefile")).unwrap();
+    let workflow_docs = fs::read_to_string(root.join("docs/bioinformatics-workflows.md")).unwrap();
+    let claim_matrix = fs::read_to_string(root.join("docs/claim-matrix.md")).unwrap();
+    let snakemake = fs::read_to_string(root.join("examples/Snakefile")).unwrap();
+    let nextflow = fs::read_to_string(root.join("examples/variantflow.nf")).unwrap();
+    let public_recipe =
+        fs::read_to_string(root.join("examples/public_benchmark_recipe.sh")).unwrap();
+
+    assert!(makefile.contains("release-candidate-check:"));
+    assert!(makefile.contains("make verify"));
+    assert!(makefile.contains("cargo test --features htslib-static"));
+
+    for required in [
+        "Install",
+        "Common Filters",
+        "VariantFlow",
+        "bcftools equivalent",
+        "Parquet + DuckDB",
+        "Public benchmark reproduction",
+        "Limitations",
+    ] {
+        assert!(
+            workflow_docs.contains(required),
+            "missing workflow text {required}"
+        );
+    }
+
+    for required in [
+        "beats",
+        "matches",
+        "complements",
+        "not yet proven",
+        "benchmark/reports/v14-public-parallel-scale-benchmark.md",
+        "benchmark/reports/v12-public-parallel-workflow-benchmark.md",
+        "BCF TSV",
+        "GATK",
+    ] {
+        assert!(
+            claim_matrix.contains(required),
+            "missing claim text {required}"
+        );
+    }
+
+    assert!(snakemake.contains("variantflow filter"));
+    assert!(snakemake.contains("variantflow convert"));
+    assert!(nextflow.contains("process VARIANTFLOW_FILTER"));
+    assert!(nextflow.contains("process VARIANTFLOW_EXPORT_PARQUET"));
+    assert!(public_recipe.contains("benchmark/download_public_data.sh"));
+    assert!(public_recipe.contains("make bench-v14"));
+}
+
+#[test]
+fn v17_public_format_and_optional_baseline_harness_is_declared() {
+    let root = repo_root();
+    let makefile = fs::read_to_string(root.join("Makefile")).unwrap();
+    let script =
+        fs::read_to_string(root.join("benchmark/run_v17_public_format_baselines.sh")).unwrap();
+    let report =
+        fs::read_to_string(root.join("benchmark/reports/v17-public-format-baselines.md")).unwrap();
+
+    assert!(makefile.contains("bench-v17:"));
+    assert!(makefile.contains("run_v17_public_format_baselines.sh"));
+
+    for required in [
+        "VCF_FAST_ENABLE_VCFTOOLS",
+        "VCF_FAST_ENABLE_GATK",
+        "VCF_FAST_ENABLE_POLARS",
+        "VCF_FAST_ENABLE_PYARROW",
+        "N_PASS(FORMAT/AD[1] > 10)",
+        "bcftools filter",
+        "measure_peak_rss_kb",
+        "correctness result",
+    ] {
+        assert!(script.contains(required), "missing harness text {required}");
+    }
+
+    for required in [
+        "v1.7 Public FORMAT And Optional Baselines",
+        "public FORMAT-heavy",
+        "VCFtools",
+        "GATK",
+        "Polars",
+        "PyArrow",
+        "not yet proven",
+    ] {
+        assert!(report.contains(required), "missing report text {required}");
+    }
+}

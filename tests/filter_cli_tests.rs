@@ -606,6 +606,51 @@ fn parallel_native_filter_matches_default_output_byte_for_byte() {
 }
 
 #[test]
+fn filter_supports_vector_indexes_and_n_pass_aggregate() {
+    let dir = tempdir().unwrap();
+    let indexed_output = dir.path().join("indexed.vcf");
+    let n_pass_output = dir.path().join("n-pass.vcf");
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            fixture("tests/data/stress_small.vcf").to_str().unwrap(),
+            "--where",
+            "INFO/AF[1] > 0.2 || FORMAT/AD[1] > 24",
+            "--sample",
+            "SAMPLE_A",
+            "-o",
+            indexed_output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let indexed_text = fs::read_to_string(indexed_output).unwrap();
+    assert!(indexed_text.contains("stressPass"));
+    assert!(indexed_text.contains("stressAf"));
+    assert!(!indexed_text.contains("stressLow"));
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            fixture("tests/data/stress_small.vcf").to_str().unwrap(),
+            "--where",
+            "N_PASS(FORMAT/AD[1] > 20) >= 2",
+            "-o",
+            n_pass_output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let n_pass_text = fs::read_to_string(n_pass_output).unwrap();
+    assert!(n_pass_text.contains("stressPass"));
+    assert!(!n_pass_text.contains("stressAf"));
+    assert!(!n_pass_text.contains("stressLow"));
+}
+
+#[test]
 fn parallel_native_filter_rejects_invalid_thread_env() {
     let dir = tempdir().unwrap();
     let output = dir.path().join("invalid.vcf");

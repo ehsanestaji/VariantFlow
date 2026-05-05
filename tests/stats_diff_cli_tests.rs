@@ -27,6 +27,8 @@ fn stats_outputs_json_summary_for_site_level_metrics() {
     assert_eq!(json["variants_per_chromosome"]["1"], 3);
     assert_eq!(json["variants_per_chromosome"]["2"], 2);
     assert_eq!(json["missing_filter_values"], 0);
+    assert_eq!(json["filter_counts"]["PASS"], 4);
+    assert_eq!(json["filter_counts"]["q10"], 1);
     assert_eq!(json["qual"]["count"], 4);
     assert_eq!(json["qual"]["min"], 10.0);
     assert_eq!(json["qual"]["max"], 60.0);
@@ -86,5 +88,84 @@ only_in_a\t1\t100\tA\tG\n\
 shared\t1\t200\tC\tT\n\
 only_in_a\t2\t300\tAT\tA\n\
 only_in_b\t2\t400\tG\tA\n"
+    );
+}
+
+#[test]
+fn diff_supports_mode_and_position_key_for_practical_comparisons() {
+    let dir = tempdir().unwrap();
+    let shared_output = dir.path().join("shared.tsv");
+    let position_output = dir.path().join("position.tsv");
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "diff",
+            fixture("tests/data/diff_a.vcf").to_str().unwrap(),
+            fixture("tests/data/diff_b.vcf").to_str().unwrap(),
+            "--mode",
+            "shared",
+            "-o",
+            shared_output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    assert_eq!(
+        fs::read_to_string(shared_output).unwrap(),
+        "status\tchrom\tpos\tref\talt\nshared\t1\t200\tC\tT\n"
+    );
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "diff",
+            fixture("tests/data/diff_a.vcf").to_str().unwrap(),
+            fixture("tests/data/diff_b.vcf").to_str().unwrap(),
+            "--key",
+            "position",
+            "-o",
+            position_output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    assert_eq!(
+        fs::read_to_string(position_output).unwrap(),
+        "status\tchrom\tpos\tref\talt\n\
+only_in_a\t1\t100\t.\t.\n\
+shared\t1\t200\t.\t.\n\
+only_in_a\t2\t300\t.\t.\n\
+only_in_b\t2\t400\t.\t.\n"
+    );
+}
+
+#[test]
+fn diff_id_aware_key_includes_id_column() {
+    let dir = tempdir().unwrap();
+    let output = dir.path().join("id-aware.tsv");
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "diff",
+            fixture("tests/data/diff_a.vcf").to_str().unwrap(),
+            fixture("tests/data/diff_b.vcf").to_str().unwrap(),
+            "--key",
+            "id-aware",
+            "--mode",
+            "only-a",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    assert_eq!(
+        fs::read_to_string(output).unwrap(),
+        "status\tchrom\tpos\tid\tref\talt\n\
+only_in_a\t1\t100\ta1\tA\tG\n\
+only_in_a\t1\t200\tshared\tC\tT\n\
+only_in_a\t2\t300\ta2\tAT\tA\n"
     );
 }

@@ -2,7 +2,10 @@
 \centering
 \small
 \caption{Selected correctness-matched VariantFlow benchmark evidence. Each row
-is sourced from tracked reports in the repository.}
+is sourced from tracked repository reports: public parallel scale
+(\texttt{benchmark/reports/v14-public-parallel-scale-benchmark.md}), core
+efficiency (\texttt{benchmark/reports/v08-core-efficiency-benchmark.md}), or
+public parallel workflow (\texttt{benchmark/reports/v12-public-parallel-workflow-benchmark.md}).}
 \label{tab:benchmark-summary}
 \begin{tabularx}{\linewidth}{p{0.20\linewidth}p{0.22\linewidth}X p{0.21\linewidth}}
 \toprule
@@ -13,6 +16,8 @@ Auto BGZF input & Bounded IGSR chr22 BGZF & Native outputs matched byte-for-byte
 FORMAT aggregate filter & Stress 100k/1M AD predicate & Parallel output matched default and bcftools & 4.33--5.27x faster than bcftools \\
 DuckDB repeated queries & IGSR chr22 Parquet export & Predicate and grouped results matched bcftools & 3.18--25.67x faster amortized \\
 DuckDB query-only & IGSR chr22 Parquet export & Query results matched bcftools & 29.27--497.74x faster query-only \\
+Native TSV conversion & Stress 1M byte-core path & Normalized TSV rows matched bcftools query & 2.54x faster than bcftools query \\
+Simple stats counts & Stress 1M byte-core path & Supported stats records matched bcftools stats & 2.50x faster than bcftools stats \\
 \bottomrule
 \end{tabularx}
 \end{table}

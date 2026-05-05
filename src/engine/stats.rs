@@ -16,6 +16,7 @@ pub struct StatsSummary {
     pub(crate) snps: u64,
     pub(crate) indels: u64,
     pub(crate) variants_per_chromosome: BTreeMap<String, u64>,
+    pub(crate) filter_counts: BTreeMap<String, u64>,
     pub(crate) qual: NumericSummary,
     pub(crate) af: NumericSummary,
     pub(crate) missing_filter_values: u64,
@@ -91,6 +92,7 @@ impl StatsSummary {
         if record.filter() == b"." {
             self.missing_filter_values += 1;
         }
+        self.observe_filter(record.filter())?;
 
         if let Some(qual) = record.qual_float()? {
             self.qual.observe(qual);
@@ -117,6 +119,12 @@ impl StatsSummary {
         } else {
             self.variants_per_chromosome.insert(key.to_owned(), 1);
         }
+        Ok(())
+    }
+
+    pub(crate) fn observe_filter(&mut self, filter: &[u8]) -> Result<()> {
+        let key = std::str::from_utf8(filter)?;
+        *self.filter_counts.entry(key.to_owned()).or_default() += 1;
         Ok(())
     }
 }

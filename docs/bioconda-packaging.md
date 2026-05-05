@@ -14,7 +14,9 @@ This document tracks the local Bioconda recipe scaffold for `variantflow`. It is
 - Create a tagged GitHub source release for the first packaged version.
 - Replace `TODO_RELEASE_SHA256` with the release tarball `sha256`.
 - Run `bioconda-utils` lint/build in a clean environment.
-- Confirm whether the Bioconda package should build only the default native engine or include `htslib-static`.
+- First recipe decision: build the native engine only. Document `.bcf`,
+  indexed `--region`, and explicit BGZF output as source-build compatibility
+  features requiring `--features htslib-static`.
 
 The project license is now recorded as `MIT OR Apache-2.0` with root license
 notice `LICENSE` and full texts in `LICENSE-MIT` and `LICENSE-APACHE`.
@@ -56,5 +58,6 @@ The recipe follows current Bioconda Rust guidance:
 
 4. Replace the remaining recipe placeholder `TODO_RELEASE_SHA256`.
 5. Copy `packaging/bioconda/variantflow` into `bioconda-recipes/recipes/variantflow`.
-6. Run local Bioconda lint/build/mulled tests.
-7. Open the Bioconda PR only after upstream `make verify`, `cargo test --features htslib-static`, and release artifact checks pass.
+6. Run `make release-candidate-check`.
+7. Run local Bioconda lint/build/mulled tests.
+8. Open the Bioconda PR only after upstream `make verify`, `cargo test --features htslib-static`, and release artifact checks pass.
