@@ -132,7 +132,7 @@ The project ambition is to become the best practical VCF tool, but public langua
 
 ## Next Contribution Targets
 
-1. Complete v0.7 heavy-run benchmarking without giant plain IGSR intermediates and optimize HTSlib-backed TSV/stats/BCF/BGZF paths where measurements show low-risk wins.
-2. Run and publish the full sample-rich IGSR heavy benchmark, expand measured tiers, and fill the v0.7 report rows with correctness, runtime, memory, bottleneck, caveat, and next-action evidence.
-3. Expand FORMAT predicates beyond one selected sample.
-4. Arrow/Parquet export for repeated analytical workloads.
+1. Keep v0.8 evidence current as new byte-core runs are added, and use `benchmark/reports/v08-core-efficiency-benchmark.md` as the source for README/contribution claims.
+2. Start v0.9 expression parity: arbitrary selected `INFO/*`, selected `FORMAT/*`, and sample `ANY`/`ALL` semantics with bcftools comparison.
+3. Plan v1.0 parallel BGZF and Parquet export as separate evidence-backed milestones.
+4. Keep BCF TSV compatibility optimization as a tracked gap.
