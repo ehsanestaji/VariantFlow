@@ -231,6 +231,33 @@ fn htslib_path_rejects_arbitrary_format_predicates_in_v09() {
 
 #[cfg(feature = "htslib")]
 #[test]
+fn htslib_path_rejects_any_all_format_predicates_in_v09() {
+    let dir = tempdir().unwrap();
+    let input = dir.path().join("expression_parity.vcf.gz");
+    let output = dir.path().join("htslib-any-reject.vcf");
+    create_bgzf_vcf(&fixture("tests/data/expression_parity.vcf"), &input);
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            input.to_str().unwrap(),
+            "--region",
+            "chr1:1-1000",
+            "--where",
+            "ANY(FORMAT/DP > 20)",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "ANY/ALL FORMAT predicates are not implemented for htslib-backed input in v0.9",
+        ));
+}
+
+#[cfg(feature = "htslib")]
+#[test]
 fn bcf_input_filter_uses_info_af_and_filter_fields() {
     let dir = tempdir().unwrap();
     let input = dir.path().join("input.bcf");
