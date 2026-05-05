@@ -2,6 +2,12 @@
 
 All notable VCF-Fast changes are tracked here. Claims remain evidence-bound: performance entries refer to benchmark reports, not broad superiority.
 
+## v1.5.0 - Unreleased
+
+- Accepted `VariantFlow` as the professional public project name.
+- Added `variantflow` as the primary CLI binary while keeping `vcf-fast` as a compatibility alias.
+- Added `docs/rename-plan.md` and updated release TODOs for Bioconda packaging under `variantflow`.
+
 ## v1.4.0 - Public Parallel Scale
 
 - Auto-enabled native BGZF reader workers for BGZF `.vcf.gz` inputs when `VCF_FAST_NATIVE_BGZF_THREADS` is unset.

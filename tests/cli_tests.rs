@@ -13,3 +13,16 @@ fn version_flag_reports_package_version() {
             env!("CARGO_PKG_VERSION")
         )));
 }
+
+#[test]
+fn variantflow_primary_binary_reports_professional_name() {
+    Command::cargo_bin("variantflow")
+        .unwrap()
+        .arg("--version")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(format!(
+            "variantflow {}",
+            env!("CARGO_PKG_VERSION")
+        )));
+}

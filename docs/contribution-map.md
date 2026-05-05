@@ -98,7 +98,7 @@ VCF-Fast now has a versioned CLI, release/install documentation, a changelog, ge
 
 Evidence:
 
-- `vcf-fast --version` is backed by the Cargo package version.
+- `variantflow --version` and the `vcf-fast` compatibility alias are backed by the Cargo package version.
 - `docs/release.md` documents source, Docker, htslib feature, public-data, and benchmark reproduction paths.
 - `docs/public-benchmark-table.md` is generated from tracked benchmark reports by `benchmark/generate_public_benchmark_table.py`.
 - `.github/workflows/release.yml` builds macOS/Linux release archives for version tags.

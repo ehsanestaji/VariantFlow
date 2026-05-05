@@ -1,6 +1,6 @@
-# VCF-Fast Release And Install Guide
+# VariantFlow Release And Install Guide
 
-VCF-Fast v1.4 carries the release-hardening surface forward while making native BGZF input acceleration the default for BGZF `.vcf.gz` reads. The project is still evidence-gated: the README and claim matrix should only be updated from tracked benchmark reports.
+VariantFlow, formerly VCF-Fast, carries the release-hardening surface forward while making native BGZF input acceleration the default for BGZF `.vcf.gz` reads. The project is still evidence-gated: the README and claim matrix should only be updated from tracked benchmark reports.
 
 ## Install From Source
 
@@ -15,24 +15,27 @@ Build the default native engine:
 
 ```bash
 cargo build --release
-./target/release/vcf-fast --version
+./target/release/variantflow --version
 ```
 
 Install into Cargo's binary directory:
 
 ```bash
 cargo install --path .
+variantflow --version
 vcf-fast --version
 ```
+
+`vcf-fast` is kept as a compatibility alias for at least one release after the VariantFlow rename.
 
 ## Docker
 
 The Docker image includes Rust, `bcftools`, `tabix`, `hyperfine`, Python, and htslib build prerequisites used by the benchmark harness.
 
 ```bash
-docker build -t vcf-fast .
-docker run --rm -v "$PWD:/work" vcf-fast make verify
-docker run --rm -v "$PWD:/work" vcf-fast cargo test --features htslib-static
+docker build -t variantflow .
+docker run --rm -v "$PWD:/work" variantflow make verify
+docker run --rm -v "$PWD:/work" variantflow cargo test --features htslib-static
 ```
 
 ## Compatibility Build
@@ -41,9 +44,9 @@ The default build stays dependency-light and Rust-native. Build with htslib only
 
 ```bash
 cargo build --release --features htslib-static
-./target/release/vcf-fast filter input.bcf --where "QUAL > 30" -o output.vcf
-./target/release/vcf-fast filter input.vcf.gz --region chr22:1-20000000 --where "QUAL > 30" -o output.vcf
-./target/release/vcf-fast filter input.vcf --where "QUAL > 30" --compression bgzf -o output.vcf.gz
+./target/release/variantflow filter input.bcf --where "QUAL > 30" -o output.vcf
+./target/release/variantflow filter input.vcf.gz --region chr22:1-20000000 --where "QUAL > 30" -o output.vcf
+./target/release/variantflow filter input.vcf --where "QUAL > 30" --compression bgzf -o output.vcf.gz
 ```
 
 ## Benchmark Prerequisites
@@ -59,8 +62,8 @@ Local benchmark reproduction expects:
 The easiest fully provisioned path is Docker:
 
 ```bash
-docker build -t vcf-fast .
-docker run --rm -v "$PWD:/work" vcf-fast bash -lc 'make verify && make bench-v12'
+docker build -t variantflow .
+docker run --rm -v "$PWD:/work" variantflow bash -lc 'make verify && make bench-v12'
 ```
 
 ## Public Data
@@ -97,7 +100,7 @@ git diff --check
 
 Then confirm:
 
-- `vcf-fast --version` prints the intended version.
+- `variantflow --version` and `vcf-fast --version` print the intended version.
 - `README.md` quickstart works from a fresh checkout.
 - `docs/public-benchmark-table.md` was regenerated from tracked reports.
 - `docs/contribution-map.md` does not contain unmeasured speed claims.
@@ -105,4 +108,4 @@ Then confirm:
 
 ## Distribution And Naming TODO
 
-The Bioconda release and professional rename migration are tracked in the top-level `TODO.md`. Do not publish a Bioconda recipe until the final package/binary name is chosen, checked for collisions, and represented by a tagged source release with deterministic `cargo install --locked --no-track --root $PREFIX --path .` build behavior.
+The Bioconda release and professional rename migration are tracked in the top-level `TODO.md` and `docs/rename-plan.md`. Do not publish a Bioconda recipe until the final package/binary name is checked for collisions and represented by a tagged source release with deterministic `cargo install --locked --no-track --root $PREFIX --path .` build behavior.
