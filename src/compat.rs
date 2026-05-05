@@ -1,3 +1,4 @@
+use std::env;
 use std::fmt;
 use std::path::Path;
 use std::str::FromStr;
@@ -135,6 +136,33 @@ pub fn select_backend(
         backend: Backend::Native,
         reason: None,
     }
+}
+
+pub const HTSLIB_THREADS_ENV: &str = "VCF_FAST_HTSLIB_THREADS";
+
+pub fn htslib_threads_from_env() -> Result<Option<usize>> {
+    match env::var(HTSLIB_THREADS_ENV) {
+        Ok(raw) => parse_htslib_threads(Some(raw.as_str())),
+        Err(env::VarError::NotPresent) => Ok(None),
+        Err(env::VarError::NotUnicode(_)) => {
+            bail!("{HTSLIB_THREADS_ENV} must be valid UTF-8")
+        }
+    }
+}
+
+pub fn parse_htslib_threads(raw: Option<&str>) -> Result<Option<usize>> {
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+
+    let value = raw
+        .parse::<usize>()
+        .map_err(|_| anyhow::anyhow!("{HTSLIB_THREADS_ENV} must be a positive integer"))?;
+    if value == 0 {
+        bail!("{HTSLIB_THREADS_ENV} must be a positive integer");
+    }
+
+    Ok(Some(value))
 }
 
 fn parse_region_coordinate(raw: &str, full_region: &str) -> Result<u64> {
