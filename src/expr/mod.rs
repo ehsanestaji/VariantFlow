@@ -34,8 +34,26 @@ pub(crate) struct RequiredFormatFields {
 }
 
 impl RequiredFields {
+    #[allow(dead_code)]
+    pub(crate) fn requires_info(&self) -> bool {
+        self.info
+    }
+
     pub(crate) fn requires_format(&self) -> bool {
         self.format.gt || self.format.dp || self.format.gq
+    }
+
+    fn add_info_key(&mut self, _key: &[u8]) {
+        self.info = true;
+    }
+
+    fn add_format_key(&mut self, key: &[u8]) {
+        match key {
+            b"GT" => self.format.gt = true,
+            b"DP" => self.format.dp = true,
+            b"GQ" => self.format.gq = true,
+            _ => {}
+        }
     }
 }
 
@@ -46,17 +64,14 @@ struct Comparison {
     literal: Literal,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Field {
     Chrom,
     Pos,
     Qual,
     Filter,
-    Dp,
-    Af,
-    FormatGt,
-    FormatDp,
-    FormatGq,
+    Info(Vec<u8>),
+    Format(Vec<u8>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,6 +112,9 @@ pub(crate) trait EvalContext {
     fn pos(&self) -> Option<u64>;
     fn qual(&self) -> Option<f64>;
     fn filter(&self) -> Option<&[u8]>;
+    fn info_value(&self, _key: &[u8]) -> Option<&[u8]> {
+        None
+    }
     fn info_number_any(&self, key: &[u8], predicate: &mut dyn FnMut(f64) -> bool) -> bool;
     fn format_gt(&self) -> Option<&[u8]>;
     fn format_dp(&self) -> Option<&[u8]>;
@@ -138,6 +156,10 @@ impl Expression {
         self.evaluate_context(record)
     }
 
+    pub fn evaluate_record(&self, record: &EvalRecord<'_>) -> bool {
+        self.evaluate(record)
+    }
+
     pub(crate) fn evaluate_context(&self, record: &impl EvalContext) -> bool {
         self.root.evaluate(record)
     }
@@ -146,6 +168,24 @@ impl Expression {
         let mut required = RequiredFields::default();
         self.root.collect_required_fields(&mut required);
         required
+    }
+}
+
+impl<'a> EvalRecord<'a> {
+    pub fn new(chrom: &'a [u8], pos: Option<u64>, qual: Option<f64>, filter: &'a [u8]) -> Self {
+        Self {
+            chrom: std::str::from_utf8(chrom).unwrap_or(""),
+            pos: pos.unwrap_or_default(),
+            qual,
+            filter: std::str::from_utf8(filter).unwrap_or(""),
+            info: ".",
+            format: FormatValues::default(),
+        }
+    }
+
+    pub fn with_info(mut self, info: &'a [u8]) -> Self {
+        self.info = std::str::from_utf8(info).unwrap_or(".");
+        self
     }
 }
 
@@ -171,7 +211,7 @@ impl ExprNode {
 
 impl Comparison {
     fn evaluate(&self, record: &impl EvalContext) -> bool {
-        match (self.field, &self.literal) {
+        match (&self.field, &self.literal) {
             (Field::Chrom, Literal::String(expected)) => record
                 .chrom()
                 .is_some_and(|actual| compare_bytes(actual, expected.as_bytes(), self.op)),
@@ -184,21 +224,23 @@ impl Comparison {
             (Field::Qual, Literal::Number(expected)) => record
                 .qual()
                 .is_some_and(|actual| compare_numbers(actual, *expected, self.op)),
-            (Field::Dp, Literal::Number(expected)) => {
-                info_number_any(record, b"DP", *expected, self.op)
+            (Field::Info(key), Literal::Number(expected)) => {
+                let mut predicate = |actual| compare_numbers(actual, *expected, self.op);
+                record.info_number_any(key, &mut predicate)
             }
-            (Field::Af, Literal::Number(expected)) => {
-                info_number_any(record, b"AF", *expected, self.op)
-            }
-            (Field::FormatGt, Literal::String(expected)) => record
+            (Field::Info(key), Literal::String(expected)) => record
+                .info_value(key)
+                .filter(|value| is_present_value(value))
+                .is_some_and(|actual| compare_bytes(actual, expected.as_bytes(), self.op)),
+            (Field::Format(key), Literal::String(expected)) if key == b"GT" => record
                 .format_gt()
                 .and_then(parse_format_string_bytes)
                 .is_some_and(|actual| compare_bytes(actual, expected.as_bytes(), self.op)),
-            (Field::FormatDp, Literal::Number(expected)) => record
+            (Field::Format(key), Literal::Number(expected)) if key == b"DP" => record
                 .format_dp()
                 .and_then(parse_format_number_bytes)
                 .is_some_and(|actual| compare_numbers(actual, *expected, self.op)),
-            (Field::FormatGq, Literal::Number(expected)) => record
+            (Field::Format(key), Literal::Number(expected)) if key == b"GQ" => record
                 .format_gq()
                 .and_then(parse_format_number_bytes)
                 .is_some_and(|actual| compare_numbers(actual, *expected, self.op)),
@@ -207,16 +249,18 @@ impl Comparison {
     }
 
     fn collect_required_fields(&self, required: &mut RequiredFields) {
-        match self.field {
-            Field::Chrom => required.chrom = true,
-            Field::Pos => required.pos = true,
-            Field::Qual => required.qual = true,
-            Field::Filter => required.filter = true,
-            Field::Dp | Field::Af => required.info = true,
-            Field::FormatGt => required.format.gt = true,
-            Field::FormatDp => required.format.dp = true,
-            Field::FormatGq => required.format.gq = true,
-        }
+        mark_required_field(required, &self.field);
+    }
+}
+
+fn mark_required_field(required: &mut RequiredFields, field: &Field) {
+    match field {
+        Field::Chrom => required.chrom = true,
+        Field::Pos => required.pos = true,
+        Field::Qual => required.qual = true,
+        Field::Filter => required.filter = true,
+        Field::Info(key) => required.add_info_key(key),
+        Field::Format(key) => required.add_format_key(key),
     }
 }
 
@@ -237,12 +281,12 @@ impl EvalContext for EvalRecord<'_> {
         Some(self.filter.as_bytes())
     }
 
+    fn info_value(&self, key: &[u8]) -> Option<&[u8]> {
+        vcf::InfoView::scan(self.info.as_bytes()).value(key)
+    }
+
     fn info_number_any(&self, key: &[u8], predicate: &mut dyn FnMut(f64) -> bool) -> bool {
-        match key {
-            b"DP" => vcf::info_number_any(self.info, "DP", predicate),
-            b"AF" => vcf::info_number_any(self.info, "AF", predicate),
-            _ => false,
-        }
+        vcf::InfoView::scan(self.info.as_bytes()).number_any(key, predicate)
     }
 
     fn format_gt(&self) -> Option<&[u8]> {
@@ -277,9 +321,8 @@ fn compare_bytes(actual: &[u8], expected: &[u8], op: Operator) -> bool {
     }
 }
 
-fn info_number_any(record: &impl EvalContext, key: &[u8], expected: f64, op: Operator) -> bool {
-    let mut predicate = |actual| compare_numbers(actual, expected, op);
-    record.info_number_any(key, &mut predicate)
+fn is_present_value(value: &[u8]) -> bool {
+    !value.is_empty() && value != b"."
 }
 
 fn parse_format_number_bytes(value: &[u8]) -> Option<f64> {
@@ -346,20 +389,7 @@ impl Parser {
 
     fn parse_field(&mut self) -> Result<Field, ParseError> {
         match self.advance() {
-            Some(Token::Ident(value)) => match value.as_str() {
-                "CHROM" => Ok(Field::Chrom),
-                "POS" => Ok(Field::Pos),
-                "QUAL" => Ok(Field::Qual),
-                "FILTER" => Ok(Field::Filter),
-                "DP" | "INFO/DP" => Ok(Field::Dp),
-                "AF" | "INFO/AF" => Ok(Field::Af),
-                "FORMAT/GT" => Ok(Field::FormatGt),
-                "FORMAT/DP" => Ok(Field::FormatDp),
-                "FORMAT/GQ" => Ok(Field::FormatGq),
-                _ => Err(ParseError {
-                    message: format!("unsupported field '{value}'"),
-                }),
-            },
+            Some(Token::Ident(value)) => parse_field_name(&value),
             _ => Err(self.error("expected field")),
         }
     }
@@ -416,6 +446,26 @@ impl Parser {
         ParseError {
             message: message.to_string(),
         }
+    }
+}
+
+fn parse_field_name(name: &str) -> Result<Field, ParseError> {
+    match name {
+        "CHROM" => Ok(Field::Chrom),
+        "POS" => Ok(Field::Pos),
+        "QUAL" => Ok(Field::Qual),
+        "FILTER" => Ok(Field::Filter),
+        "DP" => Ok(Field::Info(b"DP".to_vec())),
+        "AF" => Ok(Field::Info(b"AF".to_vec())),
+        _ if name.starts_with("INFO/") && name.len() > "INFO/".len() => {
+            Ok(Field::Info(name.as_bytes()["INFO/".len()..].to_vec()))
+        }
+        _ if name.starts_with("FORMAT/") && name.len() > "FORMAT/".len() => {
+            Ok(Field::Format(name.as_bytes()["FORMAT/".len()..].to_vec()))
+        }
+        _ => Err(ParseError {
+            message: format!("unsupported field '{name}'"),
+        }),
     }
 }
 
@@ -593,6 +643,10 @@ mod tests {
 
         fn filter(&self) -> Option<&[u8]> {
             Some(self.record.filter())
+        }
+
+        fn info_value(&self, key: &[u8]) -> Option<&[u8]> {
+            self.info.value(key)
         }
 
         fn info_number_any(&self, key: &[u8], predicate: &mut dyn FnMut(f64) -> bool) -> bool {
