@@ -129,7 +129,7 @@ The project ambition is to become the best practical VCF tool, but public langua
 
 ## Next Contribution Targets
 
-1. Optimize htslib-backed TSV/stats/BCF/BGZF paths or route less work through htslib.
+1. Complete v0.7 heavy-run benchmarking without giant plain IGSR intermediates and optimize htslib-backed TSV/stats/BCF/BGZF paths where measurements show low-risk wins.
 2. Add a heavy-run public benchmark mode for sample-rich IGSR 1M+ without huge plain intermediates.
 3. Expand FORMAT predicates beyond one selected sample.
 4. Arrow/Parquet export for repeated analytical workloads.
