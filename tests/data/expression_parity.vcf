@@ -1,0 +1,14 @@
+##fileformat=VCFv4.3
+##INFO=<ID=MQ,Number=1,Type=Float,Description="Mapping quality">
+##INFO=<ID=FS,Number=A,Type=Float,Description="Strand bias">
+##INFO=<ID=CSQ,Number=1,Type=String,Description="Consequence">
+##INFO=<ID=SOMATIC,Number=0,Type=Flag,Description="Somatic flag">
+##INFO=<ID=EMPTY,Number=1,Type=String,Description="Empty string">
+##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allelic depths">
+##FORMAT=<ID=FT,Number=1,Type=String,Description="Sample filter">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Sample depth">
+##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	HG002	HG003
+chr1	101	rs1	A	G	60	PASS	MQ=55;FS=12.5,8.2;CSQ=synonymous_variant;SOMATIC	AD:FT:DP:GQ	4,11:PASS:22:35	10,0:LowDP:10:20
+chr1	102	rs2	C	T	45	PASS	MQ=40;FS=30.0;CSQ=missense_variant	AD:FT:DP:GQ	9,1:LowDP:12:18	2,18:PASS:30:40
+chr1	103	rs3	G	GA	20	q10	MQ=.;EMPTY=;CSQ=.	AD:FT:DP:GQ	.:.:.:.	3,1:PASS:8:25

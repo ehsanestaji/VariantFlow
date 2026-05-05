@@ -245,6 +245,29 @@ fn v08_core_efficiency_report_tracks_required_fields() {
 }
 
 #[test]
+fn v09_expression_parity_report_tracks_required_fields() {
+    let report = std::fs::read_to_string("benchmark/reports/v09-expression-parity-benchmark.md")
+        .expect("read v0.9 report");
+
+    for required in [
+        "dataset source",
+        "dataset size",
+        "record count",
+        "exact VCF-Fast command",
+        "exact competitor command",
+        "competitor version",
+        "correctness result",
+        "runtime mean",
+        "speedup",
+        "variants per second",
+        "peak RSS",
+        "caveat",
+    ] {
+        assert!(report.contains(required), "missing {required}");
+    }
+}
+
+#[test]
 fn v06_reports_track_claim_matrix_and_required_fields() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let public_report =

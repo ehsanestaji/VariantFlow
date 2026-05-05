@@ -23,7 +23,13 @@ pub fn filter(
 ) -> Result<()> {
     let expr = parse_expression(where_expr)?;
     let required = expr.required_fields();
-    if required.requires_format() && sample.is_none() {
+    if required.requires_format_aggregates() {
+        bail!("ANY/ALL FORMAT predicates are not implemented for htslib-backed input in v0.9");
+    }
+    if required.has_non_legacy_format_keys() {
+        bail!("arbitrary FORMAT predicates are not implemented for htslib-backed input in v0.9");
+    }
+    if required.requires_selected_format() && sample.is_none() {
         bail!("FORMAT predicates require --sample <name>");
     }
 
@@ -31,11 +37,11 @@ pub fn filter(
         let mut reader = indexed_reader(input, region)?;
         apply_reader_threads(&mut reader)?;
         let header = Header::from_template(reader.header());
-        let sample_id = sample_id(reader.header(), sample, required)?;
+        let sample_id = sample_id(reader.header(), sample, &required)?;
         let mut writer = vcf_writer(output, &header, compression)?;
         apply_writer_threads(&mut writer)?;
         for_each_record(&mut reader, |record| {
-            if evaluate_record(record, required, sample_id, &expr)? {
+            if evaluate_record(record, &required, sample_id, &expr)? {
                 writer.write(record)?;
             }
             Ok(())
@@ -45,11 +51,11 @@ pub fn filter(
             .with_context(|| format!("failed to open input {}", input.display()))?;
         apply_reader_threads(&mut reader)?;
         let header = Header::from_template(reader.header());
-        let sample_id = sample_id(reader.header(), sample, required)?;
+        let sample_id = sample_id(reader.header(), sample, &required)?;
         let mut writer = vcf_writer(output, &header, compression)?;
         apply_writer_threads(&mut writer)?;
         for_each_record(&mut reader, |record| {
-            if evaluate_record(record, required, sample_id, &expr)? {
+            if evaluate_record(record, &required, sample_id, &expr)? {
                 writer.write(record)?;
             }
             Ok(())
@@ -156,7 +162,7 @@ fn for_each_record<R: Read>(
 fn sample_id(
     header: &rust_htslib::bcf::header::HeaderView,
     sample: Option<&str>,
-    required: RequiredFields,
+    required: &RequiredFields,
 ) -> Result<Option<usize>> {
     if !required.requires_format() {
         return Ok(None);
@@ -171,7 +177,7 @@ fn sample_id(
 
 fn evaluate_record(
     record: &Record,
-    required: RequiredFields,
+    required: &RequiredFields,
     sample_id: Option<usize>,
     expr: &crate::expr::Expression,
 ) -> Result<bool> {
@@ -185,32 +191,44 @@ fn evaluate_record(
     } else {
         String::new()
     };
-    let info = if required.info {
+    let info = if required.requires_info() {
         info_string(record)?
     } else {
         String::new()
     };
-    let gt = if required.format.gt {
+    let required_format = required.legacy_format_fields();
+    let gt = if required_format.gt {
         sample_id
             .and_then(|index| genotype_string(record, index).transpose())
             .transpose()?
     } else {
         None
     };
-    let dp = if required.format.dp {
+    let dp = if required_format.dp {
         sample_id
             .and_then(|index| format_integer_string(record, b"DP", index).transpose())
             .transpose()?
     } else {
         None
     };
-    let gq = if required.format.gq {
+    let gq = if required_format.gq {
         sample_id
             .and_then(|index| format_integer_string(record, b"GQ", index).transpose())
             .transpose()?
     } else {
         None
     };
+
+    let mut format = FormatValues::default();
+    if let Some(value) = gt.as_deref() {
+        format = format.with_gt(value.as_bytes());
+    }
+    if let Some(value) = dp.as_deref() {
+        format = format.with_dp(value.as_bytes());
+    }
+    if let Some(value) = gq.as_deref() {
+        format = format.with_gq(value.as_bytes());
+    }
 
     let eval = EvalRecord {
         chrom: &chrom,
@@ -226,11 +244,7 @@ fn evaluate_record(
         },
         filter: &filter,
         info: &info,
-        format: FormatValues {
-            gt: gt.as_deref(),
-            dp: dp.as_deref(),
-            gq: gq.as_deref(),
-        },
+        format,
     };
 
     Ok(expr.evaluate(&eval))

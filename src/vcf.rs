@@ -33,6 +33,7 @@ pub(crate) struct InfoView<'a> {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[allow(dead_code)]
 pub(crate) struct FormatValueBytes<'a> {
     pub(crate) gt: Option<&'a [u8]>,
     pub(crate) dp: Option<&'a [u8]>,
@@ -186,6 +187,27 @@ impl<'a> RecordView<'a> {
         }
 
         None
+    }
+
+    pub(crate) fn for_each_sample_column(&self, mut visit: impl FnMut(&'a [u8])) {
+        let mut column = CORE_FIELD_COUNT;
+        let mut start = self.fields[CORE_FIELD_COUNT - 1].1.saturating_add(1);
+
+        while start <= self.line_end {
+            let end = memchr(b'\t', &self.line[start..self.line_end])
+                .map_or(self.line_end, |offset| start + offset);
+
+            if column >= 9 {
+                visit(trim_line_end(&self.line[start..end]));
+            }
+
+            if end == self.line_end {
+                break;
+            }
+
+            start = end + 1;
+            column += 1;
+        }
     }
 
     pub(crate) fn pos_u64(&self) -> Result<u64> {
@@ -467,6 +489,7 @@ pub(crate) fn column_value(line: &str, target_column: usize) -> Option<&str> {
     None
 }
 
+#[allow(dead_code)]
 pub(crate) fn selected_format_values_bytes<'sample>(
     format: &[u8],
     sample: &'sample [u8],
@@ -527,7 +550,7 @@ pub fn info_value<'a>(info: &'a str, key: &str) -> Option<&'a str> {
     found
 }
 
-fn format_value_bytes<'sample>(
+pub(crate) fn format_value_bytes<'sample>(
     format: &[u8],
     sample: &'sample [u8],
     key: &[u8],
