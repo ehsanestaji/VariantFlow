@@ -1,0 +1,16 @@
+\section{Discussion}
+
+VariantFlow's evidence supports workflow-specific claims. It is currently best
+positioned for selective native streaming filters over VCF/BGZF inputs and for
+export-once, query-many analytical workflows through Parquet. The project does
+not claim universal replacement of bcftools, HTSlib, GATK, or VCFtools.
+Instead, it documents where VariantFlow beats, matches, or complements existing
+tools.
+
+Several limitations remain. Public FORMAT-heavy evidence is still pending,
+BCF/region TSV compatibility paths are not the primary speed claim, and some
+macOS benchmark rows lack reproducible peak RSS measurements. Future work will
+expand public cohort evidence, broaden expression compatibility, improve BCF
+and indexed-region export paths, and add additional analytical baselines such
+as Polars and PyArrow.
+

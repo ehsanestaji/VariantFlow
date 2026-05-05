@@ -1,0 +1,18 @@
+\begin{table}[ht]
+\centering
+\small
+\caption{Selected correctness-matched VariantFlow benchmark evidence. Each row
+is sourced from tracked reports in the repository.}
+\label{tab:benchmark-summary}
+\begin{tabularx}{\linewidth}{p{0.20\linewidth}p{0.22\linewidth}X p{0.21\linewidth}}
+\toprule
+Workflow & Dataset & Correctness check & Measured result \\
+\midrule
+Public BGZF QUAL filter & Bounded IGSR chr22 BGZF & Core records matched bcftools & 13.44--13.47x faster than bcftools \\
+Auto BGZF input & Bounded IGSR chr22 BGZF & Native outputs matched byte-for-byte & 2.26--2.39x faster than single-thread native \\
+FORMAT aggregate filter & Stress 100k/1M AD predicate & Parallel output matched default and bcftools & 4.33--5.27x faster than bcftools \\
+DuckDB repeated queries & IGSR chr22 Parquet export & Predicate and grouped results matched bcftools & 3.18--25.67x faster amortized \\
+DuckDB query-only & IGSR chr22 Parquet export & Query results matched bcftools & 29.27--497.74x faster query-only \\
+\bottomrule
+\end{tabularx}
+\end{table}

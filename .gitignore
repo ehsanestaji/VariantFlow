@@ -3,3 +3,5 @@
 !/tests/output/.gitkeep
 __pycache__/
 *.py[cod]
+/paper/paper.pdf
+/paper/jats/
