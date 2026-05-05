@@ -103,7 +103,7 @@ Evidence:
 | Typed expression AST | `tests/expr_tests.rs` | N/A | `&&`, `||`, parentheses, string/numeric comparisons, selected-sample `FORMAT/GT`, `FORMAT/DP`, and `FORMAT/GQ` | Multi-sample FORMAT predicates and arbitrary FORMAT keys not supported |
 | Variant-key diff | `tests/stats_diff_cli_tests.rs` | planned `bcftools isec/query` | Shared/unique key TSV works | No normalized multiallelic decomposition |
 | TSV conversion | `tests/convert_cli_tests.rs` and benchmark harness | `bcftools query` | Stable TSV rows checked; synthetic 1M `1.57x`; GIAB 1M `1.13x`; IGSR 10k `1.22x` | Mixed public results: GIAB 10k/100k, IGSR 100k, and indexed-region TSV trail bcftools |
-| Public data benchmarking | `benchmark/reports/public-dataset-benchmark.md`, `benchmark/reports/public-whole-cohort-benchmark.md` | `bcftools filter`, `bcftools query`, `bcftools stats` | GIAB HG002 and IGSR chr22 measured with correctness, runtime, throughput, and RSS reporting | Large sample-rich IGSR 1M needs a heavy-run mode |
+| Public data benchmarking | `benchmark/reports/public-dataset-benchmark.md`, `benchmark/reports/public-whole-cohort-benchmark.md` | `bcftools filter`, `bcftools query`, `bcftools stats` | GIAB HG002 and IGSR chr22 measured with correctness, runtime, throughput, and RSS reporting | Full sample-rich IGSR heavy benchmark still needs to be run and published with measured v0.7 report rows |
 | Compatibility interop | `tests/compatibility_cli_tests.rs`, `tests/compatibility_unit_tests.rs`, `benchmark/reports/compatibility-benchmark.md` | `bcftools`, `tabix`, HTSlib | BCF input, indexed region reads, and BGZF output are feature-gated, tested, and benchmarked | Correct but slower than bcftools in measured compatibility cases |
 
 ## Claims Not Yet Proven
