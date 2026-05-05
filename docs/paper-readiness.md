@@ -6,7 +6,6 @@ JOSS manuscript lives in `paper/paper.md`; references live in
 
 ## Current blockers
 
-- Choose and add an OSI-approved license at the repository root.
 - Confirm the final author list, affiliations, funding statement, conflicts of
   interest, and corresponding author.
 - Confirm public repository history is sufficient for JOSS screening.
@@ -14,7 +13,10 @@ JOSS manuscript lives in `paper/paper.md`; references live in
 - Archive the release through Zenodo or another accepted archive and record a
   Zenodo DOI if submitting to JOSS after review acceptance.
 - Replace Bioconda recipe placeholders after the tagged release exists:
-  source URL, `sha256`, SPDX license, owner, and maintainer handle.
+  source URL, `sha256`, owner, and maintainer handle.
+
+The project license is now `MIT OR Apache-2.0`, with the root notice in
+`LICENSE` and full license texts in `LICENSE-MIT` and `LICENSE-APACHE`.
 
 ## Submission checklist
 
@@ -47,7 +49,8 @@ JOSS manuscript lives in `paper/paper.md`; references live in
 
 - Full author names.
 - ORCID identifiers, if available.
-- Institutional affiliations.
+- Institutional affiliations: `Umeå Plant Science Center` is recorded in the
+  paper metadata.
 - Funding and grant numbers, if any.
 - Conflict-of-interest statement.
 - Contributor acknowledgements.
@@ -66,4 +69,3 @@ JOSS submission should use a public tagged release and a repository state that
 reviewers can clone, build, test, and inspect. If public-history screening is
 not yet satisfied, keep this paper as a ready draft and submit after sufficient
 open development history exists.
-

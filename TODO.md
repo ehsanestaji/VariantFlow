@@ -15,7 +15,7 @@ Goal: publish VariantFlow through Bioconda after the source release is tagged.
 - Use the Bioconda Rust recipe pattern already captured in the scaffold: `{{ compiler('rust') }}`, `cargo-bundle-licenses`, and `cargo install -v --locked --no-track --root $PREFIX --path .`.
 - Include command tests already captured in `packaging/bioconda/variantflow/run_test.sh`: `variantflow --version`, `vcf-fast --version`, a tiny `filter` fixture, and a tiny `convert --to tsv` fixture.
 - Keep test commands dependent only on runtime dependencies so Bioconda's clean mulled test can pass.
-- Include SPDX license metadata and generated third-party license metadata.
+- Include SPDX license metadata and generated third-party license metadata. Project license is `MIT OR Apache-2.0`.
 - Document optional htslib behavior carefully. If the Bioconda package builds the default native engine only, say so; if it builds `htslib-static`, test `.bcf`, `--region`, and BGZF output in the recipe or release notes.
 - Test locally with `bioconda-utils` and a clean container before opening the PR.
 - Open a PR to `bioconda/bioconda-recipes` only after `make verify`, `cargo test --features htslib-static`, release artifacts, and name migration docs are green.

@@ -28,9 +28,11 @@ test:
 
 about:
   home: https://github.com/OWNER/VariantFlow
-  license: TODO
+  license: MIT OR Apache-2.0
   license_file:
     - LICENSE
+    - LICENSE-MIT
+    - LICENSE-APACHE
     - THIRDPARTY.yml
   summary: Selective execution engine for VCF/BCF variant workflows
   description: |

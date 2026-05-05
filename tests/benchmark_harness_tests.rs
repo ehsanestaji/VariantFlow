@@ -658,6 +658,10 @@ fn release_todo_tracks_bioconda_and_professional_rename() {
 #[test]
 fn bioconda_packaging_prep_tracks_recipe_template_and_release_blockers() {
     let root = repo_root();
+    let cargo_toml = fs::read_to_string(root.join("Cargo.toml")).unwrap();
+    let license = fs::read_to_string(root.join("LICENSE")).unwrap();
+    let license_mit = fs::read_to_string(root.join("LICENSE-MIT")).unwrap();
+    let license_apache = fs::read_to_string(root.join("LICENSE-APACHE")).unwrap();
     let makefile = fs::read_to_string(root.join("Makefile")).unwrap();
     let meta = fs::read_to_string(root.join("packaging/bioconda/variantflow/meta.yaml")).unwrap();
     let build = fs::read_to_string(root.join("packaging/bioconda/variantflow/build.sh")).unwrap();
@@ -668,6 +672,10 @@ fn bioconda_packaging_prep_tracks_recipe_template_and_release_blockers() {
 
     assert!(makefile.contains("bioconda-recipe-check:"));
     assert!(makefile.contains("packaging/check_bioconda_recipe.py"));
+    assert!(cargo_toml.contains("license = \"MIT OR Apache-2.0\""));
+    assert!(license.contains("MIT OR Apache-2.0"));
+    assert!(license_mit.contains("MIT License"));
+    assert!(license_apache.contains("Apache License"));
 
     for required in [
         "{% set name = \"variantflow\" %}",
@@ -675,8 +683,10 @@ fn bioconda_packaging_prep_tracks_recipe_template_and_release_blockers() {
         "sha256: TODO_RELEASE_SHA256",
         "cargo-bundle-licenses",
         "{{ compiler('rust') }}",
-        "license: TODO",
+        "license: MIT OR Apache-2.0",
         "license_file:",
+        "LICENSE-MIT",
+        "LICENSE-APACHE",
         "THIRDPARTY.yml",
         "variantflow --version",
         "vcf-fast --version",
@@ -709,9 +719,9 @@ fn bioconda_packaging_prep_tracks_recipe_template_and_release_blockers() {
 
     for required in [
         "Current Blockers",
-        "final SPDX license",
         "tagged GitHub source release",
         "sha256",
+        "MIT OR Apache-2.0",
         "Exact-name check on 2026-05-06",
         "bioconda/variantflow: 404",
         "crates/variantflow: 404",
@@ -724,7 +734,9 @@ fn bioconda_packaging_prep_tracks_recipe_template_and_release_blockers() {
 
     for required in [
         "TODO_RELEASE_SHA256",
-        "license: TODO",
+        "license: MIT OR Apache-2.0",
+        "LICENSE-MIT",
+        "LICENSE-APACHE",
         "variantflow --version",
         "cargo install -v --locked --no-track",
     ] {
@@ -784,7 +796,8 @@ fn joss_paper_scaffold_tracks_evidence_and_submission_blockers() {
     for required in [
         "JOSS Submission Readiness",
         "Current blockers",
-        "OSI-approved license",
+        "MIT OR Apache-2.0",
+        "Umeå Plant Science Center",
         "public repository history",
         "tagged release",
         "Zenodo DOI",

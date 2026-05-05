@@ -10,7 +10,7 @@ authors:
   - name: "Ehsan"
     affiliation: 1
 affiliations:
-  - name: "Independent researcher"
+  - name: "Umeå Plant Science Center"
     index: 1
 date: 2026-05-06
 bibliography: paper.bib
