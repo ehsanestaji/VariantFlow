@@ -1,8 +1,8 @@
-# v0.7 Heavy-Run And Htslib Optimization Benchmark
+# v0.7 Heavy-Run And HTSlib Optimization Benchmark
 
 ## Status
 
-Tiny `public-heavy` smoke was not run because cached IGSR public data or required local benchmark tools were unavailable. No v0.7 performance claim is made.
+Tiny `public-heavy` smoke was attempted with `VCF_FAST_BENCH_MODE=public-heavy VCF_FAST_BENCH_SIZES="100" VCF_FAST_BENCH_RUNS=1 VCF_FAST_BENCH_WARMUP=0 make bench-smoke`. Cached public data exists in this environment, but host `bcftools` is unavailable on `PATH`; the command failed clearly with `bcftools is required for VCF_FAST_BENCH_MODE=public-heavy`. No v0.7 performance claim is made.
 
 ## Required Report Fields
 
