@@ -235,38 +235,52 @@ build_public_heavy_dataset() {
   require_tool bgzip
   require_tool tabix
 
-  local temp_plain="${output%.gz}.plain.tmp.vcf"
+  local count_file="${output}.record-count.tmp"
+  rm -f "$count_file"
 
-  if ! {
+  set +e
+  {
     bcftools view -h "$source"
-    bcftools view -H -r "$region" "$source" | awk -v limit="$records" 'NR <= limit'
-  } >"$temp_plain"; then
-    echo "failed to stage public-heavy records from $source region $region" >&2
-    rm -f "$temp_plain"
-    return 2
-  fi
+    (
+      set +o pipefail
+      bcftools view -H -r "$region" "$source" \
+        | awk -v limit="$records" -v count_file="$count_file" '
+            NR <= limit { print; count++ }
+            NR == limit { exit }
+            END {
+              print count + 0 > count_file
+              if ((count + 0) == 0) {
+                exit 77
+              }
+            }
+          '
+    )
+  } | bgzip -c >"$output"
+  local pipeline_status=("${PIPESTATUS[@]}")
+  set -e
 
-  if ! awk 'BEGIN { found = 0 } !/^#/ { found = 1 } END { exit found ? 0 : 1 }' "$temp_plain"; then
+  if [[ "${pipeline_status[0]}" -eq 77 ]]; then
     echo "region $region produced no records from $source; set VCF_FAST_HEAVY_REGION to a matching indexed region" >&2
-    rm -f "$temp_plain"
+    rm -f "$output" "$count_file"
+    return 2
+  fi
+  if [[ "${pipeline_status[0]}" -ne 0 || "${pipeline_status[1]}" -ne 0 ]]; then
+    echo "failed to stage public-heavy records from $source region $region" >&2
+    rm -f "$output" "$count_file"
     return 2
   fi
 
-  if ! assert_plain_artifact_under_cap "$temp_plain" "$HEAVY_MAX_PLAIN_BYTES"; then
-    return 77
-  fi
-
-  if ! bgzip -c "$temp_plain" >"$output"; then
-    echo "failed to bgzip public-heavy dataset $output" >&2
-    rm -f "$temp_plain"
+  if [[ ! -s "$count_file" || "$(cat "$count_file")" == "0" ]]; then
+    echo "region $region produced no records from $source; set VCF_FAST_HEAVY_REGION to a matching indexed region" >&2
+    rm -f "$output" "$count_file"
     return 2
   fi
   if ! tabix -f -p vcf "$output"; then
     echo "failed to index public-heavy dataset $output" >&2
-    rm -f "$temp_plain"
+    rm -f "$output" "$count_file"
     return 2
   fi
-  rm -f "$temp_plain"
+  rm -f "$count_file"
 }
 
 sort_vcf_for_indexing() {

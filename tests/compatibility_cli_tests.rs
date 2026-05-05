@@ -293,8 +293,14 @@ fn bcf_stats_observes_qual_and_af_without_vcf_text_reconstruction() {
 
     let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
     assert_eq!(json["variants"], 5);
+    assert_eq!(json["snps"], 6);
+    assert_eq!(json["indels"], 0);
     assert_eq!(json["qual"]["count"], 4);
+    assert_eq!(json["qual"]["min"], 10.0);
+    assert_eq!(json["qual"]["max"], 60.0);
     assert_eq!(json["af"]["count"], 5);
+    assert!((json["af"]["min"].as_f64().unwrap() - 0.005).abs() < 0.000001);
+    assert_eq!(json["af"]["max"], 0.5);
     assert_eq!(json["missing_filter_values"], 0);
 }
 

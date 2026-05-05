@@ -149,9 +149,27 @@ fn public_heavy_mode_does_not_reuse_plain_public_whole_builder() {
     assert!(!heavy_builder.contains("build_public_small_dataset"));
     assert!(heavy_builder.contains("bcftools view -h \"$source\""));
     assert!(heavy_builder.contains("bcftools view -H -r \"$region\" \"$source\""));
-    assert!(heavy_builder.contains("bgzip -c \"$temp_plain\" >\"$output\""));
+    assert!(heavy_builder.contains("| bgzip -c >\"$output\""));
     assert!(heavy_builder.contains("tabix -f -p vcf \"$output\""));
-    assert!(heavy_builder.contains("rm -f \"$temp_plain\""));
+    assert!(!heavy_builder.contains(".plain.tmp.vcf"));
+    assert!(!heavy_builder.contains("temp_plain"));
+}
+
+#[test]
+fn bench_heavy_defaults_to_balanced_large_tiers() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let makefile = std::fs::read_to_string(root.join("Makefile")).unwrap();
+
+    assert!(makefile.contains("bench-heavy:"));
+    assert!(makefile.contains("VCF_FAST_BENCH_SIZES=\"$${VCF_FAST_BENCH_SIZES:-100000 1000000}\""));
+}
+
+#[test]
+fn htslib_backend_avoids_full_vcf_reconstruction_in_tsv_and_stats_paths() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let backend = std::fs::read_to_string(root.join("src/htslib_backend.rs")).unwrap();
+
+    assert!(!backend.contains("to_vcf_string"));
 }
 
 #[test]

@@ -40,7 +40,7 @@ bench-public-region:
 	VCF_FAST_BENCH_MODE=public-region-repeated VCF_FAST_BENCH_REPORT="$${VCF_FAST_PUBLIC_REGION_REPORT:-tests/output/benchmark-results/public-region-repeated-benchmark.md}" VCF_FAST_BENCH_SIZES="$${VCF_FAST_PUBLIC_RECORD_TIERS:-10000 100000 1000000}" ./benchmark/run_benchmarks.sh
 
 bench-heavy:
-	VCF_FAST_BENCH_MODE=public-heavy ./benchmark/run_benchmarks.sh
+	VCF_FAST_BENCH_MODE=public-heavy VCF_FAST_BENCH_SIZES="$${VCF_FAST_BENCH_SIZES:-100000 1000000}" ./benchmark/run_benchmarks.sh
 
 bench-compat:
 	VCF_FAST_BENCH_MODE=compatibility VCF_FAST_BENCH_REPORT="$${VCF_FAST_COMPAT_REPORT:-tests/output/benchmark-results/compatibility-benchmark.md}" VCF_FAST_BENCH_SIZES="$${VCF_FAST_BENCH_SIZES:-10000 100000}" ./benchmark/run_benchmarks.sh

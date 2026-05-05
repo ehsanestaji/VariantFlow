@@ -1,6 +1,6 @@
 # VCF-Fast Compatibility Benchmark
 
-Status: v0.5 compatibility proof is implemented and v0.6 repeated local compatibility benchmarks are measured. This is still not a broad speed claim: the result is correctness-positive but performance-negative versus `bcftools` for the htslib-backed compatibility paths measured here.
+Status: v0.5 compatibility proof is implemented, v0.6 repeated local compatibility benchmarks are measured, and v0.7 optimized typed htslib TSV/stats paths. This is still not a broad speed claim: compatibility is correctness-positive, with mixed performance versus `bcftools` depending on path.
 
 ## Scope
 
@@ -72,6 +72,33 @@ Each repeated compatibility benchmark should report:
 | Indexed BCF region stats | local synthetic compatibility dataset | 1,248,532 | 100,000 | BCF | BGZF | JSON/text | `vcf-fast stats compatibility-100000.bcf --region 22:1-20000000 > fast.json` | `bcftools view -r 22:1-20000000 compatibility-100000.bcf &#124; bcftools stats - > bcftools.txt` | bcftools 1.21 | 0.008714s +/- 0.000581s vs 0.003138s +/- 0.000205s | 0.36x | 11,475,786 / 31,867,431 | 3,272 / 3,148 KB | matched overlapping record count | bcftools much faster |
 | BGZF output filter | local synthetic compatibility dataset | 4,521,517 | 100,000 | VCF | none | BGZF | `vcf-fast filter compatibility-100000.vcf --where "QUAL > 30" --compression bgzf -o fast.vcf.gz` | `bcftools filter -i 'QUAL>30' compatibility-100000.vcf -Oz -o bcftools.vcf.gz` | bcftools 1.21 | 0.085130s +/- 0.004199s vs 0.062655s +/- 0.000568s | 0.74x | 1,174,674 / 1,596,042 | 3,408 / 3,408 KB | matched filtered core records; output indexable | bcftools faster |
 
+## v0.7 Optimization Measurement Table
+
+Command:
+
+```bash
+VCF_FAST_BENCH_SIZES="100000 1000000" \
+VCF_FAST_BENCH_RUNS=3 \
+VCF_FAST_BENCH_WARMUP=1 \
+VCF_FAST_COMPAT_REPORT="tests/output/benchmark-results/v07-compatibility-after-optimization.md" \
+make bench-compat
+```
+
+v0.7 removes htslib TSV/stats full VCF text reconstruction and writes TSV cells directly from typed record fields. Correctness matched for every measured row below.
+
+| case | record count | competitor | correctness result | vcf-fast mean | competitor mean | speedup | current result |
+|---|---:|---|---|---:|---:|---:|---|
+| BCF input filter | 100,000 | `bcftools filter` | matched filtered core records | `0.021240s` | `0.035391s` | `1.67x` faster | faster, noisy competitor run |
+| BCF input TSV | 100,000 | `bcftools query -u` | matched normalized TSV rows | `0.063271s` | `0.034185s` | `0.54x` | improved but still slower |
+| Indexed VCF region filter | 100,000 | `bcftools view -r` + `bcftools filter` | matched filtered core records | `0.002633s` | `0.019879s` | `7.55x` faster | sub-5ms timing caveat |
+| Indexed BCF region stats | 100,000 | `bcftools view -r` + `bcftools stats` | matched overlapping record count | `0.008420s` | `0.005846s` | `0.69x` | slower on this noisy 100k run |
+| BGZF output filter | 100,000 | `bcftools filter -Oz` | matched filtered core records; output indexable | `0.065759s` | `0.066873s` | `1.02x` faster | near parity |
+| BCF input filter | 1,000,000 | `bcftools filter` | matched filtered core records | `0.166686s` | `0.174694s` | `1.05x` faster | near parity/slightly faster |
+| BCF input TSV | 1,000,000 | `bcftools query -u` | matched normalized TSV rows | `0.419674s` | `0.208067s` | `0.50x` | bcftools remains faster |
+| Indexed VCF region filter | 1,000,000 | `bcftools view -r` + `bcftools filter` | matched filtered core records | `0.021999s` | `0.027565s` | `1.25x` faster | faster |
+| Indexed BCF region stats | 1,000,000 | `bcftools view -r` + `bcftools stats` | matched overlapping record count | `0.017451s` | `0.018354s` | `1.05x` faster | near parity/slightly faster |
+| BGZF output filter | 1,000,000 | `bcftools filter -Oz` | matched filtered core records; output indexable | `0.571114s` | `0.527536s` | `0.92x` | bcftools slightly faster |
+
 ## Competitor Commands
 
 Filter BCF input:
@@ -105,4 +132,4 @@ bcftools view fast.vcf.gz >/dev/null
 
 ## Current Caveat
 
-v0.6 proves compatibility behavior, indexability, and correctness for measured BCF/BGZF/region cases. It also shows that the current htslib-backed path is slower than `bcftools` for these compatibility workloads. The next optimization target is reducing htslib conversion/reconstruction overhead or routing only the minimal necessary compatibility operations through htslib.
+v0.7 improves compatibility behavior from uniformly slower to mixed: BCF filter, indexed region filter, indexed BCF stats, and BGZF output are now near parity or faster in some measured tiers. BCF TSV remains the clearest compatibility gap: direct typed TSV writing reduced overhead substantially, but `bcftools query` is still about `2.02x` faster at 1M on the synthetic BCF benchmark.
