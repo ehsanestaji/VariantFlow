@@ -560,3 +560,94 @@ fn sample_argument_is_allowed_for_site_only_filters() {
         .assert()
         .success();
 }
+
+#[test]
+fn parallel_native_filter_matches_default_output_byte_for_byte() {
+    let dir = tempdir().unwrap();
+    let default_output = dir.path().join("default.vcf");
+    let parallel_output = dir.path().join("parallel.vcf");
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            fixture("tests/data/expression_parity.vcf")
+                .to_str()
+                .unwrap(),
+            "--where",
+            "ANY(FORMAT/AD > 15) || INFO/MQ >= 50",
+            "-o",
+            default_output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .env("VCF_FAST_NATIVE_FILTER_THREADS", "4")
+        .env("VCF_FAST_NATIVE_FILTER_BATCH_RECORDS", "2")
+        .args([
+            "filter",
+            fixture("tests/data/expression_parity.vcf")
+                .to_str()
+                .unwrap(),
+            "--where",
+            "ANY(FORMAT/AD > 15) || INFO/MQ >= 50",
+            "-o",
+            parallel_output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    assert_eq!(
+        fs::read(default_output).unwrap(),
+        fs::read(parallel_output).unwrap()
+    );
+}
+
+#[test]
+fn parallel_native_filter_rejects_invalid_thread_env() {
+    let dir = tempdir().unwrap();
+    let output = dir.path().join("invalid.vcf");
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .env("VCF_FAST_NATIVE_FILTER_THREADS", "0")
+        .args([
+            "filter",
+            fixture("tests/data/example.vcf").to_str().unwrap(),
+            "--where",
+            "QUAL > 30",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "VCF_FAST_NATIVE_FILTER_THREADS must be a positive integer",
+        ));
+}
+
+#[test]
+fn parallel_native_filter_rejects_invalid_batch_env() {
+    let dir = tempdir().unwrap();
+    let output = dir.path().join("invalid-batch.vcf");
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .env("VCF_FAST_NATIVE_FILTER_THREADS", "2")
+        .env("VCF_FAST_NATIVE_FILTER_BATCH_RECORDS", "0")
+        .args([
+            "filter",
+            fixture("tests/data/example.vcf").to_str().unwrap(),
+            "--where",
+            "QUAL > 30",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "VCF_FAST_NATIVE_FILTER_BATCH_RECORDS must be a positive integer",
+        ));
+}

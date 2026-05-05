@@ -429,6 +429,56 @@ fn v10_columnar_workflow_benchmark_tracks_repeated_query_evidence() {
 }
 
 #[test]
+fn v11_parallel_native_filter_benchmark_tracks_ordered_parallel_evidence() {
+    let script = std::fs::read_to_string("benchmark/run_v11_parallel_filter_benchmarks.sh")
+        .expect("read v1.1 parallel native filter benchmark script");
+    let makefile = std::fs::read_to_string("Makefile").expect("read Makefile");
+    let report =
+        std::fs::read_to_string("benchmark/reports/v11-parallel-native-filter-benchmark.md")
+            .expect("read v1.1 parallel native filter report");
+    let normalized_report = report.to_lowercase();
+
+    for required in [
+        "VCF_FAST_NATIVE_FILTER_THREADS",
+        "VCF_FAST_NATIVE_FILTER_BATCH_RECORDS",
+        "parallel native",
+        "default native",
+        "bcftools filter",
+        "matches default native and bcftools filtered core records",
+        "line-preserving",
+        "hyperfine",
+    ] {
+        assert!(script.contains(required), "missing script text {required}");
+    }
+
+    assert!(makefile.contains("bench-v11-parallel:"));
+    assert!(makefile.contains("run_v11_parallel_filter_benchmarks.sh"));
+
+    for required in [
+        "dataset source",
+        "record count",
+        "exact default command",
+        "exact parallel command",
+        "exact competitor command",
+        "correctness result",
+        "default mean/stddev",
+        "parallel mean/stddev",
+        "bcftools mean/stddev",
+        "parallel vs default",
+        "parallel vs bcftools",
+        "variants/sec",
+        "peak RSS",
+        "claim decision",
+        "caveat",
+    ] {
+        assert!(
+            normalized_report.contains(&required.to_lowercase()),
+            "missing report field {required}"
+        );
+    }
+}
+
+#[test]
 fn v06_reports_track_claim_matrix_and_required_fields() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let public_report =
