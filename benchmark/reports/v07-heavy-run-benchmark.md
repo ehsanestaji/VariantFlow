@@ -2,7 +2,35 @@
 
 ## Status
 
-Tiny `public-heavy` smoke was attempted with `VCF_FAST_BENCH_MODE=public-heavy VCF_FAST_BENCH_SIZES="100" VCF_FAST_BENCH_RUNS=1 VCF_FAST_BENCH_WARMUP=0 make bench-smoke`. Cached public data exists in this environment, but host `bcftools` is unavailable on `PATH`; the command failed clearly with `bcftools is required for VCF_FAST_BENCH_MODE=public-heavy`. No v0.7 performance claim is made.
+Bounded `public-heavy` 10k benchmark completed locally after installing host `bcftools 1.23.1` and `hyperfine 1.20.0`.
+
+Command:
+
+```bash
+VCF_FAST_BENCH_MODE=public-heavy \
+VCF_FAST_BENCH_SIZES="10000" \
+VCF_FAST_BENCH_RUNS=3 \
+VCF_FAST_BENCH_WARMUP=1 \
+VCF_FAST_HEAVY_MAX_PLAIN_BYTES=200000000 \
+VCF_FAST_BENCH_REPORT="tests/output/benchmark-results/v07-public-heavy-10k-benchmark.md" \
+make bench-smoke
+```
+
+This is a bounded 10k evidence run, not a broad v0.7 performance claim. Larger 100k/1M heavy tiers still need to be run and published.
+
+## Measured 10k Public-Heavy Results
+
+- Dataset: 1000 Genomes high-coverage chr22, region `chr22:1-20000000`
+- Staging cap: `200000000` bytes
+- Generated BGZF subset size: `3382499` bytes
+- Correctness: VCF-Fast matched `bcftools` for supported filter core records and normalized TSV rows.
+
+| case | competitor | correctness result | vcf-fast mean | competitor mean | speedup | caveat |
+|---|---|---|---:|---:|---:|---|
+| Heavy QUAL gzip input | `bcftools filter` | matched filtered core records | `0.089076s` | `0.285341s` | `3.20x` faster | 10k bounded subset only |
+| Heavy Convert TSV gzip input | `bcftools query -u` | matched normalized TSV rows | `0.107405s` | `0.065505s` | `0.61x` | `bcftools query` faster; TSV path remains an optimization target |
+
+An earlier 10k attempt with `VCF_FAST_HEAVY_MAX_PLAIN_BYTES=20000000` deferred correctly because the plain staging file would have been `139093224` bytes. That confirms the artifact cap prevents accidental giant intermediates.
 
 ## Required Report Fields
 
