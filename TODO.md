@@ -11,21 +11,21 @@ Goal: publish VariantFlow through Bioconda after the source release is tagged.
 - Verify `variantflow` is not already used in Bioconda, conda-forge, crates.io, GitHub, and common bioinformatics tool indexes immediately before opening the recipe PR.
 - Create a tagged GitHub source release and record the stable source tarball URL.
 - Compute and record the source `sha256`.
-- Add a Bioconda recipe under `bioconda-recipes/recipes/variantflow/meta.yaml`.
-- Use the Bioconda Rust recipe pattern: `{{ compiler('rust') }}`, `cargo-bundle-licenses`, and `cargo install -v --locked --no-track --root $PREFIX --path .`.
-- Include command tests such as `variantflow --version`, a tiny `filter` fixture, and a tiny `convert --to tsv` fixture.
-- Include `vcf-fast --version` only if the compatibility alias is shipped in the Bioconda package.
+- Recipe scaffold exists at `packaging/bioconda/variantflow/meta.yaml`; copy it to `bioconda-recipes/recipes/variantflow/meta.yaml` after replacing placeholders.
+- Use the Bioconda Rust recipe pattern already captured in the scaffold: `{{ compiler('rust') }}`, `cargo-bundle-licenses`, and `cargo install -v --locked --no-track --root $PREFIX --path .`.
+- Include command tests already captured in `packaging/bioconda/variantflow/run_test.sh`: `variantflow --version`, `vcf-fast --version`, a tiny `filter` fixture, and a tiny `convert --to tsv` fixture.
 - Keep test commands dependent only on runtime dependencies so Bioconda's clean mulled test can pass.
 - Include SPDX license metadata and generated third-party license metadata.
 - Document optional htslib behavior carefully. If the Bioconda package builds the default native engine only, say so; if it builds `htslib-static`, test `.bcf`, `--region`, and BGZF output in the recipe or release notes.
 - Test locally with `bioconda-utils` and a clean container before opening the PR.
 - Open a PR to `bioconda/bioconda-recipes` only after `make verify`, `cargo test --features htslib-static`, release artifacts, and name migration docs are green.
 
-Sources checked on 2026-05-05:
+Sources checked on 2026-05-06:
 
 - Bioconda contributor guide: https://bioconda.github.io/contributor/index.html
 - Bioconda recipe guidelines: https://bioconda.github.io/contributor/guidelines.html
 - Bioconda local testing guide: https://bioconda.github.io/contributor/building-locally.html
+- Local packaging note: `docs/bioconda-packaging.md`
 
 ## Professional Rename
 
