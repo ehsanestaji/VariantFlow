@@ -226,6 +226,11 @@ fn v08_core_efficiency_report_tracks_required_fields() {
     ] {
         assert!(report.contains(required), "missing report field: {required}");
     }
+
+    assert!(
+        report.contains("| case | dataset source | dataset shape | record count |"),
+        "measured results table should include dataset shape"
+    );
 }
 
 #[test]
