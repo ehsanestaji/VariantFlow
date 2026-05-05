@@ -1,6 +1,6 @@
-# VCF-Fast
+# VariantFlow
 
-VCF-Fast is a selective execution engine for post-calling variant operations. It treats VCF/BCF as exchange formats, avoids parsing unused fields, preserves original records where possible, and tracks correctness/performance against trusted tools such as bcftools.
+VariantFlow, formerly VCF-Fast, is a selective execution engine for post-calling variant operations. It treats VCF/BCF as exchange formats, avoids parsing unused fields, preserves original records where possible, and tracks correctness/performance against trusted tools such as bcftools.
 
 The current boost strategy is **Evidence First**: prove correctness and speed on reproducible synthetic and public datasets before claiming broader superiority or moving deeper into parallel, vectorized, or columnar internals.
 
@@ -14,7 +14,7 @@ The current boost strategy is **Evidence First**: prove correctness and speed on
 
 ## Language And Engine Direction
 
-VCF-Fast stays Rust-first. Rust gives the project C-like performance, strict memory control, and safer concurrency without making memory safety a permanent tax on development speed. Optional C/htslib interop is used only for targeted compatibility work: BCF input, BGZF output, tabix-indexed region reads, and cases where htslib is clearly the fastest correct path.
+VariantFlow stays Rust-first. Rust gives the project C-like performance, strict memory control, and safer concurrency without making memory safety a permanent tax on development speed. Optional C/htslib interop is used only for targeted compatibility work: BCF input, BGZF output, tabix-indexed region reads, and cases where htslib is clearly the fastest correct path.
 
 ## Current Evidence
 
@@ -93,25 +93,25 @@ cargo build
 cargo test
 make verify
 
-vcf-fast --version
-vcf-fast filter input.vcf.gz --where "QUAL > 30" -o output.vcf.gz
-vcf-fast stats input.vcf.gz
-vcf-fast diff a.vcf.gz b.vcf.gz -o diff.tsv
-vcf-fast convert input.vcf.gz --to tsv -o variants.tsv
-vcf-fast convert input.vcf.gz --to parquet -o variants.parquet
+variantflow --version
+variantflow filter input.vcf.gz --where "QUAL > 30" -o output.vcf.gz
+variantflow stats input.vcf.gz
+variantflow diff a.vcf.gz b.vcf.gz -o diff.tsv
+variantflow convert input.vcf.gz --to tsv -o variants.tsv
+variantflow convert input.vcf.gz --to parquet -o variants.parquet
 
 cargo build --features htslib-static
-vcf-fast filter input.vcf.gz --region chr22:1-20000000 --where "QUAL > 30" -o output.vcf
-vcf-fast filter input.bcf --where "QUAL > 30" -o output.vcf
-vcf-fast filter input.vcf --where "QUAL > 30" --compression bgzf -o output.vcf.gz
-vcf-fast convert input.bcf --region chr22:1-20000000 --to tsv -o variants.tsv
-vcf-fast stats input.bcf --region chr22:1-20000000
+variantflow filter input.vcf.gz --region chr22:1-20000000 --where "QUAL > 30" -o output.vcf
+variantflow filter input.bcf --where "QUAL > 30" -o output.vcf
+variantflow filter input.vcf --where "QUAL > 30" --compression bgzf -o output.vcf.gz
+variantflow convert input.bcf --region chr22:1-20000000 --to tsv -o variants.tsv
+variantflow stats input.bcf --region chr22:1-20000000
 
-cargo run -- filter tests/data/example.vcf --where "QUAL > 30" -o tests/output/filtered.vcf
+cargo run --bin variantflow -- filter tests/data/example.vcf --where "QUAL > 30" -o tests/output/filtered.vcf
 
-docker build -t vcf-fast .
-docker run --rm -v "$PWD:/work" vcf-fast cargo test
-docker run --rm -v "$PWD:/work" -e VCF_FAST_BENCH_SIZES="10000 100000" vcf-fast make bench-smoke
+docker build -t variantflow .
+docker run --rm -v "$PWD:/work" variantflow cargo test
+docker run --rm -v "$PWD:/work" -e VCF_FAST_BENCH_SIZES="10000 100000" variantflow make bench-smoke
 
 benchmark/download_public_data.sh all
 make bench-public
@@ -127,6 +127,8 @@ make bench-v14
 make benchmark-table
 make bench-v06-smoke
 ```
+
+`vcf-fast` remains available as a compatibility alias during the VariantFlow rename migration.
 
 `make bench-v12` uses `VCF_FAST_PYTHON` when set and otherwise auto-detects the local DuckDB benchmark venv at `tests/output/benchmark-results/duckdb-venv/bin/python` before falling back to `python3`.
 
@@ -220,7 +222,7 @@ cargo clippy --features htslib-static --all-targets -- -D warnings
 Run the smoke command:
 
 ```bash
-cargo run -- filter tests/data/example.vcf --where "QUAL > 30" -o tests/output/filtered.vcf
+cargo run --bin variantflow -- filter tests/data/example.vcf --where "QUAL > 30" -o tests/output/filtered.vcf
 ```
 
 Run the synthetic benchmark and correctness smoke harness:
@@ -265,13 +267,13 @@ The optional htslib backend is selected automatically for `.bcf` input, `--regio
 ## Docker
 
 ```bash
-docker build -t vcf-fast .
-docker run --rm -v "$PWD:/work" vcf-fast cargo test
+docker build -t variantflow .
+docker run --rm -v "$PWD:/work" variantflow cargo test
 ```
 
 ## Release Hardening
 
-Release and install details are tracked in `docs/release.md`. Bioconda release planning and a professional rename migration are tracked in `TODO.md`. The public benchmark summary is generated from tracked reports:
+Release and install details are tracked in `docs/release.md`. Bioconda release planning and the VariantFlow rename migration are tracked in `TODO.md` and `docs/rename-plan.md`. The public benchmark summary is generated from tracked reports:
 
 ```bash
 make benchmark-table

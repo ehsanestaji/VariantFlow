@@ -1,14 +1,13 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 
 use crate::compat::{CompressionMode, Region};
 use crate::engine::{convert, diff, filter, stats};
 
 #[derive(Debug, Parser)]
-#[command(name = "vcf-fast")]
-#[command(about = "Fast, selective operations for VCF data")]
+#[command(about = "Selective operations for VCF/BCF variant data")]
 #[command(version)]
 struct Cli {
     #[command(subcommand)]
@@ -53,7 +52,12 @@ enum Command {
 }
 
 pub fn run() -> Result<()> {
-    let cli = Cli::parse();
+    run_with_name("variantflow")
+}
+
+pub fn run_with_name(name: &'static str) -> Result<()> {
+    let matches = Cli::command().name(name).get_matches();
+    let cli = Cli::from_arg_matches(&matches)?;
 
     match cli.command {
         Command::Filter {

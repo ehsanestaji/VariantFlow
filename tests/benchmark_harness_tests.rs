@@ -619,13 +619,14 @@ fn release_todo_tracks_bioconda_and_professional_rename() {
     let todo = fs::read_to_string(root.join("TODO.md")).unwrap();
     let readme = fs::read_to_string(root.join("README.md")).unwrap();
     let release_docs = fs::read_to_string(root.join("docs/release.md")).unwrap();
+    let rename_plan = fs::read_to_string(root.join("docs/rename-plan.md")).unwrap();
 
     for required in [
         "Bioconda Release",
         "bioconda-recipes",
         "cargo install -v --locked --no-track --root $PREFIX --path .",
         "Professional Rename",
-        "VariantFlow",
+        "Accepted direction: VariantFlow",
         "compatibility alias",
         "crates.io",
         "docs/claim-matrix.md",
@@ -633,6 +634,22 @@ fn release_todo_tracks_bioconda_and_professional_rename() {
         assert!(todo.contains(required), "missing TODO text {required}");
     }
 
+    for required in [
+        "VariantFlow Rename Plan",
+        "Primary CLI binary: `variantflow`",
+        "Compatibility CLI alias: `vcf-fast`",
+        "Bioconda package: `variantflow`",
+        "one-release compatibility alias",
+        "collision check",
+    ] {
+        assert!(
+            rename_plan.contains(required),
+            "missing rename plan text {required}"
+        );
+    }
+
+    assert!(readme.contains("VariantFlow, formerly VCF-Fast"));
+    assert!(readme.contains("variantflow --version"));
     assert!(readme.contains("Bioconda release planning"));
     assert!(readme.contains("TODO.md"));
     assert!(release_docs.contains("Distribution And Naming TODO"));
@@ -652,12 +669,15 @@ fn v13_release_hardening_tracks_install_docs_and_generated_benchmark_table() {
         fs::read_to_string(root.join("benchmark/generate_public_benchmark_table.py")).unwrap();
     let release_workflow = fs::read_to_string(root.join(".github/workflows/release.yml")).unwrap();
 
-    assert!(cargo_toml.contains("version = \"1.4.0\""));
+    assert!(cargo_toml.contains("version = \"1.5.0\""));
+    assert!(cargo_toml.contains("name = \"variantflow\""));
+    assert!(cargo_toml.contains("name = \"vcf-fast\""));
     assert!(cli.contains("#[command(version)]"));
 
     assert!(makefile.contains("benchmark-table:"));
     assert!(makefile.contains("generate_public_benchmark_table.py --check"));
-    assert!(readme.contains("vcf-fast --version"));
+    assert!(readme.contains("variantflow --version"));
+    assert!(readme.contains("vcf-fast"));
     assert!(readme.contains("docs/release.md"));
     assert!(readme.contains("docs/public-benchmark-table.md"));
     assert!(readme.contains("CHANGELOG.md"));
@@ -670,6 +690,8 @@ fn v13_release_hardening_tracks_install_docs_and_generated_benchmark_table() {
         "Public Data",
         "Release Checklist",
         "cargo build --release --features htslib-static",
+        "variantflow --version",
+        "vcf-fast --version",
     ] {
         assert!(
             release_docs.contains(required),
@@ -677,7 +699,7 @@ fn v13_release_hardening_tracks_install_docs_and_generated_benchmark_table() {
         );
     }
 
-    for required in ["v1.4.0", "v1.3.0", "v1.2", "v1.0", "v0.1"] {
+    for required in ["v1.5.0", "v1.4.0", "v1.3.0", "v1.2", "v1.0", "v0.1"] {
         assert!(
             changelog.contains(required),
             "missing changelog version {required}"
@@ -712,7 +734,9 @@ fn v13_release_hardening_tracks_install_docs_and_generated_benchmark_table() {
     for required in [
         "actions/checkout@v6",
         "cargo build --release",
+        "./target/release/variantflow --version",
         "./target/release/vcf-fast --version",
+        "cp target/release/variantflow dist/",
         "actions/upload-artifact@v4",
         "softprops/action-gh-release@v2",
         "v*",

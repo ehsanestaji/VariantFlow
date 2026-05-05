@@ -18,9 +18,9 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            archive: vcf-fast-linux-x86_64.tar.gz
+            archive: variantflow-linux-x86_64.tar.gz
           - os: macos-latest
-            archive: vcf-fast-macos-arm64.tar.gz
+            archive: variantflow-macos-arm64.tar.gz
     steps:
       - uses: actions/checkout@v6
       - name: Install Linux compatibility prerequisites
@@ -32,12 +32,16 @@ jobs:
       - name: Build release binary
         run: cargo build --release
       - name: Verify version output
-        run: ./target/release/vcf-fast --version
+        run: |
+          ./target/release/variantflow --version
+          ./target/release/vcf-fast --version
       - name: Package binary
         run: |
           mkdir -p dist
+          cp target/release/variantflow dist/
           cp target/release/vcf-fast dist/
-          cp README.md CHANGELOG.md dist/
+          cp README.md CHANGELOG.md TODO.md dist/
+          cp docs/rename-plan.md dist/
           tar -czf "${{ matrix.archive }}" -C dist .
       - name: Upload artifact
         uses: actions/upload-artifact@v4
