@@ -2,8 +2,8 @@
 """Lightweight checks for the VariantFlow Bioconda recipe scaffold.
 
 This is not a replacement for bioconda-utils lint/build. It keeps the in-repo
-template honest until a tagged source release, sha256, and SPDX license are
-available.
+template honest until a tagged source release, sha256, and maintainer metadata
+are available.
 """
 
 from __future__ import annotations
@@ -43,8 +43,10 @@ def main() -> int:
             "sha256: TODO_RELEASE_SHA256",
             "{{ compiler('rust') }}",
             "cargo-bundle-licenses",
-            "license: TODO",
+            "license: MIT OR Apache-2.0",
             "license_file:",
+            "LICENSE-MIT",
+            "LICENSE-APACHE",
             "THIRDPARTY.yml",
             "variantflow --version",
             "vcf-fast --version",
@@ -74,9 +76,9 @@ def main() -> int:
         docs,
         (
             "Current Blockers",
-            "final SPDX license",
             "tagged GitHub source release",
             "sha256",
+            "MIT OR Apache-2.0",
             "bioconda/variantflow: 404",
             "crates/variantflow: 404",
         ),

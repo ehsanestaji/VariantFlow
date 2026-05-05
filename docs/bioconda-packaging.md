@@ -1,6 +1,6 @@
 # VariantFlow Bioconda Packaging
 
-This document tracks the local Bioconda recipe scaffold for `variantflow`. It is intentionally not presented as a submitted recipe yet: Bioconda needs a redistribution license, a stable tagged source URL, and a real source hash before the recipe is PR-ready.
+This document tracks the local Bioconda recipe scaffold for `variantflow`. It is intentionally not presented as a submitted recipe yet: Bioconda needs a stable tagged source URL, a real source hash, and maintainer metadata before the recipe is PR-ready.
 
 ## Current Status
 
@@ -11,12 +11,14 @@ This document tracks the local Bioconda recipe scaffold for `variantflow`. It is
 
 ## Current Blockers
 
-- Choose and add a final SPDX license at the repository root.
 - Create a tagged GitHub source release for the first packaged version.
 - Replace `OWNER` and `TODO_GITHUB_HANDLE` in the recipe.
 - Replace `TODO_RELEASE_SHA256` with the release tarball `sha256`.
 - Run `bioconda-utils` lint/build in a clean environment.
 - Confirm whether the Bioconda package should build only the default native engine or include `htslib-static`.
+
+The project license is now recorded as `MIT OR Apache-2.0` with root license
+notice `LICENSE` and full texts in `LICENSE-MIT` and `LICENSE-APACHE`.
 
 ## Exact-name check on 2026-05-06
 
@@ -43,7 +45,7 @@ The recipe follows current Bioconda Rust guidance:
 
 ## Release PR Steps
 
-1. Add the project license and update `Cargo.toml` package metadata if needed.
+1. Confirm the recorded project license remains `MIT OR Apache-2.0`.
 2. Tag the release and verify the GitHub source tarball URL.
 3. Compute the tarball hash:
 
