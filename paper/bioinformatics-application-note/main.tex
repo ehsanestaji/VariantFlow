@@ -30,12 +30,21 @@ Ume{\aa} Plant Science Center\\
 
 \begin{abstract}
 \noindent\textbf{Summary:}
-VariantFlow is a Rust-based command-line engine for post-calling variant
-workflows over VCF, BGZF-compressed VCF, and selected BCF-compatible paths. It
-combines selective byte-slice parsing, line-preserving streaming filters,
-threaded BGZF input, ordered parallel predicate evaluation, and TSV/Parquet
-export to reduce avoidable parsing and reconstruction work in common filtering
-and analysis tasks.
+Post-calling variant workflows repeatedly scan VCF, BGZF-compressed VCF, and
+BCF files for filtering, summary statistics, set comparison, and tabular export.
+These operations often need only a small subset of each record, yet mature
+general-purpose tools must preserve broad compatibility across many expression
+and file-format cases. VariantFlow is a Rust-based command-line engine that
+targets selective execution: it parses only fields required by the current
+operation, preserves original VCF records where possible, and records
+correctness-matched benchmark evidence against bcftools. The current engine
+combines byte-slice record views, threaded BGZF input, ordered parallel
+predicate evaluation, and TSV/Parquet export. In tracked public and stress
+benchmarks, VariantFlow matched normalized bcftools outputs while accelerating
+bounded IGSR BGZF filtering, FORMAT-heavy stress predicates, and export-once
+DuckDB query workflows. VariantFlow is therefore positioned as a
+workflow-specific accelerator and analytical bridge, not a universal replacement
+for bcftools, HTSlib, GATK, or VCFtools.
 
 \noindent\textbf{Availability and implementation:}
 VariantFlow is implemented in Rust and is released under the MIT OR Apache-2.0
@@ -48,7 +57,7 @@ Contact email to be added before submission.
 
 \noindent\textbf{Supplementary information:}
 Benchmark reports, test data generators, and exact reproducibility commands are
-provided in the project repository.
+provided in the project repository and summarized in the release claim matrix.
 \end{abstract}
 
 \input{sections/introduction}

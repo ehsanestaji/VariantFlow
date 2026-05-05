@@ -1,8 +1,9 @@
 # VariantFlow JOSS Submission Readiness
 
 This document tracks the synchronized paper, release, and Bioconda launch. The
-JOSS manuscript lives in `paper/paper.md`; references live in
-`paper/paper.bib`.
+Bioinformatics Application Note LaTeX project lives in
+`paper/bioinformatics-application-note`; the JOSS manuscript remains in
+`paper/paper.md` as a shorter software-paper route.
 
 ## Current blockers
 
@@ -27,6 +28,8 @@ The GitHub owner and recipe maintainer are recorded as `ehsanestaji`.
 - `make bioconda-recipe-check` passes while still honestly reporting release
   placeholders.
 - `make paper-check` passes and reports a JOSS-length manuscript.
+- The Bioinformatics Application Note compiles with local TeX Live from
+  `paper/bioinformatics-application-note`.
 - Paper claims match `docs/public-benchmark-table.md` and source reports.
 - The manuscript avoids broad "best tool" language and frames VariantFlow as an
   evidence-tracked complement to `bcftools`, HTSlib, VCFtools, and GATK.
@@ -63,6 +66,10 @@ The Bioconda recipe scaffold is already tracked under
 tagged source archive and `sha256` are final.
 The paper can mention planned Bioconda distribution only after the recipe PR is
 opened or merged.
+
+The first Bioconda recipe should use the native-default build. Optional htslib
+compatibility remains documented for source builds until a heavier Bioconda
+variant is intentionally prepared and tested.
 
 ## Release notes for paper submission
 

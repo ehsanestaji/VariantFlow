@@ -1,18 +1,24 @@
 \section{Introduction}
 
-Post-calling variant analysis commonly involves repeated scans of large VCF,
-BGZF-compressed VCF, or BCF files to apply quality filters, evaluate INFO and
-FORMAT predicates, compute summaries, compare call sets, or export selected
-columns for downstream analysis. VCF is an effective exchange format, but many
-workflows only need a small subset of fields from each record. Parsing unused
-INFO, FORMAT, and sample values can therefore become unnecessary work,
-especially in large cohort or repeated-query settings.
+Variant call format (VCF) files remain the lingua franca of post-calling
+genomics workflows. They are easy to exchange, compress, index, and inspect,
+but they are not always the most efficient execution layout for every
+downstream task. A typical analysis may scan the same BGZF-compressed cohort VCF
+many times to apply quality filters, evaluate INFO or FORMAT predicates,
+summarize call sets, compare two files, and export selected columns for
+statistical analysis. In many of these steps, the operation depends on only a
+few fields such as QUAL, FILTER, INFO/DP, INFO/AF, or one FORMAT key. Parsing
+unused INFO annotations, FORMAT vectors, and thousands of sample values can
+therefore dominate runtime without changing the result.
 
 Mature tools such as bcftools and HTSlib provide the compatibility baseline for
 VCF/BCF streaming, BGZF compression, region access, filtering, querying, and
-statistics \citep{bcftools,htslib}. VariantFlow is designed to complement this
-ecosystem rather than replace it universally. Its central idea is selective
-execution: for supported operations, parse only the fields required by the
-current predicate or projection, preserve original records when possible, and
-track every performance claim against correctness-matched benchmarks.
-
+statistics \citep{bcftools,htslib}. Their breadth is essential: real projects
+need BCF, tabix/CSI indexing, complex expressions, normalization, and durable
+interoperability. VariantFlow is designed to complement this ecosystem rather
+than replace it universally. Its central idea is selective execution: for
+supported operations, parse only the fields required by the current predicate or
+projection, preserve original records when possible, and track every
+performance claim against correctness-matched benchmarks. This evidence-first
+position is important for bioinformatics practice, where a speedup is useful
+only when the output remains trustworthy and the limitations are visible.

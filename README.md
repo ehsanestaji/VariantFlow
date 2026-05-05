@@ -85,6 +85,9 @@ Public evidence now supports the native selective-filter claim on measured GIAB 
 12. `v1.2 Public Parallel And Workflow Expansion`: public-heavy IGSR parallel filter modes, 1M stress parallel tiers, richer DuckDB Parquet query checks, and correctness-gated claim updates.
 13. `v1.3 Release Hardening`: versioned CLI output, install/release docs, changelog, generated public benchmark table, and GitHub release workflow scaffolding.
 14. `v1.4 Public Parallel Scale`: auto native BGZF input workers by default, explicit single-thread escape hatch, public/stress scale harness, and claim discipline that separates I/O-bound BGZF wins from CPU-heavy predicate parallel wins.
+15. `v1.5 Bioinformatics Readiness`: release-candidate checks, native-default Bioconda preparation, Bioinformatics Application Note draft, workflow docs, Snakemake/Nextflow examples, and a public claim matrix.
+16. `v1.6 Workflow Parity`: vector-index predicates, `N_PASS` aggregate filtering, richer stats summaries, and practical diff modes for shared/only-a/only-b and position-key comparisons.
+17. `v1.7 Public FORMAT And Ecosystem Baselines`: public FORMAT-heavy evidence, reproducible Linux RSS rows, and optional VCFtools, GATK, Polars, and PyArrow baselines.
 
 ## Quickstart
 
@@ -95,8 +98,10 @@ make verify
 
 variantflow --version
 variantflow filter input.vcf.gz --where "QUAL > 30" -o output.vcf.gz
+variantflow filter input.vcf.gz --where 'INFO/AF[1] > 0.2' -o indexed.vcf
+variantflow filter input.vcf.gz --where 'N_PASS(FORMAT/AD[1] > 10) >= 2' -o cohort.vcf
 variantflow stats input.vcf.gz
-variantflow diff a.vcf.gz b.vcf.gz -o diff.tsv
+variantflow diff a.vcf.gz b.vcf.gz --mode shared --key position -o diff.tsv
 variantflow convert input.vcf.gz --to tsv -o variants.tsv
 variantflow convert input.vcf.gz --to parquet -o variants.parquet
 
@@ -124,6 +129,7 @@ make bench-v10-columnar
 make bench-v11-parallel
 make bench-v12
 make bench-v14
+make bench-v17
 make benchmark-table
 make bench-v06-smoke
 ```
@@ -273,11 +279,11 @@ docker run --rm -v "$PWD:/work" variantflow cargo test
 
 ## Release Hardening
 
-Release and install details are tracked in `docs/release.md`. Bioconda release planning and the VariantFlow rename migration are tracked in `TODO.md`, `docs/rename-plan.md`, and `docs/bioconda-packaging.md`. The public benchmark summary is generated from tracked reports:
+Release and install details are tracked in `docs/release.md`. Bioinformatician workflow examples live in `docs/bioinformatics-workflows.md` and `examples/`. The exact public claim table is tracked in `docs/claim-matrix.md`. Bioconda release planning and the VariantFlow rename migration are tracked in `TODO.md`, `docs/rename-plan.md`, and `docs/bioconda-packaging.md`. The public benchmark summary is generated from tracked reports:
 
 ```bash
 make benchmark-table
 python3 benchmark/generate_public_benchmark_table.py --check
 ```
 
-`CHANGELOG.md` records the evidence-gated release train from v0.1 through v1.4. GitHub release binaries are built by `.github/workflows/release.yml` for version tags.
+`CHANGELOG.md` records the evidence-gated release train from v0.1 through v1.4. GitHub release binaries are built by `.github/workflows/release.yml` for version tags. `make release-candidate-check` runs the local release gate before tagging or preparing the final Bioconda source hash.

@@ -4,17 +4,26 @@ All reported measurements are tied to tracked benchmark reports containing
 exact commands, competitor versions, correctness checks, caveats, and
 reproducibility commands. VariantFlow compares primarily against bcftools
 because it is the trusted performance and correctness baseline for many
-VCF/BCF workflows.
+VCF/BCF workflows. Rows in Table~\ref{tab:benchmark-summary} are copied from
+the public release benchmark table and source reports; no smoke-test row is
+used as a performance claim.
 
 \input{tables/benchmark_summary}
 
-The strongest current evidence is for selective native streaming and
-compressed public filtering. On bounded IGSR chr22 public-heavy BGZF inputs,
+The strongest current evidence is for selective native streaming over
+compressed public data. On bounded IGSR chr22 public-heavy BGZF inputs,
 VariantFlow's default native BGZF path matched bcftools core records and was
-13.44--13.47 times faster than \texttt{bcftools filter}. On deterministic
+13.44--13.47 times faster than \texttt{bcftools filter}. This is an I/O-heavy
+case where avoiding unnecessary reconstruction and using threaded BGZF input
+matters more than parallel predicate evaluation. Conversely, on deterministic
 FORMAT-heavy stress data, opt-in predicate parallelism matched bcftools core
-records and was 4.33--5.27 times faster than \texttt{bcftools filter}. For
-repeated analytical workflows, exporting once to Parquet and querying with
-DuckDB matched normalized bcftools baselines and reduced amortized runtime by
-3.18--25.67 times in the measured workflows.
+records and was 4.33--5.27 times faster than \texttt{bcftools filter}; this
+case exercises the CPU side of selective FORMAT scanning.
 
+The columnar evidence supports a separate workflow claim. For repeated
+analytical queries, VariantFlow exports selected columns to Parquet and then
+uses DuckDB for repeated predicates and grouped summaries. In the measured
+bounded IGSR workflows, DuckDB results over VariantFlow Parquet matched
+normalized bcftools baselines and reduced amortized runtime by 3.18--25.67
+times. This does not mean Parquet replaces streaming VCF filters; it means
+export-once, query-many workflows can avoid repeated decompression and parsing.

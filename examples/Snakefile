@@ -1,0 +1,27 @@
+configfile: "config.yaml"
+
+rule variantflow_filter:
+    input:
+        vcf=config["input_vcf"]
+    output:
+        vcf="results/filtered.vcf"
+    params:
+        expr=config.get("filter_expr", "QUAL > 30")
+    shell:
+        "variantflow filter {input.vcf} --where '{params.expr}' -o {output.vcf}"
+
+rule variantflow_convert_tsv:
+    input:
+        vcf="results/filtered.vcf"
+    output:
+        tsv="results/variants.tsv"
+    shell:
+        "variantflow convert {input.vcf} --to tsv -o {output.tsv}"
+
+rule variantflow_convert_parquet:
+    input:
+        vcf="results/filtered.vcf"
+    output:
+        parquet="results/variants.parquet"
+    shell:
+        "variantflow convert {input.vcf} --to parquet -o {output.parquet}"

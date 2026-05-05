@@ -1,4 +1,4 @@
-.PHONY: build test test-htslib fmt clippy verify bioconda-recipe-check paper-check benchmark-table bench-smoke bench-stress bench-public bench-public-region bench-heavy bench-compat bench-v09 bench-v10-compressed bench-v10-parquet bench-v10-columnar bench-v11-parallel bench-v12 bench-v14 bench-v06-smoke
+.PHONY: build test test-htslib fmt clippy verify release-candidate-check bioconda-recipe-check paper-check benchmark-table bench-smoke bench-stress bench-public bench-public-region bench-heavy bench-compat bench-v09 bench-v10-compressed bench-v10-parquet bench-v10-columnar bench-v11-parallel bench-v12 bench-v14 bench-v17 bench-v06-smoke
 
 build:
 	cargo build
@@ -31,6 +31,7 @@ verify:
 	bash -n benchmark/run_v11_parallel_filter_benchmarks.sh
 	bash -n benchmark/run_v12_public_parallel_workflow_benchmarks.sh
 	bash -n benchmark/run_v14_public_parallel_scale_benchmarks.sh
+	bash -n benchmark/run_v17_public_format_baselines.sh
 	bash -n packaging/bioconda/variantflow/build.sh
 	bash -n packaging/bioconda/variantflow/run_test.sh
 	python3 -m py_compile benchmark/*.py
@@ -39,6 +40,14 @@ verify:
 	make paper-check
 	python3 benchmark/generate_public_benchmark_table.py --check
 	VCF_FAST_BENCH_SIZES="100" VCF_FAST_BENCH_RUNS=1 VCF_FAST_BENCH_WARMUP=0 make bench-v06-smoke
+
+release-candidate-check:
+	make verify
+	cargo test --features htslib-static
+	cargo clippy --features htslib-static --all-targets -- -D warnings
+	make bioconda-recipe-check
+	make paper-check
+	cd paper/bioinformatics-application-note && $(MAKE)
 
 bioconda-recipe-check:
 	bash -n packaging/bioconda/variantflow/build.sh
@@ -96,6 +105,9 @@ bench-v12:
 
 bench-v14:
 	./benchmark/run_v14_public_parallel_scale_benchmarks.sh
+
+bench-v17:
+	./benchmark/run_v17_public_format_baselines.sh
 
 bench-v06-smoke:
 	VCF_FAST_BENCH_MODE=synthetic VCF_FAST_BENCH_SIZES="$${VCF_FAST_BENCH_SIZES:-100}" VCF_FAST_BENCH_RUNS="$${VCF_FAST_BENCH_RUNS:-1}" VCF_FAST_BENCH_WARMUP="$${VCF_FAST_BENCH_WARMUP:-0}" ./benchmark/run_benchmarks.sh

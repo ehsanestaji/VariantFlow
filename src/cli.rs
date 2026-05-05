@@ -37,6 +37,10 @@ enum Command {
     Diff {
         a: PathBuf,
         b: PathBuf,
+        #[arg(long, value_enum, default_value_t = diff::DiffMode::All)]
+        mode: diff::DiffMode,
+        #[arg(long = "key", value_enum, default_value_t = diff::DiffKeyMode::ChromPosRefAlt)]
+        key_mode: diff::DiffKeyMode,
         #[arg(short, long)]
         output: PathBuf,
     },
@@ -76,7 +80,13 @@ pub fn run_with_name(name: &'static str) -> Result<()> {
             compression,
         ),
         Command::Stats { input, region } => stats::run(&input, region.as_ref()),
-        Command::Diff { a, b, output } => diff::run(&a, &b, &output),
+        Command::Diff {
+            a,
+            b,
+            mode,
+            key_mode,
+            output,
+        } => diff::run(&a, &b, &output, mode, key_mode),
         Command::Convert {
             input,
             region,
