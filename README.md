@@ -35,7 +35,7 @@ VCF-Fast stays Rust-first. Rust gives the project C-like performance, strict mem
 | Stress 1M TSV conversion | `bcftools query` | matched normalized TSV rows | `1.20x` faster | selected columns only |
 | Stress 1M stats | `bcftools stats` | matched overlapping record count | `1.53x` faster | richer stats equivalence pending |
 | Stress 1M after v0.8 byte-core surgery | `bcftools filter` / `bcftools query` / `bcftools stats` | supported correctness matched: filtered core records, normalized TSV rows, and stats records | filters `3.14x` to `6.24x` faster; TSV `2.54x` faster; stats `2.50x` faster | synthetic stress INFO fields=40, samples=16, FORMAT=GT:DP:GQ:AD; repeated local run with 3 measured runs and 1 warmup |
-| v0.9 native expression parity fixtures | `bcftools filter` | fixture expectations and tracked comparison commands for arbitrary `INFO/<KEY>`, selected-sample `FORMAT/<KEY>`, and `ANY(FORMAT/<KEY>)` predicates | correctness scaffold only; no runtime win claimed | small fixture evidence, public benchmark rows pending |
+| v0.9 native expression parity stress evidence | `bcftools filter` | matched filtered core records for arbitrary `INFO/<KEY>`, selected-sample `FORMAT/<KEY>`, and `ANY`/`ALL` sample aggregate predicates | `2.41x` to `5.18x` faster at 100k deterministic stress records; `2.66x` to `3.90x` faster at 10k | synthetic stress expression evidence only; public v0.9 expression rows pending |
 | Compatibility proof | `bcftools`, `tabix`, HTSlib | BCF/region/BGZF correctness and indexability | correctness matched; v0.7 near parity or faster for BCF filter, indexed-region filter/stats, and near parity for BGZF output | BCF TSV still trails `bcftools query` |
 
 Detailed evidence lives in:
@@ -51,7 +51,7 @@ Detailed evidence lives in:
 - `benchmark/reports/v09-expression-parity-benchmark.md`
 - `docs/contribution-map.md`
 
-Public evidence now supports the native selective-filter claim on measured GIAB and IGSR tiers. The v0.7 heavy run also shows the optimized native TSV path can beat `bcftools query` on bounded sample-rich gzip workloads through 1M records, while honest gaps remain: BCF TSV still trails `bcftools query`, and broader whole-cohort compatibility evidence is still pending.
+Public evidence now supports the native selective-filter claim on measured GIAB and IGSR tiers. The v0.7 heavy run also shows the optimized native TSV path can beat `bcftools query` on bounded sample-rich gzip workloads through 1M records, and v0.9 stress evidence shows the expanded native expression engine beating `bcftools filter` on measured deterministic stress cases. Honest gaps remain: BCF TSV still trails `bcftools query`, public v0.9 expression rows are pending, and broader whole-cohort compatibility evidence is still pending.
 
 ## Milestones
 
@@ -95,6 +95,7 @@ benchmark/download_public_data.sh all
 make bench-public
 make bench-public-region
 make bench-compat
+make bench-v09
 make bench-v06-smoke
 ```
 
@@ -131,7 +132,7 @@ Numeric `INFO/<KEY>` and `FORMAT/<KEY>` comparisons pass when any comma-separate
 
 ## Limitations
 
-The default build is a line-preserving streaming filter, not the future columnar execution engine. Native gzip output is valid gzip-compressed VCF text but is not promised to be tabix-indexable. With `--features htslib` or `--features htslib-static`, `--compression bgzf`, `.bcf` input, and `--region` use htslib compatibility paths. Those paths guarantee valid VCF output and bcftools-equivalent core records for supported predicates, but they do not preserve original record text byte-for-byte. The htslib-backed paths keep the older compatibility surface and reject native-only aggregate predicates with `ANY/ALL FORMAT predicates are not implemented for htslib-backed input in v0.9`. Arrow, Parquet, broad whole-cohort expression benchmarks, and any v0.9 runtime win claim are still pending.
+The default build is a line-preserving streaming filter, not the future columnar execution engine. Native gzip output is valid gzip-compressed VCF text but is not promised to be tabix-indexable. With `--features htslib` or `--features htslib-static`, `--compression bgzf`, `.bcf` input, and `--region` use htslib compatibility paths. Those paths guarantee valid VCF output and bcftools-equivalent core records for supported predicates, but they do not preserve original record text byte-for-byte. The htslib-backed paths keep the older compatibility surface and reject native-only aggregate predicates with `ANY/ALL FORMAT predicates are not implemented for htslib-backed input in v0.9`. Arrow, Parquet, broad whole-cohort expression benchmarks, and public v0.9 runtime win claims are still pending.
 
 ## Stats Output
 

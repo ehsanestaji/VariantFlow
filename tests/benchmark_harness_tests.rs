@@ -268,6 +268,30 @@ fn v09_expression_parity_report_tracks_required_fields() {
 }
 
 #[test]
+fn v09_expression_benchmark_script_tracks_competitor_cases() {
+    let script = std::fs::read_to_string("benchmark/run_v09_expression_benchmarks.sh")
+        .expect("read v0.9 expression benchmark script");
+    let makefile = std::fs::read_to_string("Makefile").expect("read Makefile");
+
+    for required in [
+        "INFO/UNUSED7 > 300",
+        "FORMAT/AD > 30",
+        "ANY(FORMAT/AD > 80)",
+        "ALL(FORMAT/DP > 20)",
+        "N_PASS(FMT/AD[*:*]>80)>0",
+        "N_PASS(FMT/DP>20)==N_SAMPLES",
+        "bcftools filter",
+        "hyperfine",
+        "matches bcftools filtered core records",
+    ] {
+        assert!(script.contains(required), "missing {required}");
+    }
+
+    assert!(makefile.contains("bench-v09:"));
+    assert!(makefile.contains("run_v09_expression_benchmarks.sh"));
+}
+
+#[test]
 fn v06_reports_track_claim_matrix_and_required_fields() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let public_report =

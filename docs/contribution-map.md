@@ -18,7 +18,7 @@ Evidence:
 - Benchmarks show speedups for QUAL, INFO/DP, INFO/AF, and gzip-input QUAL cases in the synthetic benchmark harness.
 - Stress benchmarks show speedups when records contain many unused INFO/FORMAT/sample fields.
 - Selected-sample FORMAT filtering reads only the requested sample column for arbitrary native `FORMAT/<KEY>` predicates.
-- v0.9 native expression parity adds arbitrary `INFO/<KEY>`, selected-sample `FORMAT/<KEY>` with `--sample`, and `ANY(FORMAT/<KEY>)` / `ALL(FORMAT/<KEY>)` sample aggregate predicates.
+- v0.9 native expression parity adds arbitrary `INFO/<KEY>`, selected-sample `FORMAT/<KEY>` with `--sample`, and `ANY(FORMAT/<KEY>)` / `ALL(FORMAT/<KEY>)` sample aggregate predicates, with deterministic stress evidence tracked against `bcftools filter`.
 
 ### Original-Record Preservation
 
@@ -98,7 +98,7 @@ Evidence:
 - Public heavy sample-rich path: On the v0.7 bounded public-heavy runs after optimization, VCF-Fast matched bcftools outputs and measured `5.23x` to `5.65x` faster for gzip QUAL filtering at 100k/1M and `1.08x` to `1.10x` faster for gzip TSV conversion at 100k/1M. The bottleneck was narrowed to wide-line materialization plus gzip backend cost; the fix uses streaming TSV field reads, tail skipping after INFO, and flate2 with `zlib-ng`.
 - Stress speed: On the tracked 1M synthetic stress benchmark with 40 unused INFO fields and 16 samples, VCF-Fast matched bcftools outputs and measured `1.96x` to `2.45x` faster for plain filter cases, `1.20x` faster for TSV conversion, and `1.53x` faster for overlapping stats record counts.
 - FORMAT-aware filtering: On the tracked 1M synthetic stress benchmark, selected-sample `FORMAT/DP`, `FORMAT/GQ`, and `FORMAT/GT` filters matched bcftools filtered core records and measured `1.99x` to `2.06x` faster.
-- v0.9 native expression parity: Fixture-backed tests and the v0.9 report scaffold cover arbitrary `INFO/<KEY>`, selected-sample `FORMAT/<KEY>` with `--sample`, and native sample aggregate predicates such as `ANY(FORMAT/DP > 20)` and `ALL(FORMAT/GQ >= 30)`. No runtime win is claimed for v0.9 expression parity until measured public benchmark rows are added.
+- v0.9 native expression parity: Fixture-backed tests and the v0.9 benchmark report cover arbitrary `INFO/<KEY>`, selected-sample `FORMAT/<KEY>` with `--sample`, and native sample aggregate predicates such as `ANY(FORMAT/DP > 20)` and `ALL(FORMAT/GQ >= 30)`. On deterministic stress VCFs with 40 unused INFO fields and 16 samples, VCF-Fast matched `bcftools filter` core records and measured `2.66x` to `3.90x` faster at 10k records and `2.41x` to `5.18x` faster at 100k records; public v0.9 expression rows are still pending.
 - Compatibility proof: Optional htslib-backed paths cover BCF input, indexed region reads, and BGZF output. v0.7 typed TSV/stats optimization matched correctness and moved several compatibility paths to near parity or faster, including 1M BCF filter `1.05x`, indexed-region filter `1.25x`, and indexed BCF stats `1.05x`; BCF TSV still trails `bcftools query` at `0.50x` for 1M.
 - v0.8 byte-core evidence: On the repeated post-surgery benchmark, VCF-Fast matched supported correctness checks. The measured stress and IGSR public-heavy results are recorded in `benchmark/reports/v08-core-efficiency-benchmark.md`: stress filters were `3.14x` to `6.24x` faster, stress TSV was `2.54x` faster, stress stats were `2.50x` faster, public-heavy QUAL was `6.01x` faster, and public-heavy TSV was `1.13x` faster; all v0.8 rows were measured wins, with caveats limited to synthetic stress shape and bounded chr22 region.
 
@@ -109,7 +109,7 @@ Evidence:
 | Selective filter execution | `benchmark/reports/synthetic-filter-benchmark.md`, `benchmark/reports/public-dataset-benchmark.md`, and `benchmark/reports/public-whole-cohort-benchmark.md` | `bcftools filter` | `1.62x` to `1.82x` faster on supported 1M synthetic cases; GIAB public tiers up to `2.38x`; IGSR public tiers up to `5.71x`; indexed-region filtering `1.47x` | IGSR whole 1M deferred after >13 GB intermediate |
 | Stress selective parsing | `benchmark/reports/stress-speed-benchmark.md` | `bcftools filter`, `bcftools query`, `bcftools stats` | `1.96x` to `2.45x` faster on 1M plain stress filters; `1.20x` TSV speedup; `1.53x` stats speedup | Synthetic stress shape, not a public cohort |
 | Selected-sample FORMAT filtering | `benchmark/reports/format-filter-benchmark.md` | `bcftools filter` | `1.99x` to `2.06x` faster on 1M selected-sample FORMAT filters | Single selected sample only; synthetic stress shape |
-| v0.9 native expression parity | `tests/expr_tests.rs`, `tests/filter_cli_tests.rs`, `benchmark/reports/v09-expression-parity-benchmark.md` | `bcftools filter` comparison commands tracked | Arbitrary `INFO/<KEY>`, selected-sample `FORMAT/<KEY>`, and `ANY(FORMAT/<KEY>)` / `ALL(FORMAT/<KEY>)` semantics are documented and fixture-tested | Correctness-first scaffold only; no runtime win claimed |
+| v0.9 native expression parity | `tests/expr_tests.rs`, `tests/filter_cli_tests.rs`, `benchmark/reports/v09-expression-parity-benchmark.md` | `bcftools filter` | Arbitrary `INFO/<KEY>`, selected-sample `FORMAT/<KEY>`, and `ANY(FORMAT/<KEY>)` / `ALL(FORMAT/<KEY>)` semantics are documented, fixture-tested, and measured `2.41x` to `5.18x` faster at 100k deterministic stress records with matched core records | Synthetic stress expression evidence only; public v0.9 expression rows pending |
 | Original-record preservation | `tests/filter_cli_tests.rs` | VCF validity by behavior and line preservation | Headers and passing records preserved | BGZF output not promised |
 | Typed expression AST | `tests/expr_tests.rs` | N/A | `&&`, `||`, parentheses, string/numeric comparisons, arbitrary `INFO/<KEY>`, selected-sample `FORMAT/<KEY>`, and native sample aggregates | htslib-backed aggregate predicates are rejected in v0.9 |
 | Variant-key diff | `tests/stats_diff_cli_tests.rs` | planned `bcftools isec/query` | Shared/unique key TSV works | No normalized multiallelic decomposition |
@@ -122,7 +122,7 @@ Evidence:
 - Broader performance across public real-world VCFs beyond GIAB/IGSR measured tiers.
 - Performance on ten-million-record datasets and whole public cohort VCFs.
 - Speed claims for BCF input, BGZF output, and compatibility TSV/stats paths.
-- Public benchmark runtime evidence for v0.9 arbitrary expression parity.
+- Public real-cohort runtime evidence for v0.9 arbitrary expression parity.
 - htslib-backed support for native-only `ANY`/`ALL` FORMAT aggregate predicates.
 - Persistent columnar Arrow/Parquet execution.
 
@@ -137,12 +137,12 @@ The project ambition is to become the best practical VCF tool, but public langua
 | TSV export for selected columns | mixed: beats synthetic/stress/GIAB 1M/IGSR 10k, trails bcftools on some public and region cases | complements older workflows | complements heavier workflow exports | correctness matches; performance depends on dataset/path | `tests/convert_cli_tests.rs`, benchmark reports, `benchmark/reports/v08-core-efficiency-benchmark.md` | Arrow/Parquet not implemented yet; htslib TSV path needs optimization. |
 | Stats simple counts | matches overlapping counts; beats stress native stats but trails bcftools on public indexed-region stats | later baseline | later baseline | matches overlapping simple counts | `tests/stats_diff_cli_tests.rs`, stress and public reports, `benchmark/reports/v08-core-efficiency-benchmark.md` | Rich `bcftools stats` parity is not claimed. |
 | BCF, BGZF, tabix regions | matches ecosystem compatibility through optional htslib path, but bcftools is faster in measured synthetic compatibility runs | complements | complements | compatibility matches; speed not claimed | `tests/compatibility_cli_tests.rs`, `benchmark/reports/compatibility-benchmark.md` | Optimize or avoid htslib reconstruction overhead. |
-| Native expression parity | matched through fixture tests and tracked `bcftools filter` comparison commands for common expression forms | later baseline | later baseline | supports arbitrary `INFO/<KEY>`, selected-sample `FORMAT/<KEY>`, and native `ANY`/`ALL` aggregate predicates; no speed claim | `tests/expr_tests.rs`, `tests/filter_cli_tests.rs`, `benchmark/reports/v09-expression-parity-benchmark.md` | No runtime win claimed; public benchmark rows and htslib aggregate support are pending. |
+| Native expression parity | beats measured deterministic stress expression cases and matches filtered core records for common expression forms | later baseline | later baseline | supports arbitrary `INFO/<KEY>`, selected-sample `FORMAT/<KEY>`, and native `ANY`/`ALL` aggregate predicates; measured deterministic stress wins | `tests/expr_tests.rs`, `tests/filter_cli_tests.rs`, `benchmark/reports/v09-expression-parity-benchmark.md` | Public benchmark rows and htslib aggregate support are pending. |
 | Whole public cohort performance | beats bcftools on measured GIAB/IGSR native filter tiers | later baseline | later heavy baseline | partially proven for supported filter cases | `benchmark/reports/public-whole-cohort-benchmark.md` | IGSR whole 1M deferred; broader cohorts still pending. |
 
 ## Next Contribution Targets
 
 1. Keep v0.8 evidence current as new byte-core runs are added, and use `benchmark/reports/v08-core-efficiency-benchmark.md` as the source for README/contribution claims.
-2. Add public v0.9 expression parity benchmark rows before making any runtime claim for arbitrary `INFO/<KEY>`, selected `FORMAT/<KEY>`, or sample `ANY`/`ALL` predicates.
+2. Add public v0.9 expression parity benchmark rows before broadening the deterministic stress runtime claim for arbitrary `INFO/<KEY>`, selected `FORMAT/<KEY>`, or sample `ANY`/`ALL` predicates.
 3. Plan v1.0 parallel BGZF and Parquet export as separate evidence-backed milestones.
 4. Keep BCF TSV compatibility optimization as a tracked gap.
