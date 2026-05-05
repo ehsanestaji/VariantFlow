@@ -104,6 +104,45 @@ slugify() {
   echo "$1" | tr '[:upper:] ' '[:lower:]-' | tr -cd '[:alnum:]-'
 }
 
+path_class_for_case() {
+  local input_kind="$1"
+  local fast_expr="$2"
+
+  if [[ "$MODE" == "public-heavy" ]]; then
+    echo "public-heavy"
+    return
+  fi
+
+  case "$input_kind:$fast_expr" in
+    region:convert-tsv|region-convert-tsv:convert-tsv) echo "htslib-region-tsv" ;;
+    region-stats-json:stats-json|bcf-region-stats-json:stats-json) echo "htslib-region-stats" ;;
+    region:*) echo "htslib-region-filter" ;;
+    bcf-convert-tsv:convert-tsv) echo "bcf-tsv" ;;
+    bcf:*) echo "bcf-filter" ;;
+    bgzf-output:*) echo "bgzf-output" ;;
+    *:convert-tsv) echo "native-tsv" ;;
+    *:stats-json) echo "native-stats" ;;
+    *) echo "native-filter" ;;
+  esac
+}
+
+next_action_for_path() {
+  local path_class="$1"
+  case "$path_class" in
+    native-filter) echo "keep as winning core and expand evidence" ;;
+    native-tsv) echo "measure before adding columnar export" ;;
+    native-stats) echo "compare overlapping stats before richer parity" ;;
+    htslib-region-filter) echo "compare thread counts and record reuse" ;;
+    htslib-region-tsv) echo "reduce full-record reconstruction" ;;
+    htslib-region-stats) echo "prefer typed stats fields" ;;
+    bcf-filter) echo "measure htslib threading and write overhead" ;;
+    bcf-tsv) echo "avoid raw VCF reconstruction when possible" ;;
+    bgzf-output) echo "measure writer threading and compression cost" ;;
+    public-heavy) echo "raise cap, narrow region, or reduce tier" ;;
+    *) echo "inspect benchmark artifact" ;;
+  esac
+}
+
 markdown_cell() {
   local value="$1"
   printf '%s\n' "$value" | sed 's/|/\&#124;/g'
@@ -426,8 +465,8 @@ fi
   echo "- BGZF validation: \`tabix -p vcf <output.vcf.gz> && bcftools view <output.vcf.gz> >/dev/null\`"
   echo "- Stress mode: \`VCF_FAST_BENCH_MODE=stress make bench-smoke\`"
   echo
-  echo "| case | record count | dataset size bytes | input format | input compression | exact VCF-Fast command | exact competitor command | correctness result | vcf-fast mean | vcf-fast stddev | bcftools mean | bcftools stddev | speedup | variants/sec | peak RSS | caveats |"
-  echo "|---|---:|---:|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---|---|"
+  echo "| case | path class | record count | dataset size bytes | input format | input compression | exact VCF-Fast command | exact competitor command | correctness result | vcf-fast mean | vcf-fast stddev | bcftools mean | bcftools stddev | speedup | variants/sec | peak RSS | bottleneck | caveat | next action |"
+  echo "|---|---|---:|---:|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---|---|---|---|"
 } >"$REPORT"
 
 for records in $SIZES; do
@@ -445,8 +484,8 @@ for records in $SIZES; do
     set -e
     if [[ "$heavy_status" -eq 77 ]]; then
       note="deferred: plain artifact cap exceeded"
-      printf '| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n' \
-        "public-heavy setup" "$records" "n/a" "VCF" "BGZF" "n/a" "n/a" "$note" "n/a" "n/a" "n/a" "n/a" "n/a" "n/a" "n/a" "$note" >>"$REPORT"
+      printf '| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n' \
+        "public-heavy setup" "public-heavy" "$records" "n/a" "VCF" "BGZF" "n/a" "n/a" "$note" "n/a" "n/a" "n/a" "n/a" "n/a" "n/a" "n/a" "$note" "$note" "raise cap, narrow region, or reduce tier" >>"$REPORT"
       continue
     fi
     if [[ "$heavy_status" -ne 0 ]]; then
@@ -748,9 +787,12 @@ for records in $SIZES; do
     competitor_command_cell="$(markdown_cell "\`$competitor_command\`")"
     variants_per_second_cell="${fast_variants_per_second} / ${bcftools_variants_per_second}"
     peak_rss_cell="${fast_peak_rss_kb} / ${bcftools_peak_rss_kb}"
+    path_class="$(path_class_for_case "$input_kind" "$fast_expr")"
+    bottleneck="${note:-measured path; inspect speedup/RSS}"
+    next_action="$(next_action_for_path "$path_class")"
 
-    printf '| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n' \
-      "$case_name" "$records" "$dataset_size_bytes" "$input_format" "$input_compression" "$fast_command_cell" "$competitor_command_cell" "$equivalence" "$fast_mean" "$fast_stddev" "$bcftools_mean" "$bcftools_stddev" "$speedup" "$variants_per_second_cell" "$peak_rss_cell" "${note:-}" >>"$REPORT"
+    printf '| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n' \
+      "$case_name" "$path_class" "$records" "$dataset_size_bytes" "$input_format" "$input_compression" "$fast_command_cell" "$competitor_command_cell" "$equivalence" "$fast_mean" "$fast_stddev" "$bcftools_mean" "$bcftools_stddev" "$speedup" "$variants_per_second_cell" "$peak_rss_cell" "$bottleneck" "${note:-}" "$next_action" >>"$REPORT"
   done
 done
 
