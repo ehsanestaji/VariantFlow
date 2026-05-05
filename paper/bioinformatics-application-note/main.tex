@@ -1,0 +1,78 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{hyperref}
+\usepackage[numbers]{natbib}
+\usepackage{xcolor}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  citecolor=blue,
+  urlcolor=blue
+}
+
+\title{VariantFlow: selective streaming and columnar execution for evidence-tracked VCF workflows}
+\author{
+Ehsan Estaji\\
+Ume{\aa} Plant Science Center\\
+\texttt{contact email to be added before submission}
+}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent\textbf{Summary:}
+VariantFlow is a Rust-based command-line engine for post-calling variant
+workflows over VCF, BGZF-compressed VCF, and selected BCF-compatible paths. It
+combines selective byte-slice parsing, line-preserving streaming filters,
+threaded BGZF input, ordered parallel predicate evaluation, and TSV/Parquet
+export to reduce avoidable parsing and reconstruction work in common filtering
+and analysis tasks.
+
+\noindent\textbf{Availability and implementation:}
+VariantFlow is implemented in Rust and is released under the MIT OR Apache-2.0
+license at \url{https://github.com/ehsanestaji/VariantFlow}. Source release
+archives, Bioconda packaging, and Zenodo DOI metadata are prepared as part of
+the public release workflow.
+
+\noindent\textbf{Contact:}
+Contact email to be added before submission.
+
+\noindent\textbf{Supplementary information:}
+Benchmark reports, test data generators, and exact reproducibility commands are
+provided in the project repository.
+\end{abstract}
+
+\input{sections/introduction}
+\input{sections/implementation}
+\input{sections/results}
+\input{sections/discussion}
+
+\section*{Funding}
+Funding statement to be finalized before submission.
+
+\section*{Conflict of interest}
+The author declares no competing interests.
+
+\section*{AI usage disclosure}
+Codex and related OpenAI systems were used for planning, code-review support,
+test scaffolding, benchmark-report organization, and prose drafting support.
+The human author reviewed and remains responsible for the manuscript, code,
+benchmarks, licensing, and scientific claims.
+
+\section*{Acknowledgements}
+The project builds on the open genomics software ecosystem, including the VCF
+specification, HTSlib, bcftools, Bioconda, Apache Arrow, Parquet, and DuckDB.
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

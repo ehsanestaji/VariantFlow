@@ -1,0 +1,21 @@
+\section{Implementation}
+
+VariantFlow is implemented in Rust. The native engine uses borrowed byte-slice
+views over VCF records, typed expression evaluation, and shared INFO/FORMAT
+scanners to avoid per-record column materialization where it is not required.
+Native filtering writes passing records in input order and preserves their
+original text in the line-preserving path.
+
+Compressed input is handled through a native BGZF reader for BGZF
+\texttt{.vcf.gz} files, with auto-capped worker threads enabled by default and
+a single-thread escape hatch for comparison. CPU-heavy predicates, such as
+FORMAT aggregate filters, can use ordered batch evaluation while preserving
+output order. Optional HTSlib-backed paths provide compatibility for BCF input,
+indexed region reads, and BGZF output when ecosystem interoperability is more
+important than byte-for-byte record preservation.
+
+VariantFlow also provides tabular and columnar export. TSV output exposes a
+stable selected projection, while Parquet export stores typed POS, nullable
+QUAL, nullable INFO/DP, and lossless string INFO/AF columns for repeated
+analysis with engines such as DuckDB \citep{duckdb,apache_arrow,parquet}.
+

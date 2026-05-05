@@ -1,0 +1,20 @@
+\section{Benchmark evidence}
+
+All reported measurements are tied to tracked benchmark reports containing
+exact commands, competitor versions, correctness checks, caveats, and
+reproducibility commands. VariantFlow compares primarily against bcftools
+because it is the trusted performance and correctness baseline for many
+VCF/BCF workflows.
+
+\input{tables/benchmark_summary}
+
+The strongest current evidence is for selective native streaming and
+compressed public filtering. On bounded IGSR chr22 public-heavy BGZF inputs,
+VariantFlow's default native BGZF path matched bcftools core records and was
+13.44--13.47 times faster than \texttt{bcftools filter}. On deterministic
+FORMAT-heavy stress data, opt-in predicate parallelism matched bcftools core
+records and was 4.33--5.27 times faster than \texttt{bcftools filter}. For
+repeated analytical workflows, exporting once to Parquet and querying with
+DuckDB matched normalized bcftools baselines and reduced amortized runtime by
+3.18--25.67 times in the measured workflows.
+

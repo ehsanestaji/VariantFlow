@@ -1,0 +1,18 @@
+\section{Introduction}
+
+Post-calling variant analysis commonly involves repeated scans of large VCF,
+BGZF-compressed VCF, or BCF files to apply quality filters, evaluate INFO and
+FORMAT predicates, compute summaries, compare call sets, or export selected
+columns for downstream analysis. VCF is an effective exchange format, but many
+workflows only need a small subset of fields from each record. Parsing unused
+INFO, FORMAT, and sample values can therefore become unnecessary work,
+especially in large cohort or repeated-query settings.
+
+Mature tools such as bcftools and HTSlib provide the compatibility baseline for
+VCF/BCF streaming, BGZF compression, region access, filtering, querying, and
+statistics \citep{bcftools,htslib}. VariantFlow is designed to complement this
+ecosystem rather than replace it universally. Its central idea is selective
+execution: for supported operations, parse only the fields required by the
+current predicate or projection, preserve original records when possible, and
+track every performance claim against correctness-matched benchmarks.
+
