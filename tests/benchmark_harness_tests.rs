@@ -119,6 +119,24 @@ fn v06_benchmark_modes_and_make_targets_are_declared() {
 }
 
 #[test]
+fn v07_public_heavy_mode_and_artifact_caps_are_declared() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let harness = std::fs::read_to_string(root.join("benchmark/run_benchmarks.sh")).unwrap();
+    assert!(harness.contains("public-heavy"));
+    assert!(harness.contains("VCF_FAST_HEAVY_MAX_PLAIN_BYTES"));
+    assert!(harness.contains("build_public_heavy_dataset"));
+    assert!(harness.contains("deferred: plain artifact cap exceeded"));
+    assert!(!harness.contains("if ! build_public_heavy_dataset"));
+    assert!(harness.contains("heavy_status=$?"));
+    assert!(harness.contains("[[ \"$heavy_status\" -eq 77 ]]"));
+    assert!(harness.contains("[[ \"$heavy_status\" -ne 0 ]]"));
+
+    let makefile = std::fs::read_to_string(root.join("Makefile")).unwrap();
+    assert!(makefile.contains("bench-heavy"));
+    assert!(makefile.contains("VCF_FAST_BENCH_MODE=public-heavy"));
+}
+
+#[test]
 fn v06_reports_track_claim_matrix_and_required_fields() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let public_report =
