@@ -273,7 +273,7 @@ docker run --rm -v "$PWD:/work" variantflow cargo test
 
 ## Release Hardening
 
-Release and install details are tracked in `docs/release.md`. Bioconda release planning and the VariantFlow rename migration are tracked in `TODO.md` and `docs/rename-plan.md`. The public benchmark summary is generated from tracked reports:
+Release and install details are tracked in `docs/release.md`. Bioconda release planning and the VariantFlow rename migration are tracked in `TODO.md`, `docs/rename-plan.md`, and `docs/bioconda-packaging.md`. The public benchmark summary is generated from tracked reports:
 
 ```bash
 make benchmark-table

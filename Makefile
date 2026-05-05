@@ -1,4 +1,4 @@
-.PHONY: build test test-htslib fmt clippy verify benchmark-table bench-smoke bench-stress bench-public bench-public-region bench-heavy bench-compat bench-v09 bench-v10-compressed bench-v10-parquet bench-v10-columnar bench-v11-parallel bench-v12 bench-v14 bench-v06-smoke
+.PHONY: build test test-htslib fmt clippy verify bioconda-recipe-check benchmark-table bench-smoke bench-stress bench-public bench-public-region bench-heavy bench-compat bench-v09 bench-v10-compressed bench-v10-parquet bench-v10-columnar bench-v11-parallel bench-v12 bench-v14 bench-v06-smoke
 
 build:
 	cargo build
@@ -31,9 +31,18 @@ verify:
 	bash -n benchmark/run_v11_parallel_filter_benchmarks.sh
 	bash -n benchmark/run_v12_public_parallel_workflow_benchmarks.sh
 	bash -n benchmark/run_v14_public_parallel_scale_benchmarks.sh
+	bash -n packaging/bioconda/variantflow/build.sh
+	bash -n packaging/bioconda/variantflow/run_test.sh
 	python3 -m py_compile benchmark/*.py
+	python3 -m py_compile packaging/*.py
+	python3 packaging/check_bioconda_recipe.py
 	python3 benchmark/generate_public_benchmark_table.py --check
 	VCF_FAST_BENCH_SIZES="100" VCF_FAST_BENCH_RUNS=1 VCF_FAST_BENCH_WARMUP=0 make bench-v06-smoke
+
+bioconda-recipe-check:
+	bash -n packaging/bioconda/variantflow/build.sh
+	bash -n packaging/bioconda/variantflow/run_test.sh
+	python3 packaging/check_bioconda_recipe.py
 
 benchmark-table:
 	python3 benchmark/generate_public_benchmark_table.py

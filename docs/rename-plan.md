@@ -28,7 +28,7 @@ The two binaries call the same implementation. The only intended difference is h
 
 ## Bioconda Plan
 
-The Bioconda recipe should use package name `variantflow` after the collision check is complete. The recipe should install and test the primary `variantflow` command. If the compatibility alias is shipped in the same release, the recipe should also test `vcf-fast --version`.
+The Bioconda recipe should use package name `variantflow` after the collision check is complete. The local scaffold lives at `packaging/bioconda/variantflow`. The recipe should install and test the primary `variantflow` command. If the compatibility alias is shipped in the same release, the recipe should also test `vcf-fast --version`.
 
 The first Bioconda recipe should use a tagged GitHub source tarball, a recorded `sha256`, Rust compiler macro support, `cargo-bundle-licenses`, and deterministic Cargo install flags.
 

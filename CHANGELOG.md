@@ -7,6 +7,7 @@ All notable VCF-Fast changes are tracked here. Claims remain evidence-bound: per
 - Accepted `VariantFlow` as the professional public project name.
 - Added `variantflow` as the primary CLI binary while keeping `vcf-fast` as a compatibility alias.
 - Added `docs/rename-plan.md` and updated release TODOs for Bioconda packaging under `variantflow`.
+- Added a local Bioconda recipe scaffold, packaging checker, and `docs/bioconda-packaging.md` with current release blockers.
 
 ## v1.4.0 - Public Parallel Scale
 

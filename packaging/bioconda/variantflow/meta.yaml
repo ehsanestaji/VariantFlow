@@ -1,0 +1,44 @@
+{% set name = "variantflow" %}
+{% set version = "1.5.0" %}
+
+package:
+  name: {{ name }}
+  version: {{ version }}
+
+source:
+  url: https://github.com/OWNER/VariantFlow/archive/v{{ version }}.tar.gz
+  sha256: TODO_RELEASE_SHA256
+
+build:
+  number: 0
+  run_exports:
+    - {{ pin_subpackage(name, max_pin="x.x") }}
+
+requirements:
+  build:
+    - {{ compiler('rust') }}
+    - cargo-bundle-licenses
+
+test:
+  commands:
+    - variantflow --version
+    - vcf-fast --version
+  files:
+    - run_test.sh
+
+about:
+  home: https://github.com/OWNER/VariantFlow
+  license: TODO
+  license_file:
+    - LICENSE
+    - THIRDPARTY.yml
+  summary: Selective execution engine for VCF/BCF variant workflows
+  description: |
+    VariantFlow, formerly VCF-Fast, provides selective Rust-native streaming
+    operations for VCF/BCF filtering, stats, diff, TSV export, and Parquet
+    export. Performance claims are tracked against correctness-matched
+    benchmark reports.
+
+extra:
+  recipe-maintainers:
+    - TODO_GITHUB_HANDLE

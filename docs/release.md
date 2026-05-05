@@ -108,4 +108,4 @@ Then confirm:
 
 ## Distribution And Naming TODO
 
-The Bioconda release and professional rename migration are tracked in the top-level `TODO.md` and `docs/rename-plan.md`. Do not publish a Bioconda recipe until the final package/binary name is checked for collisions and represented by a tagged source release with deterministic `cargo install --locked --no-track --root $PREFIX --path .` build behavior.
+The Bioconda release and professional rename migration are tracked in the top-level `TODO.md`, `docs/rename-plan.md`, and `docs/bioconda-packaging.md`. Do not publish a Bioconda recipe until the final package/binary name is checked for collisions, the project license is chosen, and a tagged source release exists with deterministic `cargo install --locked --no-track --root $PREFIX --path .` build behavior.

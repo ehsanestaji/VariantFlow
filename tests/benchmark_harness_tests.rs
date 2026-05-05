@@ -656,6 +656,86 @@ fn release_todo_tracks_bioconda_and_professional_rename() {
 }
 
 #[test]
+fn bioconda_packaging_prep_tracks_recipe_template_and_release_blockers() {
+    let root = repo_root();
+    let makefile = fs::read_to_string(root.join("Makefile")).unwrap();
+    let meta = fs::read_to_string(root.join("packaging/bioconda/variantflow/meta.yaml")).unwrap();
+    let build = fs::read_to_string(root.join("packaging/bioconda/variantflow/build.sh")).unwrap();
+    let run_test =
+        fs::read_to_string(root.join("packaging/bioconda/variantflow/run_test.sh")).unwrap();
+    let docs = fs::read_to_string(root.join("docs/bioconda-packaging.md")).unwrap();
+    let checker = fs::read_to_string(root.join("packaging/check_bioconda_recipe.py")).unwrap();
+
+    assert!(makefile.contains("bioconda-recipe-check:"));
+    assert!(makefile.contains("packaging/check_bioconda_recipe.py"));
+
+    for required in [
+        "{% set name = \"variantflow\" %}",
+        "{% set version = \"1.5.0\" %}",
+        "sha256: TODO_RELEASE_SHA256",
+        "cargo-bundle-licenses",
+        "{{ compiler('rust') }}",
+        "license: TODO",
+        "license_file:",
+        "THIRDPARTY.yml",
+        "variantflow --version",
+        "vcf-fast --version",
+        "recipe-maintainers:",
+    ] {
+        assert!(
+            meta.contains(required),
+            "missing Bioconda recipe text {required}"
+        );
+    }
+
+    for required in [
+        "cargo-bundle-licenses --format yaml --output THIRDPARTY.yml",
+        "cargo install -v --locked --no-track --root \"$PREFIX\" --path .",
+    ] {
+        assert!(build.contains(required), "missing build text {required}");
+    }
+
+    for required in [
+        "variantflow --version",
+        "vcf-fast --version",
+        "variantflow filter",
+        "variantflow convert",
+    ] {
+        assert!(
+            run_test.contains(required),
+            "missing run_test text {required}"
+        );
+    }
+
+    for required in [
+        "Current Blockers",
+        "final SPDX license",
+        "tagged GitHub source release",
+        "sha256",
+        "Exact-name check on 2026-05-06",
+        "bioconda/variantflow: 404",
+        "crates/variantflow: 404",
+    ] {
+        assert!(
+            docs.contains(required),
+            "missing Bioconda docs text {required}"
+        );
+    }
+
+    for required in [
+        "TODO_RELEASE_SHA256",
+        "license: TODO",
+        "variantflow --version",
+        "cargo install -v --locked --no-track",
+    ] {
+        assert!(
+            checker.contains(required),
+            "missing checker text {required}"
+        );
+    }
+}
+
+#[test]
 fn v13_release_hardening_tracks_install_docs_and_generated_benchmark_table() {
     let root = repo_root();
     let cargo_toml = fs::read_to_string(root.join("Cargo.toml")).unwrap();
