@@ -54,7 +54,7 @@ Public evidence now supports the native selective-filter claim on measured GIAB 
 4. `v0.4 FORMAT-Aware Filtering`: support `FORMAT/GT`, `FORMAT/DP`, `FORMAT/GQ`, selected sample predicates, bcftools comparison.
 5. `v0.5 Compatibility Proof`: optional htslib-backed BCF input, BGZF output, and tabix-indexed region reads while preserving the Rust-native selective streaming path.
 6. `v0.6 Public Whole-Cohort Evidence`: tiered local GIAB/IGSR runs, repeated benchmark reports, memory trends, compatibility benchmarks, and exact claim matrix updates.
-7. `v0.7 Expression Parity`: arbitrary FORMAT keys, sample lists, `ANY`/`ALL`, vector indices, and bcftools-compatible missing-value semantics where practical.
+7. `v0.7 Heavy-Run And Htslib Optimization`: avoid giant public-data intermediates, tune htslib compatibility paths, and report path-specific bottlenecks before broader claims.
 8. `v0.8 Columnar Bridge`: Arrow/Parquet export for repeated analytical workloads and DuckDB-style workflows.
 9. `v0.9 Release Hardening`: installer packages, reproducible binaries, versioned docs, and a claim matrix for bcftools, VCFtools, and GATK.
 

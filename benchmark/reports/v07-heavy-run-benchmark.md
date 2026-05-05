@@ -2,7 +2,7 @@
 
 ## Status
 
-Pending implementation and measured runs.
+Tiny `public-heavy` smoke was not run because cached IGSR public data or required local benchmark tools were unavailable. No v0.7 performance claim is made.
 
 ## Required Report Fields
 
