@@ -4,10 +4,11 @@ use std::path::Path;
 use anyhow::{Result, bail};
 
 use crate::compat::{Backend, CompressionMode, Region, select_backend};
-use crate::expr::{EvalRecord, FormatValues, RequiredFields, parse_expression};
+use crate::expr::{EvalContext, RequiredFields, parse_expression};
 use crate::io::{open_reader, open_vcf_writer};
 use crate::vcf::{
-    SiteRecord, column_value, parse_record_fields, resolve_sample_column, selected_format_values,
+    FormatValueBytes, InfoView, RecordView, column_value, resolve_sample_column,
+    selected_format_values_bytes,
 };
 
 pub fn run(
@@ -44,160 +45,124 @@ pub fn run(
         bail!("FORMAT predicates require --sample <name>");
     }
 
-    let sample_column = if required.requires_format() {
-        Some(resolve_format_sample_column(input, sample.unwrap())?)
-    } else {
-        None
-    };
-
     let mut reader = open_reader(input)?;
+    let mut headers = Vec::new();
+    let mut line = Vec::new();
+    let mut sample_column = None;
+    let mut saw_chrom_header = false;
+
+    while reader.read_until(b'\n', &mut line)? != 0 {
+        if !line.starts_with(b"#") {
+            break;
+        }
+
+        if line.starts_with(b"#CHROM\t") {
+            saw_chrom_header = true;
+            if required.requires_format() {
+                let header = std::str::from_utf8(&line)?;
+                if column_value(header, 9).is_none() {
+                    bail!("FORMAT predicates require #CHROM header with sample columns");
+                }
+                sample_column = Some(resolve_sample_column(header, sample.unwrap())?);
+            }
+        }
+
+        headers.push(std::mem::take(&mut line));
+    }
+
+    if required.requires_format() && !saw_chrom_header {
+        bail!("FORMAT predicates require #CHROM header with sample columns");
+    }
+
     let mut writer = open_vcf_writer(output, compression)?;
-    let mut line = String::new();
+    for header in &headers {
+        writer.write_all(header)?;
+    }
 
-    while reader.read_line(&mut line)? != 0 {
-        if line.starts_with('#') {
-            writer.write_all(line.as_bytes())?;
+    loop {
+        if !line.is_empty() {
+            let record = ByteEvalRecord::parse(&line, required, sample_column)?;
+            if expr.evaluate_context(&record) {
+                writer.write_all(&line)?;
+            }
             line.clear();
-            continue;
         }
 
-        let record = parse_eval_record_line(&line, required, sample_column)?;
-        if expr.evaluate(&record) {
-            writer.write_all(line.as_bytes())?;
+        if reader.read_until(b'\n', &mut line)? == 0 {
+            break;
         }
-        line.clear();
     }
 
     writer.flush()?;
     Ok(())
 }
 
-fn resolve_format_sample_column(input: &Path, sample: &str) -> Result<usize> {
-    let mut reader = open_reader(input)?;
-    let mut line = String::new();
-
-    while reader.read_line(&mut line)? != 0 {
-        if !line.starts_with('#') {
-            break;
-        }
-
-        if line.starts_with("#CHROM\t") {
-            if column_value(&line, 9).is_none() {
-                bail!("FORMAT predicates require #CHROM header with sample columns");
-            }
-            return resolve_sample_column(&line, sample);
-        }
-
-        line.clear();
-    }
-
-    bail!("FORMAT predicates require #CHROM header with sample columns");
+struct ByteEvalRecord<'a> {
+    record: RecordView<'a>,
+    info: InfoView<'a>,
+    format: FormatValueBytes<'a>,
 }
 
-fn parse_eval_record_line(
-    line: &str,
-    required: RequiredFields,
-    sample_column: Option<usize>,
-) -> Result<EvalRecord<'_>> {
-    let fields = parse_record_fields(line)?;
-    let chrom = if required.chrom { fields.chrom } else { "" };
-    let pos = if required.pos { fields.pos_u64()? } else { 0 };
-    let qual = if required.qual {
-        fields.qual_float()?
-    } else {
-        None
-    };
-    let filter = if required.filter { fields.filter } else { "" };
-    let info = if required.info { fields.info } else { "" };
-    let format = if required.requires_format() {
-        let format_column = column_value(line, 8).unwrap_or("");
-        let sample_value = sample_column
-            .and_then(|column| column_value(line, column))
-            .unwrap_or(".");
-        selected_format_values(format_column, sample_value, required.format)
-    } else {
-        FormatValues::default()
-    };
+impl<'a> ByteEvalRecord<'a> {
+    fn parse(
+        line: &'a [u8],
+        required: RequiredFields,
+        sample_column: Option<usize>,
+    ) -> Result<Self> {
+        let record = RecordView::parse(line)?;
+        let info = if required.info {
+            InfoView::scan(record.info())
+        } else {
+            InfoView::default()
+        };
+        let format = if required.requires_format() {
+            let format_column = record.column(8).unwrap_or(b"");
+            let sample_value = sample_column
+                .and_then(|column| record.column(column))
+                .unwrap_or(b".");
+            selected_format_values_bytes(format_column, sample_value, required.format)
+        } else {
+            FormatValueBytes::default()
+        };
 
-    Ok(EvalRecord {
-        chrom,
-        pos,
-        qual,
-        filter,
-        info,
-        format,
-    })
-}
-
-impl<'a> From<&'a SiteRecord> for EvalRecord<'a> {
-    fn from(record: &'a SiteRecord) -> Self {
-        Self {
-            chrom: &record.chrom,
-            pos: record.pos,
-            qual: record.qual,
-            filter: &record.filter,
-            info: &record.info,
-            format: FormatValues::default(),
-        }
+        Ok(Self {
+            record,
+            info,
+            format,
+        })
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::parse_eval_record_line;
-    use crate::expr::RequiredFields;
-
-    #[test]
-    fn parses_borrowed_eval_record_without_reconstructing_site_record() {
-        let record = parse_eval_record_line(
-            "1\t20\t.\tA\tG\t42\tPASS\tDP=11;AF=0.2\n",
-            RequiredFields {
-                chrom: true,
-                pos: true,
-                qual: true,
-                filter: true,
-                info: true,
-                format: Default::default(),
-            },
-            None,
-        )
-        .unwrap();
-
-        assert_eq!(record.chrom, "1");
-        assert_eq!(record.pos, 20);
-        assert_eq!(record.qual, Some(42.0));
-        assert_eq!(record.filter, "PASS");
-        assert_eq!(record.info, "DP=11;AF=0.2");
+impl EvalContext for ByteEvalRecord<'_> {
+    fn chrom(&self) -> Option<&[u8]> {
+        Some(self.record.chrom())
     }
 
-    #[test]
-    fn borrowed_eval_record_treats_dot_qual_as_missing() {
-        let record = parse_eval_record_line(
-            "1\t20\t.\tA\tG\t.\tPASS\tDP=11\n",
-            RequiredFields {
-                qual: true,
-                ..RequiredFields::default()
-            },
-            None,
-        )
-        .unwrap();
-
-        assert_eq!(record.qual, None);
+    fn pos(&self) -> Option<u64> {
+        self.record.pos_u64().ok()
     }
 
-    #[test]
-    fn borrowed_eval_record_skips_unneeded_info_column() {
-        let record = parse_eval_record_line(
-            "1\t20\t.\tA\tG\t42\tPASS\tDP=11\n",
-            RequiredFields {
-                qual: true,
-                ..RequiredFields::default()
-            },
-            None,
-        )
-        .unwrap();
+    fn qual(&self) -> Option<f64> {
+        self.record.qual_float().ok().flatten()
+    }
 
-        assert_eq!(record.qual, Some(42.0));
-        assert_eq!(record.info, "");
+    fn filter(&self) -> Option<&[u8]> {
+        Some(self.record.filter())
+    }
+
+    fn info_number_any(&self, key: &[u8], predicate: &mut dyn FnMut(f64) -> bool) -> bool {
+        self.info.number_any(key, predicate)
+    }
+
+    fn format_gt(&self) -> Option<&[u8]> {
+        self.format.gt
+    }
+
+    fn format_dp(&self) -> Option<&[u8]> {
+        self.format.dp
+    }
+
+    fn format_gq(&self) -> Option<&[u8]> {
+        self.format.gq
     }
 }
