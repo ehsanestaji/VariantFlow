@@ -87,8 +87,8 @@ pub fn stats(input: &Path, region: Option<&Region>) -> Result<StatsSummary> {
         let mut reader = indexed_reader(input, region)?;
         apply_reader_threads(&mut reader)?;
         for_each_record(&mut reader, |record| {
-            let owned = owned_record_fields(record)?;
-            summary.observe(&owned.as_fields(), &mut titv)?;
+            let fields = stats_record_fields(record)?;
+            summary.observe(&fields.as_fields(), &mut titv)?;
             Ok(())
         })?;
     } else {
@@ -96,8 +96,8 @@ pub fn stats(input: &Path, region: Option<&Region>) -> Result<StatsSummary> {
             .with_context(|| format!("failed to open input {}", input.display()))?;
         apply_reader_threads(&mut reader)?;
         for_each_record(&mut reader, |record| {
-            let owned = owned_record_fields(record)?;
-            summary.observe(&owned.as_fields(), &mut titv)?;
+            let fields = stats_record_fields(record)?;
+            summary.observe(&fields.as_fields(), &mut titv)?;
             Ok(())
         })?;
     }
@@ -265,17 +265,26 @@ struct OwnedRecordFields {
     alternate: String,
     qual: String,
     filter: String,
-    info: String,
     dp: Option<String>,
     af: Option<String>,
 }
 
-impl OwnedRecordFields {
+struct HtslibStatsFields {
+    chrom: String,
+    pos: String,
+    reference: String,
+    alternate: String,
+    qual: String,
+    filter: String,
+    info: String,
+}
+
+impl HtslibStatsFields {
     fn as_fields(&self) -> RecordFields<'_> {
         RecordFields {
             chrom: &self.chrom,
             pos: &self.pos,
-            id: &self.id,
+            id: ".",
             reference: &self.reference,
             alternate: &self.alternate,
             qual: &self.qual,
@@ -283,6 +292,20 @@ impl OwnedRecordFields {
             info: &self.info,
         }
     }
+}
+
+fn stats_record_fields(record: &Record) -> Result<HtslibStatsFields> {
+    Ok(HtslibStatsFields {
+        chrom: chrom(record)?,
+        pos: (record.pos() + 1).to_string(),
+        reference: allele_string(record, 0)?,
+        alternate: alternate_string(record)?,
+        qual: qual(record)
+            .map(|value| format_float(value as f64))
+            .unwrap_or_else(|| ".".to_string()),
+        filter: stats_filter_string(record),
+        info: info_string(record)?,
+    })
 }
 
 fn owned_record_fields(record: &Record) -> Result<OwnedRecordFields> {
@@ -300,7 +323,6 @@ fn owned_record_fields(record: &Record) -> Result<OwnedRecordFields> {
             .map(|value| format_float(value as f64))
             .unwrap_or_else(|| ".".to_string()),
         filter: filter_string(record)?,
-        info,
         dp,
         af,
     })
@@ -350,6 +372,14 @@ fn qual(record: &Record) -> Option<f32> {
 
 fn filter_string(record: &Record) -> Result<String> {
     record_vcf_column(record, 6)
+}
+
+fn stats_filter_string(record: &Record) -> String {
+    if record.inner().d.n_flt == 0 {
+        return ".".to_string();
+    }
+
+    fallback_filter_string(record)
 }
 
 fn fallback_filter_string(record: &Record) -> String {

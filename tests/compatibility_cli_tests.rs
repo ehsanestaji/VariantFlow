@@ -277,6 +277,29 @@ fn bcf_input_treats_undefined_info_key_as_missing() {
 
 #[cfg(feature = "htslib")]
 #[test]
+fn bcf_stats_observes_qual_and_af_without_vcf_text_reconstruction() {
+    let dir = tempdir().unwrap();
+    let input = dir.path().join("input.bcf");
+    create_bcf(&fixture("tests/data/compat_example.vcf"), &input);
+
+    let output = assert_cmd::Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args(["stats", input.to_str().unwrap()])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(json["variants"], 5);
+    assert_eq!(json["qual"]["count"], 4);
+    assert_eq!(json["af"]["count"], 5);
+    assert_eq!(json["missing_filter_values"], 0);
+}
+
+#[cfg(feature = "htslib")]
+#[test]
 fn bcf_input_preserves_filter_missing_semantics_for_stats_and_predicates() {
     let dir = tempdir().unwrap();
     let input = dir.path().join("input.bcf");
