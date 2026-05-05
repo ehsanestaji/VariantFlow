@@ -137,6 +137,34 @@ fn v07_public_heavy_mode_and_artifact_caps_are_declared() {
 }
 
 #[test]
+fn v07_report_tracks_bottleneck_caveat_and_next_action() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let harness = std::fs::read_to_string(root.join("benchmark/run_benchmarks.sh")).unwrap();
+    assert!(harness.contains("bottleneck"));
+    assert!(harness.contains("next action"));
+    assert!(harness.contains("native-filter"));
+    assert!(harness.contains("native-stats"));
+    assert!(harness.contains("htslib-region-tsv"));
+
+    let report =
+        std::fs::read_to_string(root.join("benchmark/reports/v07-heavy-run-benchmark.md"))
+            .unwrap();
+    for required in [
+        "correctness result",
+        "runtime mean",
+        "speedup",
+        "variants/sec",
+        "peak RSS",
+        "bottleneck",
+        "next action",
+        "caveat",
+        "native-stats",
+    ] {
+        assert!(report.contains(required), "missing {required}");
+    }
+}
+
+#[test]
 fn v06_reports_track_claim_matrix_and_required_fields() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let public_report =
