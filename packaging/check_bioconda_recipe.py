@@ -2,8 +2,7 @@
 """Lightweight checks for the VariantFlow Bioconda recipe scaffold.
 
 This is not a replacement for bioconda-utils lint/build. It keeps the in-repo
-template honest until a tagged source release, sha256, and maintainer metadata
-are available.
+template honest until a tagged source release and sha256 are available.
 """
 
 from __future__ import annotations
@@ -40,6 +39,7 @@ def main() -> int:
         (
             '{% set name = "variantflow" %}',
             '{% set version = "1.5.0" %}',
+            "https://github.com/ehsanestaji/VariantFlow/archive/v{{ version }}.tar.gz",
             "sha256: TODO_RELEASE_SHA256",
             "{{ compiler('rust') }}",
             "cargo-bundle-licenses",
@@ -51,6 +51,7 @@ def main() -> int:
             "variantflow --version",
             "vcf-fast --version",
             "recipe-maintainers:",
+            "- ehsanestaji",
         ),
     )
     require_tokens(
@@ -79,6 +80,7 @@ def main() -> int:
             "tagged GitHub source release",
             "sha256",
             "MIT OR Apache-2.0",
+            "ehsanestaji",
             "bioconda/variantflow: 404",
             "crates/variantflow: 404",
         ),

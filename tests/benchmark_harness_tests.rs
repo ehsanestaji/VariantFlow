@@ -680,6 +680,7 @@ fn bioconda_packaging_prep_tracks_recipe_template_and_release_blockers() {
     for required in [
         "{% set name = \"variantflow\" %}",
         "{% set version = \"1.5.0\" %}",
+        "https://github.com/ehsanestaji/VariantFlow/archive/v{{ version }}.tar.gz",
         "sha256: TODO_RELEASE_SHA256",
         "cargo-bundle-licenses",
         "{{ compiler('rust') }}",
@@ -691,6 +692,7 @@ fn bioconda_packaging_prep_tracks_recipe_template_and_release_blockers() {
         "variantflow --version",
         "vcf-fast --version",
         "recipe-maintainers:",
+        "- ehsanestaji",
     ] {
         assert!(
             meta.contains(required),
@@ -722,6 +724,7 @@ fn bioconda_packaging_prep_tracks_recipe_template_and_release_blockers() {
         "tagged GitHub source release",
         "sha256",
         "MIT OR Apache-2.0",
+        "ehsanestaji",
         "Exact-name check on 2026-05-06",
         "bioconda/variantflow: 404",
         "crates/variantflow: 404",
@@ -737,6 +740,7 @@ fn bioconda_packaging_prep_tracks_recipe_template_and_release_blockers() {
         "license: MIT OR Apache-2.0",
         "LICENSE-MIT",
         "LICENSE-APACHE",
+        "ehsanestaji",
         "variantflow --version",
         "cargo install -v --locked --no-track",
     ] {
@@ -798,6 +802,7 @@ fn joss_paper_scaffold_tracks_evidence_and_submission_blockers() {
         "Current blockers",
         "MIT OR Apache-2.0",
         "Umeå Plant Science Center",
+        "ehsanestaji",
         "public repository history",
         "tagged release",
         "Zenodo DOI",
