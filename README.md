@@ -27,12 +27,14 @@ VCF-Fast stays Rust-first. Rust gives the project C-like performance, strict mem
 | IGSR chr22 public-whole QUAL filters | `bcftools filter` | matched filtered core records | `4.85x` to `5.71x` faster on measured 10k/100k tiers | 1M deferred after >13 GB generated intermediate |
 | IGSR chr22 public-whole TSV conversion | `bcftools query` | matched normalized TSV rows | `1.22x` faster at 10k; `0.87x` at 100k | TSV path is mixed |
 | IGSR chr22 public-heavy gzip filter/TSV | `bcftools filter` / `bcftools query` | matched filtered core records / normalized TSV rows | `5.23x` to `5.65x` faster for QUAL filtering at 100k/1M; `1.08x` to `1.10x` faster for TSV at 100k/1M | bounded chr22 region |
+| IGSR chr22 public-heavy after v0.8 byte-core surgery | `bcftools filter` / `bcftools query` | supported correctness matched: filtered core records / normalized TSV rows | Heavy QUAL gzip input `6.01x` faster; Heavy Convert TSV gzip input `1.13x` faster | bounded chr22:1-20000000 region; repeated local run with 3 measured runs and 1 warmup |
 | IGSR chr22 indexed-region QUAL filters | `bcftools view -r` + `bcftools filter` | matched filtered core records | `1.47x` faster at 10k and 100k | htslib-backed path, not line-preserving native output |
 | IGSR chr22 indexed-region TSV/stats | `bcftools query` / `bcftools stats` | matched TSV rows / overlapping counts | `0.71x` to `0.72x` | bcftools faster; compatibility path needs optimization |
 | Stress 1M filters with unused INFO/FORMAT/sample payload | `bcftools filter` | matched filtered core records | `1.96x` to `2.45x` faster on plain VCF | synthetic stress shape |
 | Stress 1M selected-sample FORMAT filters | `bcftools filter` | matched filtered core records | `1.99x` to `2.06x` faster | single selected sample, synthetic stress shape |
 | Stress 1M TSV conversion | `bcftools query` | matched normalized TSV rows | `1.20x` faster | selected columns only |
 | Stress 1M stats | `bcftools stats` | matched overlapping record count | `1.53x` faster | richer stats equivalence pending |
+| Stress 1M after v0.8 byte-core surgery | `bcftools filter` / `bcftools query` / `bcftools stats` | supported correctness matched: filtered core records, normalized TSV rows, and stats records | filters `3.14x` to `6.24x` faster; TSV `2.54x` faster; stats `2.50x` faster | synthetic stress INFO fields=40, samples=16, FORMAT=GT:DP:GQ:AD; repeated local run with 3 measured runs and 1 warmup |
 | Compatibility proof | `bcftools`, `tabix`, HTSlib | BCF/region/BGZF correctness and indexability | correctness matched; v0.7 near parity or faster for BCF filter, indexed-region filter/stats, and near parity for BGZF output | BCF TSV still trails `bcftools query` |
 
 Detailed evidence lives in:
@@ -44,6 +46,7 @@ Detailed evidence lives in:
 - `benchmark/reports/compatibility-benchmark.md`
 - `benchmark/reports/public-whole-cohort-benchmark.md`
 - `benchmark/reports/v07-heavy-run-benchmark.md`
+- `benchmark/reports/v08-core-efficiency-benchmark.md`
 - `docs/contribution-map.md`
 
 Public evidence now supports the native selective-filter claim on measured GIAB and IGSR tiers. The v0.7 heavy run also shows the optimized native TSV path can beat `bcftools query` on bounded sample-rich gzip workloads through 1M records, while honest gaps remain: BCF TSV still trails `bcftools query`, and broader whole-cohort compatibility evidence is still pending.
@@ -57,8 +60,9 @@ Public evidence now supports the native selective-filter claim on measured GIAB 
 5. `v0.5 Compatibility Proof`: optional htslib-backed BCF input, BGZF output, and tabix-indexed region reads while preserving the Rust-native selective streaming path.
 6. `v0.6 Public Whole-Cohort Evidence`: tiered local GIAB/IGSR runs, repeated benchmark reports, memory trends, compatibility benchmarks, and exact claim matrix updates.
 7. `v0.7 Heavy-Run And Htslib Optimization`: avoid giant public-data intermediates, tune htslib compatibility paths, and report path-specific bottlenecks before broader claims.
-8. `v0.8 Columnar Bridge`: Arrow/Parquet export for repeated analytical workloads and DuckDB-style workflows.
-9. `v0.9 Release Hardening`: installer packages, reproducible binaries, versioned docs, and a claim matrix for bcftools, VCFtools, and GATK.
+8. `v0.8 Core Efficiency And Evidence`: byte-slice native record views, cached INFO scanning, byte-backed expression evaluation, native filter/stats hot-path migration, and repeated post-surgery evidence.
+9. `v0.9 Expression Parity`: arbitrary selected `INFO/*` and `FORMAT/*`, selected sample predicates, sample `ANY`/`ALL`, and documented compatibility with common `bcftools filter` semantics.
+10. `v1.0 Parallel And Columnar`: native parallel BGZF execution, Parquet export, release-grade claim matrix, installer docs, and reproducible benchmark reports.
 
 ## Quickstart
 
