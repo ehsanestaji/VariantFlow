@@ -220,6 +220,7 @@ fn v08_core_efficiency_report_tracks_required_fields() {
         "peak RSS",
         "exact VCF-Fast command",
         "exact competitor command",
+        "competitor version",
         "dataset source",
         "caveat",
         "claim decision",
@@ -230,6 +231,10 @@ fn v08_core_efficiency_report_tracks_required_fields() {
     assert!(
         report.contains("| case | dataset source | dataset shape | record count |"),
         "measured results table should include dataset shape"
+    );
+    assert!(
+        report.contains("| peak RSS | exact VCF-Fast command | exact competitor command | competitor version |"),
+        "measured results table should include competitor version"
     );
 }
 
