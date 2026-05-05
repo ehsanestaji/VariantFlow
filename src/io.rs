@@ -1,24 +1,80 @@
+use std::env;
 use std::fs::File;
-use std::io::{BufReader, BufWriter, Write};
+use std::io::{BufReader, BufWriter, ErrorKind, Read, Seek, SeekFrom, Write};
+use std::num::NonZeroUsize;
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use flate2::Compression;
 use flate2::read::MultiGzDecoder;
 use flate2::write::GzEncoder;
+use noodles_bgzf::io::MultithreadedReader;
 
 use crate::compat::CompressionMode;
 
+pub const NATIVE_BGZF_THREADS_ENV: &str = "VCF_FAST_NATIVE_BGZF_THREADS";
+
 pub fn open_reader(path: &Path) -> Result<Box<dyn std::io::BufRead>> {
+    open_reader_with_native_bgzf_threads(path, native_bgzf_threads_from_env()?)
+}
+
+fn open_reader_with_native_bgzf_threads(
+    path: &Path,
+    bgzf_threads: Option<NonZeroUsize>,
+) -> Result<Box<dyn std::io::BufRead>> {
     let file =
         File::open(path).with_context(|| format!("failed to open input {}", path.display()))?;
 
     if has_gz_extension(path) {
+        if let Some(worker_count) = bgzf_threads.filter(|threads| threads.get() > 1) {
+            return open_compressed_reader(path, file, worker_count);
+        }
         let decoder = MultiGzDecoder::new(file);
         Ok(Box::new(BufReader::new(decoder)))
     } else {
         Ok(Box::new(BufReader::new(file)))
     }
+}
+
+fn open_compressed_reader(
+    path: &Path,
+    mut file: File,
+    worker_count: NonZeroUsize,
+) -> Result<Box<dyn std::io::BufRead>> {
+    if has_bgzf_header(&mut file)
+        .with_context(|| format!("failed to inspect {}", path.display()))?
+    {
+        let reader = MultithreadedReader::with_worker_count(worker_count, file);
+        Ok(Box::new(reader))
+    } else {
+        let decoder = MultiGzDecoder::new(file);
+        Ok(Box::new(BufReader::new(decoder)))
+    }
+}
+
+pub fn native_bgzf_threads_from_env() -> Result<Option<NonZeroUsize>> {
+    match env::var(NATIVE_BGZF_THREADS_ENV) {
+        Ok(raw) => parse_native_bgzf_threads(Some(raw.as_str())),
+        Err(env::VarError::NotPresent) => Ok(None),
+        Err(env::VarError::NotUnicode(_)) => {
+            bail!("{NATIVE_BGZF_THREADS_ENV} must be valid UTF-8")
+        }
+    }
+}
+
+pub fn parse_native_bgzf_threads(raw: Option<&str>) -> Result<Option<NonZeroUsize>> {
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+
+    let value = raw
+        .parse::<usize>()
+        .map_err(|_| anyhow::anyhow!("{NATIVE_BGZF_THREADS_ENV} must be a positive integer"))?;
+    let Some(value) = NonZeroUsize::new(value) else {
+        bail!("{NATIVE_BGZF_THREADS_ENV} must be a positive integer");
+    };
+
+    Ok(Some(value))
 }
 
 pub fn open_writer(path: &Path) -> Result<Box<dyn Write>> {
@@ -69,4 +125,120 @@ pub fn open_vcf_writer(path: &Path, compression: CompressionMode) -> Result<Box<
 
 fn has_gz_extension(path: &Path) -> bool {
     path.extension().is_some_and(|extension| extension == "gz")
+}
+
+fn has_bgzf_header(file: &mut File) -> Result<bool> {
+    file.seek(SeekFrom::Start(0))?;
+    let result = read_bgzf_header(file);
+    file.seek(SeekFrom::Start(0))?;
+    result
+}
+
+fn read_bgzf_header(file: &mut File) -> Result<bool> {
+    let mut fixed = [0_u8; 12];
+    if let Err(error) = file.read_exact(&mut fixed) {
+        return if error.kind() == ErrorKind::UnexpectedEof {
+            Ok(false)
+        } else {
+            Err(error.into())
+        };
+    }
+
+    let is_gzip = fixed[0] == 0x1f && fixed[1] == 0x8b && fixed[2] == 8;
+    let has_extra = fixed[3] & 0x04 != 0;
+    if !is_gzip || !has_extra {
+        return Ok(false);
+    }
+
+    let extra_len = u16::from_le_bytes([fixed[10], fixed[11]]) as usize;
+    let mut extra = vec![0_u8; extra_len];
+    if let Err(error) = file.read_exact(&mut extra) {
+        return if error.kind() == ErrorKind::UnexpectedEof {
+            Ok(false)
+        } else {
+            Err(error.into())
+        };
+    }
+
+    let mut index = 0;
+    while index + 4 <= extra.len() {
+        let subfield_id = &extra[index..index + 2];
+        let subfield_len = u16::from_le_bytes([extra[index + 2], extra[index + 3]]) as usize;
+        index += 4;
+        if index + subfield_len > extra.len() {
+            return Ok(false);
+        }
+        if subfield_id == b"BC" && subfield_len == 2 {
+            return Ok(true);
+        }
+        index += subfield_len;
+    }
+
+    Ok(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use flate2::write::GzEncoder;
+    use std::io::{BufRead, Write};
+
+    #[test]
+    fn native_bgzf_thread_parser_accepts_unset_and_positive_values() {
+        assert_eq!(parse_native_bgzf_threads(None).unwrap(), None);
+        assert_eq!(
+            parse_native_bgzf_threads(Some("1")).unwrap().unwrap().get(),
+            1
+        );
+        assert_eq!(
+            parse_native_bgzf_threads(Some("4")).unwrap().unwrap().get(),
+            4
+        );
+    }
+
+    #[test]
+    fn native_bgzf_thread_parser_rejects_invalid_values() {
+        for raw in ["0", "-2", "fast"] {
+            let error = parse_native_bgzf_threads(Some(raw)).unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("VCF_FAST_NATIVE_BGZF_THREADS must be a positive integer")
+            );
+        }
+    }
+
+    #[test]
+    fn threaded_bgzf_reader_reads_bgzf_input() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("input.vcf.gz");
+        {
+            let file = File::create(&path).unwrap();
+            let mut writer = noodles_bgzf::io::Writer::new(file);
+            writer.write_all(b"##fileformat=VCFv4.3\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n1\t1\t.\tA\tG\t50\tPASS\t.\n").unwrap();
+            writer.finish().unwrap();
+        }
+
+        let mut reader = open_reader_with_native_bgzf_threads(&path, NonZeroUsize::new(2)).unwrap();
+        let mut line = Vec::new();
+        reader.read_until(b'\n', &mut line).unwrap();
+        assert_eq!(line, b"##fileformat=VCFv4.3\n");
+    }
+
+    #[test]
+    fn threaded_bgzf_request_falls_back_for_ordinary_gzip() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("input.vcf.gz");
+        {
+            let file = File::create(&path).unwrap();
+            let mut writer = GzEncoder::new(file, Compression::default());
+            writer.write_all(b"plain gzip\n").unwrap();
+            writer.finish().unwrap();
+        }
+
+        let mut reader = open_reader_with_native_bgzf_threads(&path, NonZeroUsize::new(4)).unwrap();
+        let mut line = Vec::new();
+        reader.read_until(b'\n', &mut line).unwrap();
+        assert_eq!(line, b"plain gzip\n");
+    }
 }

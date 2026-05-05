@@ -28,6 +28,7 @@ VCF-Fast stays Rust-first. Rust gives the project C-like performance, strict mem
 | IGSR chr22 public-whole TSV conversion | `bcftools query` | matched normalized TSV rows | `1.22x` faster at 10k; `0.87x` at 100k | TSV path is mixed |
 | IGSR chr22 public-heavy gzip filter/TSV | `bcftools filter` / `bcftools query` | matched filtered core records / normalized TSV rows | `5.23x` to `5.65x` faster for QUAL filtering at 100k/1M; `1.08x` to `1.10x` faster for TSV at 100k/1M | bounded chr22 region |
 | IGSR chr22 public-heavy after v0.8 byte-core surgery | `bcftools filter` / `bcftools query` | supported correctness matched: filtered core records / normalized TSV rows | Heavy QUAL gzip input `6.01x` faster; Heavy Convert TSV gzip input `1.13x` faster | bounded chr22:1-20000000 region; repeated local run with 3 measured runs and 1 warmup |
+| IGSR chr22 threaded native BGZF input | `bcftools filter` | default and threaded VCF-Fast matched `bcftools` filtered core records | threaded native BGZF input was `1.85x` to `2.00x` faster than default native gzip/BGZF input and `9.90x` to `11.87x` faster than `bcftools filter` on 10k/100k/1M | opt-in `VCF_FAST_NATIVE_BGZF_THREADS=4`; bounded chr22 region; ordinary gzip remains single-thread fallback |
 | IGSR chr22 indexed-region QUAL filters | `bcftools view -r` + `bcftools filter` | matched filtered core records | `1.47x` faster at 10k and 100k | htslib-backed path, not line-preserving native output |
 | IGSR chr22 indexed-region TSV/stats | `bcftools query` / `bcftools stats` | matched TSV rows / overlapping counts | `0.71x` to `0.72x` | bcftools faster; compatibility path needs optimization |
 | Stress 1M filters with unused INFO/FORMAT/sample payload | `bcftools filter` | matched filtered core records | `1.96x` to `2.45x` faster on plain VCF | synthetic stress shape |
@@ -49,9 +50,10 @@ Detailed evidence lives in:
 - `benchmark/reports/v07-heavy-run-benchmark.md`
 - `benchmark/reports/v08-core-efficiency-benchmark.md`
 - `benchmark/reports/v09-expression-parity-benchmark.md`
+- `benchmark/reports/v10-compressed-input-benchmark.md`
 - `docs/contribution-map.md`
 
-Public evidence now supports the native selective-filter claim on measured GIAB and IGSR tiers. The v0.7 heavy run also shows the optimized native TSV path can beat `bcftools query` on bounded sample-rich gzip workloads through 1M records, and v0.9 stress evidence shows the expanded native expression engine beating `bcftools filter` on measured deterministic stress cases. Honest gaps remain: BCF TSV still trails `bcftools query`, public v0.9 expression rows are pending, and broader whole-cohort compatibility evidence is still pending.
+Public evidence now supports the native selective-filter claim on measured GIAB and IGSR tiers. The v0.7 heavy run also shows the optimized native TSV path can beat `bcftools query` on bounded sample-rich gzip workloads through 1M records, v0.9 stress evidence shows the expanded native expression engine beating `bcftools filter` on measured deterministic stress cases, and the first v1.0 slice shows opt-in threaded native BGZF input improving the compressed public filter path. Honest gaps remain: BCF TSV still trails `bcftools query`, public v0.9 expression rows are pending, ordinary gzip is not parallelized, and broader whole-cohort compatibility evidence is still pending.
 
 ## Milestones
 
@@ -64,7 +66,7 @@ Public evidence now supports the native selective-filter claim on measured GIAB 
 7. `v0.7 Heavy-Run And Htslib Optimization`: avoid giant public-data intermediates, tune htslib compatibility paths, and report path-specific bottlenecks before broader claims.
 8. `v0.8 Core Efficiency And Evidence`: byte-slice native record views, cached INFO scanning, byte-backed expression evaluation, native filter/stats hot-path migration, and repeated post-surgery evidence.
 9. `v0.9 Expression Parity`: arbitrary selected `INFO/*` and `FORMAT/*`, selected sample predicates, sample `ANY`/`ALL`, and documented compatibility with common `bcftools filter` semantics.
-10. `v1.0 Parallel And Columnar`: native parallel BGZF execution, Parquet export, release-grade claim matrix, installer docs, and reproducible benchmark reports.
+10. `v1.0 Parallel And Columnar`: opt-in native threaded BGZF input, broader parallel BGZF execution, Parquet export, release-grade claim matrix, installer docs, and reproducible benchmark reports.
 
 ## Quickstart
 
@@ -96,6 +98,7 @@ make bench-public
 make bench-public-region
 make bench-compat
 make bench-v09
+make bench-v10-compressed
 make bench-v06-smoke
 ```
 
@@ -110,6 +113,7 @@ vcf-fast filter tests/data/expression_parity.vcf --where "INFO/MQ >= 50 && INFO/
 vcf-fast filter tests/data/expression_parity.vcf --sample HG002 --where "FORMAT/AD > 8 && FORMAT/FT == \"PASS\"" -o tests/output/format_expr.vcf
 vcf-fast filter tests/data/expression_parity.vcf --where "ANY(FORMAT/DP > 20)" -o tests/output/any_dp.vcf
 vcf-fast filter tests/data/expression_parity.vcf --where "ALL(FORMAT/GQ >= 30)" -o tests/output/all_gq.vcf
+VCF_FAST_NATIVE_BGZF_THREADS=4 vcf-fast filter input.vcf.gz --where "QUAL > 30" -o output.vcf
 cargo run --features htslib-static -- filter tests/data/compat_example.vcf --where "QUAL > 30" --compression bgzf -o tests/output/compat.vcf.gz
 vcf-fast stats tests/data/example.vcf
 vcf-fast diff tests/data/diff_a.vcf tests/data/diff_b.vcf -o tests/output/diff.tsv
@@ -120,6 +124,7 @@ vcf-fast convert tests/data/example.vcf --to tsv -o tests/output/variants.tsv
 
 - Inputs: `.vcf`, `.vcf.gz`
 - Outputs: `.vcf`, `.vcf.gz`
+- Optional native BGZF input acceleration: set `VCF_FAST_NATIVE_BGZF_THREADS=<positive integer>` for BGZF `.vcf.gz` inputs. Ordinary gzip input falls back to the single-thread flate2 path.
 - Site fields: `QUAL`, `CHROM`, `POS`, `FILTER`
 - INFO fields: arbitrary `INFO/<KEY>` predicates. `DP` and `AF` remain aliases for `INFO/DP` and `INFO/AF`.
 - FORMAT fields: arbitrary selected-sample `FORMAT/<KEY>` predicates require `--sample <name>`.
@@ -132,7 +137,7 @@ Numeric `INFO/<KEY>` and `FORMAT/<KEY>` comparisons pass when any comma-separate
 
 ## Limitations
 
-The default build is a line-preserving streaming filter, not the future columnar execution engine. Native gzip output is valid gzip-compressed VCF text but is not promised to be tabix-indexable. With `--features htslib` or `--features htslib-static`, `--compression bgzf`, `.bcf` input, and `--region` use htslib compatibility paths. Those paths guarantee valid VCF output and bcftools-equivalent core records for supported predicates, but they do not preserve original record text byte-for-byte. The htslib-backed paths keep the older compatibility surface and reject native-only aggregate predicates with `ANY/ALL FORMAT predicates are not implemented for htslib-backed input in v0.9`. Arrow, Parquet, broad whole-cohort expression benchmarks, and public v0.9 runtime win claims are still pending.
+The default build is a line-preserving streaming filter, not the future columnar execution engine. Native gzip output is valid gzip-compressed VCF text but is not promised to be tabix-indexable. Opt-in native threaded BGZF input accelerates BGZF `.vcf.gz` reads only; ordinary single-stream gzip is still decoded by the existing flate2 fallback. With `--features htslib` or `--features htslib-static`, `--compression bgzf`, `.bcf` input, and `--region` use htslib compatibility paths. Those paths guarantee valid VCF output and bcftools-equivalent core records for supported predicates, but they do not preserve original record text byte-for-byte. The htslib-backed paths keep the older compatibility surface and reject native-only aggregate predicates with `ANY/ALL FORMAT predicates are not implemented for htslib-backed input in v0.9`. Arrow, Parquet, broad whole-cohort expression benchmarks, and public v0.9 runtime win claims are still pending.
 
 ## Stats Output
 
