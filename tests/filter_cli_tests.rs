@@ -337,6 +337,60 @@ fn filter_supports_arbitrary_selected_format_field() {
 }
 
 #[test]
+fn filter_supports_arbitrary_info_numeric_and_string_fields() {
+    let dir = tempdir().unwrap();
+    let output = dir.path().join("arbitrary_info.vcf");
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            fixture("tests/data/expression_parity.vcf")
+                .to_str()
+                .unwrap(),
+            "--where",
+            "INFO/MQ >= 50 && INFO/CSQ == \"synonymous_variant\"",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let text = std::fs::read_to_string(output).unwrap();
+    assert!(text.contains("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tHG002\tHG003"));
+    assert!(text.contains("chr1\t101\trs1\tA\tG\t60\tPASS\tMQ=55;FS=12.5,8.2;CSQ=synonymous_variant;SOMATIC\tAD:FT:DP:GQ\t4,11:PASS:22:35\t10,0:LowDP:10:20"));
+    assert!(!text.contains("chr1\t102\trs2"));
+    assert!(!text.contains("chr1\t103\trs3"));
+}
+
+#[test]
+fn arbitrary_info_missing_empty_flag_and_dot_do_not_match() {
+    let dir = tempdir().unwrap();
+    let output = dir.path().join("arbitrary_info_missing.vcf");
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            fixture("tests/data/expression_parity.vcf")
+                .to_str()
+                .unwrap(),
+            "--where",
+            "INFO/SOMATIC == \"true\" || INFO/EMPTY == \"\" || INFO/MQ == \".\"",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let text = std::fs::read_to_string(output).unwrap();
+    assert!(text.contains("#CHROM"));
+    assert!(!text.contains("chr1\t101\trs1"));
+    assert!(!text.contains("chr1\t102\trs2"));
+    assert!(!text.contains("chr1\t103\trs3"));
+}
+
+#[test]
 fn filter_supports_any_format_aggregate() {
     let dir = tempdir().unwrap();
     let output = dir.path().join("any_format_dp.vcf");
