@@ -1,3 +1,5 @@
 /target
 /tests/output/*
 !/tests/output/.gitkeep
+__pycache__/
+*.py[cod]
