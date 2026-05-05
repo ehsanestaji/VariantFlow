@@ -30,6 +30,31 @@ This is a bounded 10k evidence run, not a broad v0.7 performance claim. Larger 1
 | Heavy QUAL gzip input | `bcftools filter` | matched filtered core records | `0.089076s` | `0.285341s` | `3.20x` faster | 10k bounded subset only |
 | Heavy Convert TSV gzip input | `bcftools query -u` | matched normalized TSV rows | `0.107405s` | `0.065505s` | `0.61x` | `bcftools query` faster; TSV path remains an optimization target |
 
+## Optimization Follow-Up
+
+The TSV bottleneck was narrowed with the same 10k public-heavy input:
+
+- Plain uncompressed TSV conversion: VCF-Fast `0.0247s` vs `bcftools query` `0.0506s`, `2.05x` faster. This showed the selective TSV parser was not the remaining bottleneck.
+- Gzip/BGZF TSV conversion before the final fix: VCF-Fast improved from `0.107405s` to `0.0858s` after avoiding full sample-tail line materialization, but still trailed `bcftools query` at `0.0636s`.
+- Final measured optimization: use streaming field reads that stop materializing records after INFO, skip unused FORMAT/sample tails with delimiter scans, and build flate2 against `zlib-ng`.
+
+Command:
+
+```bash
+VCF_FAST_BENCH_MODE=public-heavy \
+VCF_FAST_BENCH_SIZES="10000" \
+VCF_FAST_BENCH_RUNS=3 \
+VCF_FAST_BENCH_WARMUP=1 \
+VCF_FAST_HEAVY_MAX_PLAIN_BYTES=200000000 \
+VCF_FAST_BENCH_REPORT="tests/output/benchmark-results/v07-public-heavy-10k-after-zlib-ng-streaming-tsv.md" \
+make bench-smoke
+```
+
+| case | competitor | correctness result | vcf-fast mean | competitor mean | speedup | bottleneck finding |
+|---|---|---|---:|---:|---:|---|
+| Heavy QUAL gzip input, optimized | `bcftools filter` | matched filtered core records | `0.0541s` | `0.2830s` | `5.23x` faster | gzip decompression backend was a major cost |
+| Heavy Convert TSV gzip input, optimized | `bcftools query -u` | matched normalized TSV rows | `0.0535s` | `0.0646s` | `1.21x` faster | wide-line materialization plus gzip backend were the gap |
+
 An earlier 10k attempt with `VCF_FAST_HEAVY_MAX_PLAIN_BYTES=20000000` deferred correctly because the plain staging file would have been `139093224` bytes. That confirms the artifact cap prevents accidental giant intermediates.
 
 ## Required Report Fields
