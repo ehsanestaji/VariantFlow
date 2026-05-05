@@ -2,7 +2,7 @@
 
 ## Status
 
-This report tracks correctness and performance for v0.9 expression parity cases. Rows are added only after the command output matches the stated `bcftools` baseline. No runtime win is claimed for v0.9 expression parity until measured public benchmark rows replace the pending fixture rows below.
+This report tracks correctness and performance for v0.9 expression parity cases. Rows are added only after the command output matches the stated `bcftools` baseline. No runtime win is claimed for v0.9 expression parity until measured public benchmark rows replace the pending fixture rows below. The native scope is arbitrary `INFO/<KEY>`, selected-sample `FORMAT/<KEY>` with `--sample`, and `ANY(FORMAT/<KEY>)` / `ALL(FORMAT/<KEY>)` sample aggregate predicates.
 
 ## Native Expression Cases
 
