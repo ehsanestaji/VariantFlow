@@ -370,6 +370,65 @@ fn v10_parquet_benchmark_tracks_columnar_export_evidence() {
 }
 
 #[test]
+fn v10_columnar_workflow_benchmark_tracks_repeated_query_evidence() {
+    let script = std::fs::read_to_string("benchmark/run_v10_columnar_workflow_benchmarks.sh")
+        .expect("read v1.0 columnar workflow benchmark script");
+    let helper = std::fs::read_to_string("benchmark/query_parquet_duckdb.py")
+        .expect("read DuckDB parquet query helper");
+    let makefile = std::fs::read_to_string("Makefile").expect("read Makefile");
+    let report = std::fs::read_to_string("benchmark/reports/v10-columnar-workflow-benchmark.md")
+        .expect("read v1.0 columnar workflow report");
+    let normalized_report = report.to_lowercase();
+
+    for required in [
+        "--to parquet",
+        "duckdb",
+        "repeated queries",
+        "bcftools filter",
+        "public-heavy",
+        "export once",
+        "amortized",
+        "QUAL > 30",
+    ] {
+        assert!(script.contains(required), "missing script text {required}");
+    }
+
+    for required in [
+        "read_parquet",
+        "QUAL > 30",
+        "repeats",
+        "duckdb python package is required",
+    ] {
+        assert!(helper.contains(required), "missing helper text {required}");
+    }
+
+    assert!(makefile.contains("bench-v10-columnar:"));
+    assert!(makefile.contains("run_v10_columnar_workflow_benchmarks.sh"));
+
+    for required in [
+        "dataset source",
+        "record count",
+        "exact export command",
+        "exact duckdb command",
+        "exact competitor command",
+        "correctness result",
+        "export mean/stddev",
+        "duckdb repeated query mean/stddev",
+        "bcftools repeated scan mean/stddev",
+        "amortized speedup",
+        "variants/sec",
+        "peak RSS",
+        "claim decision",
+        "caveat",
+    ] {
+        assert!(
+            normalized_report.contains(&required.to_lowercase()),
+            "missing report field {required}"
+        );
+    }
+}
+
+#[test]
 fn v06_reports_track_claim_matrix_and_required_fields() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let public_report =
