@@ -153,6 +153,55 @@ fn bcf_input_filter_matches_bcftools_core_records() {
 
 #[cfg(feature = "htslib")]
 #[test]
+fn htslib_commands_accept_valid_thread_env() {
+    let temp = tempfile::tempdir().unwrap();
+    let input = temp.path().join("input.bcf");
+    let output = temp.path().join("threaded.vcf");
+    create_bcf(&fixture("tests/data/compat_example.vcf"), &input);
+
+    assert_cmd::Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .env("VCF_FAST_HTSLIB_THREADS", "2")
+        .args([
+            "filter",
+            input.to_str().unwrap(),
+            "--where",
+            "QUAL > 30",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+}
+
+#[cfg(feature = "htslib")]
+#[test]
+fn htslib_commands_reject_invalid_thread_env() {
+    let temp = tempfile::tempdir().unwrap();
+    let input = temp.path().join("input.bcf");
+    let output = temp.path().join("invalid-thread.vcf");
+    create_bcf(&fixture("tests/data/compat_example.vcf"), &input);
+
+    assert_cmd::Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .env("VCF_FAST_HTSLIB_THREADS", "0")
+        .args([
+            "filter",
+            input.to_str().unwrap(),
+            "--where",
+            "QUAL > 30",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "VCF_FAST_HTSLIB_THREADS must be a positive integer",
+        ));
+}
+
+#[cfg(feature = "htslib")]
+#[test]
 fn bcf_input_filter_uses_info_af_and_filter_fields() {
     let dir = tempdir().unwrap();
     let input = dir.path().join("input.bcf");
