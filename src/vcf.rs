@@ -189,6 +189,27 @@ impl<'a> RecordView<'a> {
         None
     }
 
+    pub(crate) fn for_each_sample_column(&self, mut visit: impl FnMut(&'a [u8])) {
+        let mut column = CORE_FIELD_COUNT;
+        let mut start = self.fields[CORE_FIELD_COUNT - 1].1.saturating_add(1);
+
+        while start <= self.line_end {
+            let end = memchr(b'\t', &self.line[start..self.line_end])
+                .map_or(self.line_end, |offset| start + offset);
+
+            if column >= 9 {
+                visit(trim_line_end(&self.line[start..end]));
+            }
+
+            if end == self.line_end {
+                break;
+            }
+
+            start = end + 1;
+            column += 1;
+        }
+    }
+
     pub(crate) fn pos_u64(&self) -> Result<u64> {
         parse_u64_ascii_bytes(self.pos()).with_context(|| {
             format!(

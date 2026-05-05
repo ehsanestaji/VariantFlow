@@ -12,8 +12,18 @@ pub struct Expression {
 #[derive(Debug, Clone, PartialEq)]
 enum ExprNode {
     Comparison(Comparison),
+    SampleAggregate {
+        quantifier: SampleQuantifier,
+        comparison: Comparison,
+    },
     And(Box<ExprNode>, Box<ExprNode>),
     Or(Box<ExprNode>, Box<ExprNode>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SampleQuantifier {
+    Any,
+    All,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -24,6 +34,7 @@ pub(crate) struct RequiredFields {
     pub filter: bool,
     pub info_keys: Vec<Vec<u8>>,
     pub format_keys: Vec<Vec<u8>>,
+    pub selected_format_keys: Vec<Vec<u8>>,
     pub format_aggregates: bool,
 }
 
@@ -42,6 +53,10 @@ impl RequiredFields {
 
     pub(crate) fn requires_format(&self) -> bool {
         !self.format_keys.is_empty() || self.format_aggregates
+    }
+
+    pub(crate) fn requires_selected_format(&self) -> bool {
+        !self.selected_format_keys.is_empty()
     }
 
     #[cfg(feature = "htslib")]
@@ -69,6 +84,17 @@ impl RequiredFields {
     fn add_format_key(&mut self, key: &[u8]) {
         if !self.format_keys.iter().any(|existing| existing == key) {
             self.format_keys.push(key.to_vec());
+        }
+    }
+
+    fn add_selected_format_key(&mut self, key: &[u8]) {
+        self.add_format_key(key);
+        if !self
+            .selected_format_keys
+            .iter()
+            .any(|existing| existing == key)
+        {
+            self.selected_format_keys.push(key.to_vec());
         }
     }
 }
@@ -155,6 +181,8 @@ pub(crate) trait EvalContext {
     fn info_value(&self, key: &[u8]) -> Option<&[u8]>;
     fn info_number_any(&self, key: &[u8], predicate: &mut dyn FnMut(f64) -> bool) -> bool;
     fn format_value(&self, key: &[u8]) -> Option<&[u8]>;
+    fn any_format_value(&self, key: &[u8], predicate: &mut dyn FnMut(&[u8]) -> bool) -> bool;
+    fn all_format_value(&self, key: &[u8], predicate: &mut dyn FnMut(&[u8]) -> bool) -> bool;
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -246,6 +274,19 @@ impl ExprNode {
     fn evaluate(&self, record: &impl EvalContext) -> bool {
         match self {
             ExprNode::Comparison(comparison) => comparison.evaluate(record),
+            ExprNode::SampleAggregate {
+                quantifier,
+                comparison,
+            } => {
+                let Field::Format(key) = &comparison.field else {
+                    return false;
+                };
+                let mut predicate = |value: &[u8]| evaluate_format_value(comparison, value);
+                match quantifier {
+                    SampleQuantifier::Any => record.any_format_value(key, &mut predicate),
+                    SampleQuantifier::All => record.all_format_value(key, &mut predicate),
+                }
+            }
             ExprNode::And(left, right) => left.evaluate(record) && right.evaluate(record),
             ExprNode::Or(left, right) => left.evaluate(record) || right.evaluate(record),
         }
@@ -254,6 +295,10 @@ impl ExprNode {
     fn collect_required_fields(&self, required: &mut RequiredFields) {
         match self {
             ExprNode::Comparison(comparison) => comparison.collect_required_fields(required),
+            ExprNode::SampleAggregate { comparison, .. } => {
+                required.format_aggregates = true;
+                mark_aggregate_required_field(required, &comparison.field);
+            }
             ExprNode::And(left, right) | ExprNode::Or(left, right) => {
                 left.collect_required_fields(required);
                 right.collect_required_fields(required);
@@ -285,16 +330,12 @@ impl Comparison {
                 .info_value(key)
                 .filter(|value| is_present_value(value))
                 .is_some_and(|actual| compare_bytes(actual, expected.as_bytes(), self.op)),
-            (Field::Format(key), Literal::Number(expected)) => record
+            (Field::Format(key), Literal::Number(_)) => record
                 .format_value(key)
-                .filter(|value| is_present_value(value))
-                .is_some_and(|actual| {
-                    number_list_any(actual, |value| compare_numbers(value, *expected, self.op))
-                }),
-            (Field::Format(key), Literal::String(expected)) => record
+                .is_some_and(|actual| evaluate_format_value(self, actual)),
+            (Field::Format(key), Literal::String(_)) => record
                 .format_value(key)
-                .filter(|value| is_present_value(value))
-                .is_some_and(|actual| compare_bytes(actual, expected.as_bytes(), self.op)),
+                .is_some_and(|actual| evaluate_format_value(self, actual)),
             _ => false,
         }
     }
@@ -311,7 +352,14 @@ fn mark_required_field(required: &mut RequiredFields, field: &Field) {
         Field::Qual => required.qual = true,
         Field::Filter => required.filter = true,
         Field::Info(key) => required.add_info_key(key),
+        Field::Format(key) => required.add_selected_format_key(key),
+    }
+}
+
+fn mark_aggregate_required_field(required: &mut RequiredFields, field: &Field) {
+    match field {
         Field::Format(key) => required.add_format_key(key),
+        _ => mark_required_field(required, field),
     }
 }
 
@@ -343,6 +391,14 @@ impl EvalContext for EvalRecord<'_> {
     fn format_value(&self, key: &[u8]) -> Option<&[u8]> {
         self.format.get(key)
     }
+
+    fn any_format_value(&self, key: &[u8], predicate: &mut dyn FnMut(&[u8]) -> bool) -> bool {
+        self.format.get(key).is_some_and(predicate)
+    }
+
+    fn all_format_value(&self, key: &[u8], predicate: &mut dyn FnMut(&[u8]) -> bool) -> bool {
+        self.format.get(key).is_some_and(predicate)
+    }
 }
 
 fn compare_numbers(actual: f64, expected: f64, op: Operator) -> bool {
@@ -366,6 +422,19 @@ fn compare_bytes(actual: &[u8], expected: &[u8], op: Operator) -> bool {
 
 fn is_present_value(value: &[u8]) -> bool {
     !value.is_empty() && value != b"."
+}
+
+fn evaluate_format_value(comparison: &Comparison, value: &[u8]) -> bool {
+    if !is_present_value(value) {
+        return false;
+    }
+
+    match &comparison.literal {
+        Literal::Number(expected) => number_list_any(value, |actual| {
+            compare_numbers(actual, *expected, comparison.op)
+        }),
+        Literal::String(expected) => compare_bytes(value, expected.as_bytes(), comparison.op),
+    }
 }
 
 fn number_list_any<F>(value: &[u8], mut predicate: F) -> bool
@@ -422,6 +491,21 @@ impl Parser {
             return Ok(expression);
         }
 
+        if let Some(quantifier) = self.match_sample_quantifier() {
+            self.expect_left_paren()?;
+            let comparison = self.parse_comparison()?;
+            self.expect_right_paren()?;
+            if !matches!(comparison.field, Field::Format(_)) {
+                return Err(ParseError {
+                    message: "ANY/ALL predicates require a FORMAT field".to_string(),
+                });
+            }
+            return Ok(ExprNode::SampleAggregate {
+                quantifier,
+                comparison,
+            });
+        }
+
         Ok(ExprNode::Comparison(self.parse_comparison()?))
     }
 
@@ -460,6 +544,28 @@ impl Parser {
             Ok(())
         } else {
             Err(self.error("expected ')'"))
+        }
+    }
+
+    fn expect_left_paren(&mut self) -> Result<(), ParseError> {
+        if self.match_token(|token| matches!(token, Token::LeftParen)) {
+            Ok(())
+        } else {
+            Err(self.error("expected '('"))
+        }
+    }
+
+    fn match_sample_quantifier(&mut self) -> Option<SampleQuantifier> {
+        match self.peek() {
+            Some(Token::Ident(value)) if value == "ANY" => {
+                self.cursor += 1;
+                Some(SampleQuantifier::Any)
+            }
+            Some(Token::Ident(value)) if value == "ALL" => {
+                self.cursor += 1;
+                Some(SampleQuantifier::All)
+            }
+            _ => None,
         }
     }
 
