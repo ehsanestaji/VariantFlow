@@ -102,3 +102,7 @@ Then confirm:
 - `docs/public-benchmark-table.md` was regenerated from tracked reports.
 - `docs/contribution-map.md` does not contain unmeasured speed claims.
 - Large benchmark artifacts remain under ignored `tests/output/...` paths.
+
+## Distribution And Naming TODO
+
+The Bioconda release and professional rename migration are tracked in the top-level `TODO.md`. Do not publish a Bioconda recipe until the final package/binary name is chosen, checked for collisions, and represented by a tagged source release with deterministic `cargo install --locked --no-track --root $PREFIX --path .` build behavior.
