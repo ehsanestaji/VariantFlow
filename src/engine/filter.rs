@@ -1,12 +1,20 @@
+use std::env;
 use std::io::{BufRead, Write};
+use std::num::NonZeroUsize;
 use std::path::Path;
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
+use rayon::ThreadPool;
+use rayon::prelude::*;
 
 use crate::compat::{Backend, CompressionMode, Region, select_backend};
-use crate::expr::{EvalContext, RequiredFields, parse_expression};
+use crate::expr::{EvalContext, Expression, RequiredFields, parse_expression};
 use crate::io::{open_reader, open_vcf_writer};
 use crate::vcf::{self, InfoView, RecordView, column_value, resolve_sample_column};
+
+pub const NATIVE_FILTER_THREADS_ENV: &str = "VCF_FAST_NATIVE_FILTER_THREADS";
+pub const NATIVE_FILTER_BATCH_RECORDS_ENV: &str = "VCF_FAST_NATIVE_FILTER_BATCH_RECORDS";
+const DEFAULT_PARALLEL_BATCH_RECORDS: usize = 8192;
 
 pub fn run(
     input: &Path,
@@ -41,6 +49,7 @@ pub fn run(
     if required.requires_selected_format() && sample.is_none() {
         bail!("FORMAT predicates require --sample <name>");
     }
+    let parallel_config = NativeParallelFilterConfig::from_env()?;
 
     let mut reader = open_reader(input)?;
     let mut headers = Vec::new();
@@ -78,9 +87,42 @@ pub fn run(
         writer.write_all(header)?;
     }
 
+    if parallel_config.enabled() {
+        run_parallel_filter(
+            &mut *reader,
+            &mut *writer,
+            line,
+            &expr,
+            &required,
+            sample_column,
+            parallel_config,
+        )?;
+    } else {
+        run_streaming_filter(
+            &mut *reader,
+            &mut *writer,
+            line,
+            &expr,
+            &required,
+            sample_column,
+        )?;
+    }
+
+    writer.flush()?;
+    Ok(())
+}
+
+fn run_streaming_filter(
+    reader: &mut dyn BufRead,
+    writer: &mut dyn Write,
+    mut line: Vec<u8>,
+    expr: &Expression,
+    required: &RequiredFields,
+    sample_column: Option<usize>,
+) -> Result<()> {
     loop {
         if !line.is_empty() {
-            let record = ByteEvalRecord::parse(&line, &required, sample_column)?;
+            let record = ByteEvalRecord::parse(&line, required, sample_column)?;
             if expr.evaluate_context(&record) {
                 writer.write_all(&line)?;
             }
@@ -92,8 +134,113 @@ pub fn run(
         }
     }
 
-    writer.flush()?;
     Ok(())
+}
+
+fn run_parallel_filter(
+    reader: &mut dyn BufRead,
+    writer: &mut dyn Write,
+    mut line: Vec<u8>,
+    expr: &Expression,
+    required: &RequiredFields,
+    sample_column: Option<usize>,
+    config: NativeParallelFilterConfig,
+) -> Result<()> {
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(config.threads.get())
+        .build()
+        .context("failed to build native filter thread pool")?;
+    let mut batch = Vec::with_capacity(config.batch_records.get());
+
+    loop {
+        if !line.is_empty() {
+            batch.push(std::mem::take(&mut line));
+            if batch.len() >= config.batch_records.get() {
+                flush_parallel_batch(&mut batch, &pool, expr, required, sample_column, writer)?;
+            }
+        }
+
+        if reader.read_until(b'\n', &mut line)? == 0 {
+            break;
+        }
+    }
+
+    flush_parallel_batch(&mut batch, &pool, expr, required, sample_column, writer)?;
+    Ok(())
+}
+
+fn flush_parallel_batch(
+    batch: &mut Vec<Vec<u8>>,
+    pool: &ThreadPool,
+    expr: &Expression,
+    required: &RequiredFields,
+    sample_column: Option<usize>,
+    writer: &mut dyn Write,
+) -> Result<()> {
+    if batch.is_empty() {
+        return Ok(());
+    }
+
+    let lines = std::mem::take(batch);
+    let evaluated = pool.install(|| {
+        lines
+            .into_par_iter()
+            .map(|line| {
+                let record = ByteEvalRecord::parse(&line, required, sample_column)?;
+                Ok(if expr.evaluate_context(&record) {
+                    Some(line)
+                } else {
+                    None
+                })
+            })
+            .collect::<Vec<Result<Option<Vec<u8>>>>>()
+    });
+
+    for maybe_line in evaluated {
+        if let Some(line) = maybe_line? {
+            writer.write_all(&line)?;
+        }
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy)]
+struct NativeParallelFilterConfig {
+    threads: NonZeroUsize,
+    batch_records: NonZeroUsize,
+}
+
+impl NativeParallelFilterConfig {
+    fn from_env() -> Result<Self> {
+        Ok(Self {
+            threads: parse_positive_env(NATIVE_FILTER_THREADS_ENV, None)?,
+            batch_records: parse_positive_env(
+                NATIVE_FILTER_BATCH_RECORDS_ENV,
+                NonZeroUsize::new(DEFAULT_PARALLEL_BATCH_RECORDS),
+            )?,
+        })
+    }
+
+    fn enabled(&self) -> bool {
+        self.threads.get() > 1
+    }
+}
+
+fn parse_positive_env(name: &str, default: Option<NonZeroUsize>) -> Result<NonZeroUsize> {
+    match env::var(name) {
+        Ok(raw) => {
+            let value = raw
+                .parse::<usize>()
+                .map_err(|_| anyhow::anyhow!("{name} must be a positive integer"))?;
+            NonZeroUsize::new(value)
+                .ok_or_else(|| anyhow::anyhow!("{name} must be a positive integer"))
+        }
+        Err(env::VarError::NotPresent) => {
+            Ok(default.unwrap_or_else(|| NonZeroUsize::new(1).unwrap()))
+        }
+        Err(env::VarError::NotUnicode(_)) => bail!("{name} must be valid UTF-8"),
+    }
 }
 
 struct ByteEvalRecord<'a> {

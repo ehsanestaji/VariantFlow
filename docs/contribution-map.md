@@ -16,6 +16,7 @@ Evidence:
 - Shared byte-based INFO scanning avoids repeated allocation-heavy `split` chains for filter predicates, TSV conversion, and stats.
 - v0.8 moved native filter and stats onto shared byte-slice `RecordView`/`InfoView` parsing and byte-backed expression evaluation, reducing line-level string parsing and repeated INFO scans.
 - v1.0 first-slice compressed input adds opt-in threaded native BGZF reading through `VCF_FAST_NATIVE_BGZF_THREADS`, while ordinary gzip remains on the existing flate2 fallback.
+- v1.1 adds opt-in native predicate parallelism through `VCF_FAST_NATIVE_FILTER_THREADS`, evaluating bounded batches in parallel and writing passing original lines back in input order.
 - Benchmarks show speedups for QUAL, INFO/DP, INFO/AF, and gzip-input QUAL cases in the synthetic benchmark harness.
 - Stress benchmarks show speedups when records contain many unused INFO/FORMAT/sample fields.
 - Selected-sample FORMAT filtering reads only the requested sample column for arbitrary native `FORMAT/<KEY>` predicates.
@@ -105,6 +106,7 @@ Evidence:
 - v1.0 threaded native BGZF input: On bounded IGSR chr22 BGZF input, VCF-Fast matched `bcftools filter` core records. With `VCF_FAST_NATIVE_BGZF_THREADS=4`, it measured `1.85x` to `2.00x` faster than the default native gzip/BGZF path and `9.90x` to `11.87x` faster than `bcftools filter` at 10k/100k/1M records. This is BGZF-only evidence; ordinary gzip remains a single-thread fallback.
 - v1.0 Parquet export: Native `convert --to parquet` writes a typed selected-column Parquet file for `.vcf` and `.vcf.gz` inputs. Correctness is covered by Arrow readback tests. On deterministic stress data, Parquet export measured `1.93x` to `1.94x` faster than the comparable `bcftools query` TSV projection, while native TSV remained faster than native Parquet.
 - v1.0 columnar workflow: On bounded IGSR chr22 public-heavy BGZF data, VCF-Fast Parquet export plus five DuckDB row-count queries matched repeated `bcftools view -H` row counts and measured `23.96x` faster at 10k records and `48.45x` faster at 100k records than five repeated `bcftools view` scans. This supports a narrow export-once, query-many claim for the measured row-count workflow.
+- v1.1 parallel native filter: On deterministic stress data with `ANY(FORMAT/AD > 80)`, `VCF_FAST_NATIVE_FILTER_THREADS=4` plus ordered batches matched default native output byte-for-byte and matched `bcftools filter` core records. It measured `1.26x` to `1.96x` faster than default native and `2.90x` to `4.89x` faster than `bcftools filter` at 10k/100k records.
 - Compatibility proof: Optional htslib-backed paths cover BCF input, indexed region reads, and BGZF output. v0.7 typed TSV/stats optimization matched correctness and moved several compatibility paths to near parity or faster, including 1M BCF filter `1.05x`, indexed-region filter `1.25x`, and indexed BCF stats `1.05x`; BCF TSV still trails `bcftools query` at `0.50x` for 1M.
 - v0.8 byte-core evidence: On the repeated post-surgery benchmark, VCF-Fast matched supported correctness checks. The measured stress and IGSR public-heavy results are recorded in `benchmark/reports/v08-core-efficiency-benchmark.md`: stress filters were `3.14x` to `6.24x` faster, stress TSV was `2.54x` faster, stress stats were `2.50x` faster, public-heavy QUAL was `6.01x` faster, and public-heavy TSV was `1.13x` faster; all v0.8 rows were measured wins, with caveats limited to synthetic stress shape and bounded chr22 region.
 
@@ -117,6 +119,7 @@ Evidence:
 | Selected-sample FORMAT filtering | `benchmark/reports/format-filter-benchmark.md` | `bcftools filter` | `1.99x` to `2.06x` faster on 1M selected-sample FORMAT filters | Single selected sample only; synthetic stress shape |
 | v0.9 native expression parity | `tests/expr_tests.rs`, `tests/filter_cli_tests.rs`, `benchmark/reports/v09-expression-parity-benchmark.md` | `bcftools filter` | Arbitrary `INFO/<KEY>`, selected-sample `FORMAT/<KEY>`, and `ANY(FORMAT/<KEY>)` / `ALL(FORMAT/<KEY>)` semantics are documented, fixture-tested, and measured `2.41x` to `5.18x` faster at 100k deterministic stress records with matched core records | Synthetic stress expression evidence only; public v0.9 expression rows pending |
 | Threaded native BGZF input | `benchmark/reports/v10-compressed-input-benchmark.md` | `bcftools filter` | Opt-in `VCF_FAST_NATIVE_BGZF_THREADS=4` matched core records and measured `9.90x` to `11.87x` faster than `bcftools filter`; also `1.85x` to `2.00x` faster than the default native reader on the same BGZF inputs | Bounded IGSR chr22 10k/100k/1M only; ordinary gzip is not parallelized |
+| Parallel native predicate evaluation | `tests/filter_cli_tests.rs`, `benchmark/reports/v11-parallel-native-filter-benchmark.md` | default native filter, `bcftools filter` | Opt-in `VCF_FAST_NATIVE_FILTER_THREADS=4` matched default output byte-for-byte and measured `1.26x` to `1.96x` faster than default native on CPU-heavy aggregate FORMAT stress filters | Synthetic stress only; I/O-bound filters may not benefit |
 | Original-record preservation | `tests/filter_cli_tests.rs` | VCF validity by behavior and line preservation | Headers and passing records preserved | BGZF output not promised |
 | Typed expression AST | `tests/expr_tests.rs` | N/A | `&&`, `||`, parentheses, string/numeric comparisons, arbitrary `INFO/<KEY>`, selected-sample `FORMAT/<KEY>`, and native sample aggregates | htslib-backed aggregate predicates are rejected in v0.9 |
 | Variant-key diff | `tests/stats_diff_cli_tests.rs` | planned `bcftools isec/query` | Shared/unique key TSV works | No normalized multiallelic decomposition |
@@ -133,7 +136,7 @@ Evidence:
 - Speed claims for BCF input, BGZF output, and compatibility TSV/stats paths.
 - Public real-cohort runtime evidence for v0.9 arbitrary expression parity.
 - Threaded native BGZF evidence beyond bounded IGSR chr22 1M, including whole-cohort public rows.
-- Parallel ordinary gzip and parallel native output compression.
+- Parallel ordinary gzip, parallel native output compression, and public parallel predicate evidence.
 - Parquet export and repeated-query performance beyond the current bounded IGSR row-count workflow, including richer DuckDB/Polars/PyArrow workflows.
 - BCF/region Parquet export through htslib compatibility paths.
 - htslib-backed support for native-only `ANY`/`ALL` FORMAT aggregate predicates.
@@ -154,6 +157,7 @@ The project ambition is to become the best practical VCF tool, but public langua
 | BCF, BGZF, tabix regions | matches ecosystem compatibility through optional htslib path, but bcftools is faster in measured synthetic compatibility runs | complements | complements | compatibility matches; speed not claimed | `tests/compatibility_cli_tests.rs`, `benchmark/reports/compatibility-benchmark.md` | Optimize or avoid htslib reconstruction overhead. |
 | Native expression parity | beats measured deterministic stress expression cases and matches filtered core records for common expression forms | later baseline | later baseline | supports arbitrary `INFO/<KEY>`, selected-sample `FORMAT/<KEY>`, and native `ANY`/`ALL` aggregate predicates; measured deterministic stress wins | `tests/expr_tests.rs`, `tests/filter_cli_tests.rs`, `benchmark/reports/v09-expression-parity-benchmark.md` | Public benchmark rows and htslib aggregate support are pending. |
 | Threaded native BGZF input | beats measured bounded IGSR BGZF filter rows and matches filtered core records | later baseline | later baseline | opt-in threaded BGZF input improves the compressed native filter path through the measured 1M tier | `src/io.rs`, `benchmark/reports/v10-compressed-input-benchmark.md` | BGZF-only; ordinary gzip remains single-thread fallback; whole-cohort rows pending. |
+| Parallel native predicate evaluation | beats measured default-native and `bcftools` CPU-heavy stress filter rows while preserving record order | later baseline | later baseline | opt-in ordered-batch parallel evaluation helps CPU-heavy aggregate FORMAT filters | `src/engine/filter.rs`, `benchmark/reports/v11-parallel-native-filter-benchmark.md` | Synthetic stress only; public and I/O-bound cases are pending. |
 | Whole public cohort performance | beats bcftools on measured GIAB/IGSR native filter tiers | later baseline | later heavy baseline | partially proven for supported filter cases | `benchmark/reports/public-whole-cohort-benchmark.md` | IGSR whole 1M deferred; broader cohorts still pending. |
 
 ## Next Contribution Targets
@@ -161,5 +165,5 @@ The project ambition is to become the best practical VCF tool, but public langua
 1. Keep v0.8 evidence current as new byte-core runs are added, and use `benchmark/reports/v08-core-efficiency-benchmark.md` as the source for README/contribution claims.
 2. Add public v0.9 expression parity benchmark rows before broadening the deterministic stress runtime claim for arbitrary `INFO/<KEY>`, selected `FORMAT/<KEY>`, or sample `ANY`/`ALL` predicates.
 3. Expand v1.0 columnar workflow benchmarks from row count to richer DuckDB predicates, public 1M tiers, and Polars/PyArrow baselines before broadening columnar workflow claims.
-4. Start v1.1 Parallel Native Execution, using the existing threaded BGZF evidence as the first scheduling target.
+4. Expand v1.1 Parallel Native Execution to public-heavy BGZF and 1M CPU-heavy expression rows, then decide whether to invest in BGZF block-aware scheduling or parallel output compression.
 5. Keep BCF TSV compatibility optimization as a tracked gap.
