@@ -16,14 +16,15 @@ enum ExprNode {
     Or(Box<ExprNode>, Box<ExprNode>),
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct RequiredFields {
     pub chrom: bool,
     pub pos: bool,
     pub qual: bool,
     pub filter: bool,
-    pub info: bool,
-    pub format: RequiredFormatFields,
+    pub info_keys: Vec<Vec<u8>>,
+    pub format_keys: Vec<Vec<u8>>,
+    pub format_aggregates: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -34,25 +35,31 @@ pub(crate) struct RequiredFormatFields {
 }
 
 impl RequiredFields {
-    #[allow(dead_code)]
     pub(crate) fn requires_info(&self) -> bool {
-        self.info
+        !self.info_keys.is_empty()
     }
 
     pub(crate) fn requires_format(&self) -> bool {
-        self.format.gt || self.format.dp || self.format.gq
+        !self.format_keys.is_empty() || self.format_aggregates
     }
 
-    fn add_info_key(&mut self, _key: &[u8]) {
-        self.info = true;
+    pub(crate) fn legacy_format_fields(&self) -> RequiredFormatFields {
+        RequiredFormatFields {
+            gt: self.format_keys.iter().any(|key| key.as_slice() == b"GT"),
+            dp: self.format_keys.iter().any(|key| key.as_slice() == b"DP"),
+            gq: self.format_keys.iter().any(|key| key.as_slice() == b"GQ"),
+        }
+    }
+
+    fn add_info_key(&mut self, key: &[u8]) {
+        if !self.info_keys.iter().any(|existing| existing == key) {
+            self.info_keys.push(key.to_vec());
+        }
     }
 
     fn add_format_key(&mut self, key: &[u8]) {
-        match key {
-            b"GT" => self.format.gt = true,
-            b"DP" => self.format.dp = true,
-            b"GQ" => self.format.gq = true,
-            _ => {}
+        if !self.format_keys.iter().any(|existing| existing == key) {
+            self.format_keys.push(key.to_vec());
         }
     }
 }
@@ -112,9 +119,7 @@ pub(crate) trait EvalContext {
     fn pos(&self) -> Option<u64>;
     fn qual(&self) -> Option<f64>;
     fn filter(&self) -> Option<&[u8]>;
-    fn info_value(&self, _key: &[u8]) -> Option<&[u8]> {
-        None
-    }
+    fn info_value(&self, key: &[u8]) -> Option<&[u8]>;
     fn info_number_any(&self, key: &[u8], predicate: &mut dyn FnMut(f64) -> bool) -> bool;
     fn format_gt(&self) -> Option<&[u8]>;
     fn format_dp(&self) -> Option<&[u8]>;
@@ -684,5 +689,18 @@ mod tests {
             expr.evaluate(&string_record)
         );
         assert!(expr.evaluate_context(&byte_record));
+    }
+
+    #[test]
+    fn required_fields_preserve_arbitrary_info_and_format_keys() {
+        let expr = parse_expression("INFO/MQ > 50 && FORMAT/AD > 8 && FORMAT/DP > 10").unwrap();
+        let required = expr.required_fields();
+
+        assert_eq!(required.info_keys, vec![b"MQ".to_vec()]);
+        assert_eq!(required.format_keys, vec![b"AD".to_vec(), b"DP".to_vec()]);
+        assert!(required.requires_info());
+        assert!(required.requires_format());
+        assert!(required.legacy_format_fields().dp);
+        assert!(!required.legacy_format_fields().gt);
     }
 }

@@ -81,7 +81,7 @@ pub fn run(
 
     loop {
         if !line.is_empty() {
-            let record = ByteEvalRecord::parse(&line, required, sample_column)?;
+            let record = ByteEvalRecord::parse(&line, &required, sample_column)?;
             if expr.evaluate_context(&record) {
                 writer.write_all(&line)?;
             }
@@ -106,11 +106,11 @@ struct ByteEvalRecord<'a> {
 impl<'a> ByteEvalRecord<'a> {
     fn parse(
         line: &'a [u8],
-        required: RequiredFields,
+        required: &RequiredFields,
         sample_column: Option<usize>,
     ) -> Result<Self> {
         let record = RecordView::parse(line)?;
-        let info = if required.info {
+        let info = if required.requires_info() {
             InfoView::scan(record.info())
         } else {
             InfoView::default()
@@ -120,7 +120,11 @@ impl<'a> ByteEvalRecord<'a> {
             let sample_value = sample_column
                 .and_then(|column| record.column(column))
                 .unwrap_or(b".");
-            selected_format_values_bytes(format_column, sample_value, required.format)
+            selected_format_values_bytes(
+                format_column,
+                sample_value,
+                required.legacy_format_fields(),
+            )
         } else {
             FormatValueBytes::default()
         };
@@ -152,6 +156,10 @@ impl EvalContext for ByteEvalRecord<'_> {
 
     fn info_number_any(&self, key: &[u8], predicate: &mut dyn FnMut(f64) -> bool) -> bool {
         self.info.number_any(key, predicate)
+    }
+
+    fn info_value(&self, key: &[u8]) -> Option<&[u8]> {
+        self.info.value(key)
     }
 
     fn format_gt(&self) -> Option<&[u8]> {
