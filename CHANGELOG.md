@@ -2,6 +2,13 @@
 
 All notable VCF-Fast changes are tracked here. Claims remain evidence-bound: performance entries refer to benchmark reports, not broad superiority.
 
+## v1.4.0 - Public Parallel Scale
+
+- Auto-enabled native BGZF reader workers for BGZF `.vcf.gz` inputs when `VCF_FAST_NATIVE_BGZF_THREADS` is unset.
+- Added `VCF_FAST_NATIVE_BGZF_THREADS=auto`; use `VCF_FAST_NATIVE_BGZF_THREADS=1` to force the single-thread gzip fallback behavior for comparisons or constrained environments.
+- Added `make bench-v14` and `benchmark/run_v14_public_parallel_scale_benchmarks.sh` to compare single-thread BGZF, auto BGZF, auto BGZF plus predicate parallelism, explicit BGZF threads, and `bcftools`.
+- Added a tracked v1.4 smoke report without new full-scale speed claims.
+
 ## v1.3.0 - Release Hardening
 
 - Added versioned CLI output through `vcf-fast --version`.
