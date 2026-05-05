@@ -6,6 +6,8 @@ Stress 1M repeated runs copied from `tests/output/benchmark-results/v08-stress-1
 
 ## Scope
 
+This report records byte-core surgery evidence for v0.8.
+
 v0.8 refactored the native core around borrowed byte-slice parsing:
 
 - `RecordView` for core VCF columns.
