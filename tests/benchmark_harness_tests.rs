@@ -479,6 +479,78 @@ fn v11_parallel_native_filter_benchmark_tracks_ordered_parallel_evidence() {
 }
 
 #[test]
+fn v12_public_parallel_workflow_benchmark_tracks_public_and_columnar_expansion() {
+    let script =
+        std::fs::read_to_string("benchmark/run_v12_public_parallel_workflow_benchmarks.sh")
+            .expect("read v1.2 public parallel workflow benchmark script");
+    let helper = std::fs::read_to_string("benchmark/query_parquet_duckdb.py")
+        .expect("read DuckDB parquet query helper");
+    let makefile = std::fs::read_to_string("Makefile").expect("read Makefile");
+    let report =
+        std::fs::read_to_string("benchmark/reports/v12-public-parallel-workflow-benchmark.md")
+            .expect("read v1.2 public parallel workflow report");
+    let normalized_report = report.to_lowercase();
+
+    for required in [
+        "public-heavy",
+        "VCF_FAST_V12_PUBLIC_TIERS",
+        "VCF_FAST_V12_STRESS_TIERS",
+        "10000 100000 1000000",
+        "100000 1000000",
+        "VCF_FAST_NATIVE_BGZF_THREADS",
+        "VCF_FAST_NATIVE_FILTER_THREADS",
+        "combined threaded BGZF plus parallel native",
+        "duckdb-venv/bin/python",
+        "count_vcf_records",
+        "ANY(FORMAT/AD > 80)",
+        "INFO/DP > 40",
+        "FILTER == \"PASS\"",
+        "grouped counts by CHROM,FILTER",
+        "bcftools filter",
+        "bcftools query",
+        "bcftools view",
+        "hyperfine",
+    ] {
+        assert!(script.contains(required), "missing script text {required}");
+    }
+
+    for required in [
+        "dp_gt_40",
+        "group_by_chrom_filter",
+        "INFO/DP > 40",
+        "GROUP BY CHROM, FILTER",
+    ] {
+        assert!(helper.contains(required), "missing helper text {required}");
+    }
+
+    assert!(makefile.contains("bench-v12:"));
+    assert!(makefile.contains("run_v12_public_parallel_workflow_benchmarks.sh"));
+    assert!(makefile.contains("bash -n benchmark/run_v12_public_parallel_workflow_benchmarks.sh"));
+
+    for required in [
+        "dataset source",
+        "record count",
+        "exact default native command",
+        "exact parallel native command",
+        "exact threaded bgzf command",
+        "exact combined command",
+        "exact competitor command",
+        "correctness result",
+        "runtime mean/stddev",
+        "speedup",
+        "variants/sec",
+        "peak RSS",
+        "claim decision",
+        "caveat",
+    ] {
+        assert!(
+            normalized_report.contains(&required.to_lowercase()),
+            "missing report field {required}"
+        );
+    }
+}
+
+#[test]
 fn v06_reports_track_claim_matrix_and_required_fields() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let public_report =

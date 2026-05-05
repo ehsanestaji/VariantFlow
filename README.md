@@ -41,6 +41,7 @@ VCF-Fast stays Rust-first. Rust gives the project C-like performance, strict mem
 | Compatibility proof | `bcftools`, `tabix`, HTSlib | BCF/region/BGZF correctness and indexability | correctness matched; v0.7 near parity or faster for BCF filter, indexed-region filter/stats, and near parity for BGZF output | BCF TSV still trails `bcftools query` |
 | v1.0 native Parquet export | `bcftools query` TSV projection | Parquet schema/null semantics verified by Arrow readback tests; TSV and bcftools row counts matched input records | Parquet export was `1.93x` to `1.94x` faster than `bcftools query` on 10k/100k deterministic stress projection | native TSV remains faster than Parquet; synthetic stress only; downstream DuckDB/Polars evidence pending |
 | v1.0 columnar workflow | repeated `bcftools view` scans | DuckDB row counts over VCF-Fast Parquet matched repeated `bcftools view -H` row counts | export-plus-five DuckDB queries measured `23.96x` to `48.45x` faster than five repeated `bcftools view` scans on bounded IGSR chr22 10k/100k tiers | row-count workflow only; broader query shapes and DuckDB/Polars/PyArrow baselines pending |
+| v1.2 public parallel/workflow smoke | default native / parallel native / threaded BGZF / `bcftools` / DuckDB | 100-record smoke matched native byte-for-byte outputs, `bcftools` core records, and normalized DuckDB query baselines | harness covers public-heavy parallel filter modes, stress parallel rows, and DuckDB `QUAL`, `INFO/DP`, `FILTER`, and grouped `CHROM,FILTER` queries | smoke scale only; full 100k/1M evidence pending |
 
 Detailed evidence lives in:
 
@@ -57,9 +58,10 @@ Detailed evidence lives in:
 - `benchmark/reports/v10-parquet-export-benchmark.md`
 - `benchmark/reports/v10-columnar-workflow-benchmark.md`
 - `benchmark/reports/v11-parallel-native-filter-benchmark.md`
+- `benchmark/reports/v12-public-parallel-workflow-benchmark.md`
 - `docs/contribution-map.md`
 
-Public evidence now supports the native selective-filter claim on measured GIAB and IGSR tiers. The v0.7 heavy run also shows the optimized native TSV path can beat `bcftools query` on bounded sample-rich gzip workloads through 1M records, v0.9 stress evidence shows the expanded native expression engine beating `bcftools filter` on measured deterministic stress cases, and the v1.0 slices show opt-in threaded native BGZF input, typed Parquet export, and a measured bounded-IGSR row-count workflow win through DuckDB. The first v1.1 slice adds opt-in parallel native predicate evaluation for CPU-heavy expressions while preserving byte-for-byte output. Honest gaps remain: BCF TSV still trails `bcftools query`, public v0.9 expression rows are pending, ordinary gzip is not parallelized, and richer Parquet workflow query shapes are still pending.
+Public evidence now supports the native selective-filter claim on measured GIAB and IGSR tiers. The v0.7 heavy run also shows the optimized native TSV path can beat `bcftools query` on bounded sample-rich gzip workloads through 1M records, v0.9 stress evidence shows the expanded native expression engine beating `bcftools filter` on measured deterministic stress cases, and the v1.0 slices show opt-in threaded native BGZF input, typed Parquet export, and a measured bounded-IGSR row-count workflow win through DuckDB. The first v1.1 slice adds opt-in parallel native predicate evaluation for CPU-heavy expressions while preserving byte-for-byte output. v1.2 adds the public-heavy/parallel/columnar workflow harness and a 100-record correctness smoke; full 100k/1M rows are the next evidence run. Honest gaps remain: BCF TSV still trails `bcftools query`, public v0.9 expression rows are pending, ordinary gzip is not parallelized, and full-scale richer Parquet workflow query evidence is still pending.
 
 ## Milestones
 
@@ -74,6 +76,7 @@ Public evidence now supports the native selective-filter claim on measured GIAB 
 9. `v0.9 Expression Parity`: arbitrary selected `INFO/*` and `FORMAT/*`, selected sample predicates, sample `ANY`/`ALL`, and documented compatibility with common `bcftools filter` semantics.
 10. `v1.0 Parallel And Columnar`: opt-in native threaded BGZF input, native selected-column Parquet export, DuckDB columnar workflow evidence, broader parallel BGZF execution, release-grade claim matrix, installer docs, and reproducible benchmark reports.
 11. `v1.1 Parallel Native Execution`: opt-in parallel native predicate evaluation with ordered, line-preserving output and stress evidence for CPU-heavy FORMAT aggregate predicates.
+12. `v1.2 Public Parallel And Workflow Expansion`: public-heavy IGSR parallel filter modes, 1M stress parallel tiers, richer DuckDB Parquet query checks, and correctness-gated claim updates.
 
 ## Quickstart
 
@@ -110,8 +113,11 @@ make bench-v10-compressed
 make bench-v10-parquet
 make bench-v10-columnar
 make bench-v11-parallel
+make bench-v12
 make bench-v06-smoke
 ```
+
+`make bench-v12` uses `VCF_FAST_PYTHON` when set and otherwise auto-detects the local DuckDB benchmark venv at `tests/output/benchmark-results/duckdb-venv/bin/python` before falling back to `python3`.
 
 ## Current CLI
 

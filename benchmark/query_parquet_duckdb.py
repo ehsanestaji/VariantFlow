@@ -27,20 +27,34 @@ def sql_string(value: str) -> str:
 
 
 QUERIES = {
-    "row_count": 'SELECT COUNT(*) FROM variants',
-    "qual_gt_30": 'SELECT COUNT(*) FROM variants WHERE QUAL > 30',
-    "filter_pass": 'SELECT COUNT(*) FROM variants WHERE FILTER = \'PASS\'',
+    "row_count": "SELECT COUNT(*) FROM variants",
+    "qual_gt_30": "SELECT COUNT(*) FROM variants WHERE QUAL > 30",
+    "dp_gt_40": 'SELECT COUNT(*) FROM variants WHERE "INFO/DP" > 40',
+    "filter_pass": "SELECT COUNT(*) FROM variants WHERE FILTER = 'PASS'",
+    "group_by_chrom_filter": (
+        "SELECT CHROM, COALESCE(FILTER, '.') AS FILTER, COUNT(*) AS n "
+        "FROM variants GROUP BY CHROM, FILTER ORDER BY CHROM, FILTER"
+    ),
+}
+
+QUERY_LABELS = {
+    "qual_gt_30": "QUAL > 30",
+    "dp_gt_40": "INFO/DP > 40",
+    "filter_pass": 'FILTER == "PASS"',
+    "group_by_chrom_filter": "GROUP BY CHROM, FILTER",
 }
 
 
-def count_query(parquet_path: str, query: str, repeats: int) -> int:
+def run_query(parquet_path: str, query: str, repeats: int) -> str:
     duckdb = load_duckdb()
     connection = duckdb.connect(database=":memory:")
     connection.execute(f"CREATE VIEW variants AS SELECT * FROM read_parquet({sql_string(parquet_path)})")
-    result = 0
+    rows = []
     for _ in range(repeats):
-        result = int(connection.execute(QUERIES[query]).fetchone()[0])
-    return result
+        rows = connection.execute(QUERIES[query]).fetchall()
+    if query == "group_by_chrom_filter":
+        return "\n".join(f"{chrom}\t{filter_value}\t{count}" for chrom, filter_value, count in rows)
+    return str(int(rows[0][0]))
 
 
 def main() -> int:
@@ -60,7 +74,7 @@ def main() -> int:
     if args.repeats < 1:
         parser.error("--repeats must be a positive integer")
 
-    print(count_query(args.parquet, args.query, args.repeats))
+    print(run_query(args.parquet, args.query, args.repeats))
     return 0
 
 
