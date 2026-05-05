@@ -8,7 +8,7 @@ use rust_htslib::bcf::record::{Numeric, Record};
 use rust_htslib::bcf::{Format, IndexedReader, Read, Reader, Writer};
 use rust_htslib::errors::Error as HtslibError;
 
-use crate::compat::{CompressionMode, Region};
+use crate::compat::{CompressionMode, Region, htslib_threads_from_env};
 use crate::engine::stats::{StatsSummary, TiTv};
 use crate::expr::{EvalRecord, FormatValues, RequiredFields, parse_expression};
 use crate::io::open_writer;
@@ -30,27 +30,31 @@ pub fn filter(
 
     if let Some(region) = region {
         let mut reader = indexed_reader(input, region)?;
+        apply_reader_threads(&mut reader)?;
         let header = Header::from_template(reader.header());
         let sample_id = sample_id(reader.header(), sample, required)?;
         let mut writer = vcf_writer(output, &header, compression)?;
-        for result in reader.records() {
-            let record = result?;
-            if evaluate_record(&record, required, sample_id, &expr)? {
-                writer.write(&record)?;
+        apply_writer_threads(&mut writer)?;
+        for_each_record(&mut reader, |record| {
+            if evaluate_record(record, required, sample_id, &expr)? {
+                writer.write(record)?;
             }
-        }
+            Ok(())
+        })?;
     } else {
         let mut reader = Reader::from_path(input)
             .with_context(|| format!("failed to open input {}", input.display()))?;
+        apply_reader_threads(&mut reader)?;
         let header = Header::from_template(reader.header());
         let sample_id = sample_id(reader.header(), sample, required)?;
         let mut writer = vcf_writer(output, &header, compression)?;
-        for result in reader.records() {
-            let record = result?;
-            if evaluate_record(&record, required, sample_id, &expr)? {
-                writer.write(&record)?;
+        apply_writer_threads(&mut writer)?;
+        for_each_record(&mut reader, |record| {
+            if evaluate_record(record, required, sample_id, &expr)? {
+                writer.write(record)?;
             }
-        }
+            Ok(())
+        })?;
     }
 
     Ok(())
@@ -62,15 +66,13 @@ pub fn convert_to_tsv(input: &Path, output: &Path, region: Option<&Region>) -> R
 
     if let Some(region) = region {
         let mut reader = indexed_reader(input, region)?;
-        for result in reader.records() {
-            write_tsv_record(&result?, &mut writer)?;
-        }
+        apply_reader_threads(&mut reader)?;
+        for_each_record(&mut reader, |record| write_tsv_record(record, &mut writer))?;
     } else {
         let mut reader = Reader::from_path(input)
             .with_context(|| format!("failed to open input {}", input.display()))?;
-        for result in reader.records() {
-            write_tsv_record(&result?, &mut writer)?;
-        }
+        apply_reader_threads(&mut reader)?;
+        for_each_record(&mut reader, |record| write_tsv_record(record, &mut writer))?;
     }
 
     writer.flush()?;
@@ -83,17 +85,21 @@ pub fn stats(input: &Path, region: Option<&Region>) -> Result<StatsSummary> {
 
     if let Some(region) = region {
         let mut reader = indexed_reader(input, region)?;
-        for result in reader.records() {
-            let owned = owned_record_fields(&result?)?;
+        apply_reader_threads(&mut reader)?;
+        for_each_record(&mut reader, |record| {
+            let owned = owned_record_fields(record)?;
             summary.observe(&owned.as_fields(), &mut titv)?;
-        }
+            Ok(())
+        })?;
     } else {
         let mut reader = Reader::from_path(input)
             .with_context(|| format!("failed to open input {}", input.display()))?;
-        for result in reader.records() {
-            let owned = owned_record_fields(&result?)?;
+        apply_reader_threads(&mut reader)?;
+        for_each_record(&mut reader, |record| {
+            let owned = owned_record_fields(record)?;
             summary.observe(&owned.as_fields(), &mut titv)?;
-        }
+            Ok(())
+        })?;
     }
 
     summary.qual.finish();
@@ -122,6 +128,32 @@ fn vcf_writer(output: &Path, header: &Header, compression: CompressionMode) -> R
     };
     Writer::from_path(output, header, uncompressed, Format::Vcf)
         .with_context(|| format!("failed to create output {}", output.display()))
+}
+
+fn apply_reader_threads<R: Read>(reader: &mut R) -> Result<()> {
+    if let Some(threads) = htslib_threads_from_env()? {
+        reader.set_threads(threads)?;
+    }
+    Ok(())
+}
+
+fn apply_writer_threads(writer: &mut Writer) -> Result<()> {
+    if let Some(threads) = htslib_threads_from_env()? {
+        writer.set_threads(threads)?;
+    }
+    Ok(())
+}
+
+fn for_each_record<R: Read>(
+    reader: &mut R,
+    mut observe: impl FnMut(&Record) -> Result<()>,
+) -> Result<()> {
+    let mut record = reader.empty_record();
+    while let Some(result) = reader.read(&mut record) {
+        result?;
+        observe(&record)?;
+    }
+    Ok(())
 }
 
 fn sample_id(
