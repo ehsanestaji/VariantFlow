@@ -216,3 +216,19 @@ fn arbitrary_format_missing_and_dot_are_false() {
     assert!(!missing.evaluate_record(&record));
     assert!(!dot.evaluate_record(&record));
 }
+
+#[test]
+fn parses_any_and_all_format_aggregate_predicates() {
+    parse_expression("ANY(FORMAT/DP > 20)").unwrap();
+    parse_expression("ALL(FORMAT/GQ >= 30)").unwrap();
+    parse_expression("QUAL > 30 && ANY(FORMAT/AD > 12)").unwrap();
+}
+
+#[test]
+fn rejects_aggregate_predicates_over_non_format_fields() {
+    let err = parse_expression("ANY(INFO/DP > 20)")
+        .unwrap_err()
+        .to_string();
+
+    assert!(err.contains("ANY/ALL predicates require a FORMAT field"));
+}

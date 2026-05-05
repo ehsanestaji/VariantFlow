@@ -337,6 +337,56 @@ fn filter_supports_arbitrary_selected_format_field() {
 }
 
 #[test]
+fn filter_supports_any_format_aggregate() {
+    let dir = tempdir().unwrap();
+    let output = dir.path().join("any_format_dp.vcf");
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            fixture("tests/data/expression_parity.vcf")
+                .to_str()
+                .unwrap(),
+            "--where",
+            "ANY(FORMAT/AD > 15)",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let text = std::fs::read_to_string(output).unwrap();
+    assert!(!text.contains("chr1\t101\trs1"));
+    assert!(text.contains("chr1\t102\trs2\tC\tT"));
+}
+
+#[test]
+fn filter_supports_all_format_aggregate() {
+    let dir = tempdir().unwrap();
+    let output = dir.path().join("all_format_ft.vcf");
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            fixture("tests/data/expression_parity.vcf")
+                .to_str()
+                .unwrap(),
+            "--where",
+            "ALL(FORMAT/FT != \"LowDP\")",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let text = std::fs::read_to_string(output).unwrap();
+    assert!(!text.contains("chr1\t101\trs1"));
+    assert!(!text.contains("chr1\t102\trs2"));
+}
+
+#[test]
 fn format_gt_filter_uses_exact_string_comparison() {
     let dir = tempdir().unwrap();
     let output = dir.path().join("format-gt.vcf");

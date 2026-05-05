@@ -38,7 +38,7 @@ pub fn run(
 
     let expr = parse_expression(where_expr)?;
     let required = expr.required_fields();
-    if required.requires_format() && sample.is_none() {
+    if required.requires_selected_format() && sample.is_none() {
         bail!("FORMAT predicates require --sample <name>");
     }
 
@@ -60,7 +60,9 @@ pub fn run(
                 if column_value(header, 9).is_none() {
                     bail!("FORMAT predicates require #CHROM header with sample columns");
                 }
-                sample_column = Some(resolve_sample_column(header, sample.unwrap())?);
+                if required.requires_selected_format() {
+                    sample_column = Some(resolve_sample_column(header, sample.unwrap())?);
+                }
             }
         }
 
@@ -164,5 +166,40 @@ impl EvalContext for ByteEvalRecord<'_> {
         let format = self.format_column?;
         let sample = self.selected_sample?;
         vcf::format_value_bytes(format, sample, key)
+    }
+
+    fn any_format_value(&self, key: &[u8], predicate: &mut dyn FnMut(&[u8]) -> bool) -> bool {
+        let Some(format) = self.format_column else {
+            return false;
+        };
+
+        let mut matched = false;
+        self.record.for_each_sample_column(|sample| {
+            if matched {
+                return;
+            }
+            if let Some(value) = vcf::format_value_bytes(format, sample, key) {
+                matched = predicate(value);
+            }
+        });
+        matched
+    }
+
+    fn all_format_value(&self, key: &[u8], predicate: &mut dyn FnMut(&[u8]) -> bool) -> bool {
+        let Some(format) = self.format_column else {
+            return false;
+        };
+
+        let mut saw_sample = false;
+        let mut all_match = true;
+        self.record.for_each_sample_column(|sample| {
+            saw_sample = true;
+            if !all_match {
+                return;
+            }
+            all_match =
+                vcf::format_value_bytes(format, sample, key).is_some_and(|value| predicate(value));
+        });
+        saw_sample && all_match
     }
 }
