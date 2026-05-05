@@ -137,6 +137,21 @@ fn v07_public_heavy_mode_and_artifact_caps_are_declared() {
 }
 
 #[test]
+fn public_heavy_mode_does_not_reuse_plain_public_whole_builder() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let harness = std::fs::read_to_string(root.join("benchmark/run_benchmarks.sh")).unwrap();
+    let heavy_start = harness.find("build_public_heavy_dataset").unwrap();
+    let heavy_end = heavy_start + harness[heavy_start..].find("\nsort_vcf_for_indexing()").unwrap();
+    let heavy_builder = &harness[heavy_start..heavy_end];
+    assert!(!heavy_builder.contains("build_public_small_dataset"));
+    assert!(heavy_builder.contains("bcftools view -h \"$source\""));
+    assert!(heavy_builder.contains("bcftools view -H -r \"$region\" \"$source\""));
+    assert!(heavy_builder.contains("bgzip -c \"$temp_plain\" >\"$output\""));
+    assert!(heavy_builder.contains("tabix -f -p vcf \"$output\""));
+    assert!(heavy_builder.contains("rm -f \"$temp_plain\""));
+}
+
+#[test]
 fn v07_report_tracks_bottleneck_caveat_and_next_action() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let harness = std::fs::read_to_string(root.join("benchmark/run_benchmarks.sh")).unwrap();
