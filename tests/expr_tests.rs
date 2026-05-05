@@ -165,3 +165,45 @@ fn rejects_bare_gq_and_requires_explicit_format_prefix() {
 
     assert!(error.contains("unsupported field 'GQ'"));
 }
+
+#[test]
+fn parses_and_evaluates_arbitrary_info_numeric_field() {
+    let expr = parse_expression("INFO/MQ >= 50").unwrap();
+    let record = EvalRecord::new(b"chr1", Some(101), Some(60.0), b"PASS")
+        .with_info(b"MQ=60;CSQ=synonymous_variant");
+
+    assert!(expr.evaluate_record(&record));
+}
+
+#[test]
+fn arbitrary_info_numeric_uses_any_comma_value_semantics() {
+    let expr = parse_expression("INFO/FS < 10").unwrap();
+    let record =
+        EvalRecord::new(b"chr1", Some(101), Some(60.0), b"PASS").with_info(b"FS=12.5,8.2,30.0");
+
+    assert!(expr.evaluate_record(&record));
+}
+
+#[test]
+fn arbitrary_info_string_compares_raw_value() {
+    let expr = parse_expression("INFO/CSQ == \"synonymous_variant\"").unwrap();
+    let record = EvalRecord::new(b"chr1", Some(101), Some(60.0), b"PASS")
+        .with_info(b"MQ=60;CSQ=synonymous_variant");
+
+    assert!(expr.evaluate_record(&record));
+}
+
+#[test]
+fn arbitrary_info_missing_empty_flag_and_dot_are_false() {
+    let missing = parse_expression("INFO/MQ >= 50").unwrap();
+    let empty = parse_expression("INFO/EMPTY == \"value\"").unwrap();
+    let flag = parse_expression("INFO/SOMATIC == \"true\"").unwrap();
+    let dot = parse_expression("INFO/AF > 0.01").unwrap();
+    let record =
+        EvalRecord::new(b"chr1", Some(101), Some(60.0), b"PASS").with_info(b"EMPTY=;SOMATIC;AF=.");
+
+    assert!(!missing.evaluate_record(&record));
+    assert!(!empty.evaluate_record(&record));
+    assert!(!flag.evaluate_record(&record));
+    assert!(!dot.evaluate_record(&record));
+}
