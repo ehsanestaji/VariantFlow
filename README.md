@@ -26,6 +26,7 @@ VCF-Fast stays Rust-first. Rust gives the project C-like performance, strict mem
 | GIAB HG002 public-whole TSV conversion | `bcftools query` | matched normalized TSV rows | `1.13x` faster at 1M | 10k/100k were `0.80x` and `0.96x` |
 | IGSR chr22 public-whole QUAL filters | `bcftools filter` | matched filtered core records | `4.85x` to `5.71x` faster on measured 10k/100k tiers | 1M deferred after >13 GB generated intermediate |
 | IGSR chr22 public-whole TSV conversion | `bcftools query` | matched normalized TSV rows | `1.22x` faster at 10k; `0.87x` at 100k | TSV path is mixed |
+| IGSR chr22 public-heavy 10k gzip filter/TSV | `bcftools filter` / `bcftools query` | matched filtered core records / normalized TSV rows | `5.23x` faster for QUAL filtering; `1.21x` faster for TSV after v0.7 optimization | bounded 10k sample-rich run; 100k/1M pending |
 | IGSR chr22 indexed-region QUAL filters | `bcftools view -r` + `bcftools filter` | matched filtered core records | `1.47x` faster at 10k and 100k | htslib-backed path, not line-preserving native output |
 | IGSR chr22 indexed-region TSV/stats | `bcftools query` / `bcftools stats` | matched TSV rows / overlapping counts | `0.71x` to `0.72x` | bcftools faster; compatibility path needs optimization |
 | Stress 1M filters with unused INFO/FORMAT/sample payload | `bcftools filter` | matched filtered core records | `1.96x` to `2.45x` faster on plain VCF | synthetic stress shape |
@@ -42,9 +43,10 @@ Detailed evidence lives in:
 - `benchmark/reports/format-filter-benchmark.md`
 - `benchmark/reports/compatibility-benchmark.md`
 - `benchmark/reports/public-whole-cohort-benchmark.md`
+- `benchmark/reports/v07-heavy-run-benchmark.md`
 - `docs/contribution-map.md`
 
-Public evidence now supports the native selective-filter claim on measured GIAB and IGSR tiers, while also showing honest gaps: TSV is mixed, indexed-region TSV/stats trail `bcftools`, and BCF/BGZF compatibility paths are correctness-first rather than speed-leading.
+Public evidence now supports the native selective-filter claim on measured GIAB and IGSR tiers. The v0.7 heavy run also shows the optimized native TSV path can beat `bcftools query` on a bounded sample-rich gzip workload, while honest gaps remain: indexed-region TSV/stats trail `bcftools`, and BCF/BGZF compatibility paths are correctness-first rather than speed-leading.
 
 ## Milestones
 
