@@ -117,6 +117,7 @@ print(
     f"{default_mean / parallel_mean:.2f}x" if parallel_mean > 0 else "n/a",
     f"{default_mean / threaded_mean:.2f}x" if threaded_mean > 0 else "n/a",
     f"{default_mean / combined_mean:.2f}x" if combined_mean > 0 else "n/a",
+    f"{bcftools_mean / threaded_mean:.2f}x" if threaded_mean > 0 else "n/a",
     f"{bcftools_mean / combined_mean:.2f}x" if combined_mean > 0 else "n/a",
 )
 PY
@@ -345,7 +346,7 @@ for records in $PUBLIC_TIERS; do
     "VCF_FAST_NATIVE_BGZF_THREADS=$BGZF_THREADS VCF_FAST_NATIVE_FILTER_THREADS=$FILTER_THREADS VCF_FAST_NATIVE_FILTER_BATCH_RECORDS=$BATCH_RECORDS ./target/release/vcf-fast filter $dataset --where 'QUAL > 30' -o $OUT_DIR/public-combined-qual-${records}.timed.vcf" \
     "bcftools filter -i 'QUAL>30' $dataset -o $OUT_DIR/public-bcftools-qual-${records}.timed.vcf"
 
-  read -r default_mean default_stddev parallel_mean parallel_stddev threaded_mean threaded_stddev combined_mean combined_stddev bcftools_mean bcftools_stddev parallel_speedup threaded_speedup combined_speedup combined_vs_bcftools < <(summarize_public_filter_hyperfine "$hyperfine_json")
+  read -r default_mean default_stddev parallel_mean parallel_stddev threaded_mean threaded_stddev combined_mean combined_stddev bcftools_mean bcftools_stddev parallel_speedup threaded_speedup combined_speedup threaded_vs_bcftools combined_vs_bcftools < <(summarize_public_filter_hyperfine "$hyperfine_json")
 
   default_rss="$(measure_peak_rss_kb "$OUT_DIR/rss-public-default-${records}.txt" env -u VCF_FAST_NATIVE_FILTER_THREADS -u VCF_FAST_NATIVE_FILTER_BATCH_RECORDS -u VCF_FAST_NATIVE_BGZF_THREADS ./target/release/vcf-fast filter "$dataset" --where "QUAL > 30" -o "$OUT_DIR/public-default-qual-${records}.rss.vcf")"
   parallel_rss="$(measure_peak_rss_kb "$OUT_DIR/rss-public-parallel-${records}.txt" env VCF_FAST_NATIVE_FILTER_THREADS="$FILTER_THREADS" VCF_FAST_NATIVE_FILTER_BATCH_RECORDS="$BATCH_RECORDS" ./target/release/vcf-fast filter "$dataset" --where "QUAL > 30" -o "$OUT_DIR/public-parallel-qual-${records}.rss.vcf")"
@@ -362,6 +363,15 @@ for records in $PUBLIC_TIERS; do
   claim="correctness matched; inspect measured rows before claiming public parallel win"
   if [[ "$actual_records" -lt 10000 ]]; then
     claim="smoke validation only; no speed claim from sub-10k tier"
+  elif "$PYTHON" - "$threaded_mean" "$combined_mean" "${threaded_speedup%x}" <<'PY'
+import sys
+threaded_mean = float(sys.argv[1].rstrip("s"))
+combined_mean = float(sys.argv[2].rstrip("s"))
+threaded_speedup = float(sys.argv[3])
+raise SystemExit(0 if threaded_speedup > 1 and threaded_mean < combined_mean else 1)
+PY
+  then
+    claim="threaded BGZF input was fastest; combined also beat default but was slower than threaded on this I/O-bound QUAL filter"
   elif "$PYTHON" - "${combined_speedup%x}" <<'PY'
 import sys
 raise SystemExit(0 if float(sys.argv[1]) > 1 else 1)
@@ -382,7 +392,7 @@ PY
     "$(markdown_cell "$competitor_command")" \
     "default, parallel native, threaded BGZF, and combined native outputs match byte-for-byte; combined and default core records match bcftools filter" \
     "default $default_mean +/- $default_stddev; parallel $parallel_mean +/- $parallel_stddev; threaded $threaded_mean +/- $threaded_stddev; combined $combined_mean +/- $combined_stddev; bcftools $bcftools_mean +/- $bcftools_stddev" \
-    "parallel/default $parallel_speedup; threaded/default $threaded_speedup; combined/default $combined_speedup; combined/bcftools $combined_vs_bcftools" \
+    "parallel/default $parallel_speedup; threaded/default $threaded_speedup; combined/default $combined_speedup; threaded/bcftools $threaded_vs_bcftools; combined/bcftools $combined_vs_bcftools" \
     "default $default_vps / parallel $parallel_vps / threaded $threaded_vps / combined $combined_vps / bcftools $bcftools_vps" \
     "default $default_rss / parallel $parallel_rss / threaded $threaded_rss / combined $combined_rss / bcftools $bcftools_rss KB" \
     "bounded chr22 region; not whole-genome or all expressions" \
