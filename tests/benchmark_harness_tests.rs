@@ -292,6 +292,43 @@ fn v09_expression_benchmark_script_tracks_competitor_cases() {
 }
 
 #[test]
+fn v10_compressed_benchmark_tracks_threaded_bgzf_evidence() {
+    let script = std::fs::read_to_string("benchmark/run_v10_compressed_benchmarks.sh")
+        .expect("read v1.0 compressed benchmark script");
+    let makefile = std::fs::read_to_string("Makefile").expect("read Makefile");
+    let report = std::fs::read_to_string("benchmark/reports/v10-compressed-input-benchmark.md")
+        .expect("read v1.0 compressed benchmark report");
+
+    for required in [
+        "VCF_FAST_NATIVE_BGZF_THREADS",
+        "threaded vs default",
+        "threaded vs bcftools",
+        "bcftools filter",
+        "hyperfine",
+        "default and threaded VCF-Fast match bcftools filtered core records",
+        "ordinary gzip is still single-thread fallback",
+    ] {
+        assert!(script.contains(required), "missing {required}");
+    }
+
+    assert!(makefile.contains("bench-v10-compressed:"));
+    assert!(makefile.contains("run_v10_compressed_benchmarks.sh"));
+
+    for required in [
+        "dataset size bytes",
+        "record count",
+        "correctness result",
+        "threaded vs default",
+        "threaded vs bcftools",
+        "variants/sec",
+        "peak RSS",
+        "ordinary gzip is still single-thread fallback",
+    ] {
+        assert!(report.contains(required), "missing report field {required}");
+    }
+}
+
+#[test]
 fn v06_reports_track_claim_matrix_and_required_fields() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let public_report =
