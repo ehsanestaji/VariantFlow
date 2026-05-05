@@ -1,4 +1,4 @@
-.PHONY: build test test-htslib fmt clippy verify bench-smoke bench-stress bench-public bench-public-region bench-heavy bench-compat bench-v06-smoke
+.PHONY: build test test-htslib fmt clippy verify bench-smoke bench-stress bench-public bench-public-region bench-heavy bench-compat bench-v09 bench-v06-smoke
 
 build:
 	cargo build
@@ -23,6 +23,7 @@ verify:
 	bash -n benchmark/generate_synthetic_vcf.sh
 	bash -n benchmark/generate_stress_vcf.sh
 	bash -n benchmark/run_benchmarks.sh
+	bash -n benchmark/run_v09_expression_benchmarks.sh
 	python3 -m py_compile benchmark/*.py
 	VCF_FAST_BENCH_SIZES="100" VCF_FAST_BENCH_RUNS=1 VCF_FAST_BENCH_WARMUP=0 make bench-v06-smoke
 
@@ -44,6 +45,9 @@ bench-heavy:
 
 bench-compat:
 	VCF_FAST_BENCH_MODE=compatibility VCF_FAST_BENCH_REPORT="$${VCF_FAST_COMPAT_REPORT:-tests/output/benchmark-results/compatibility-benchmark.md}" VCF_FAST_BENCH_SIZES="$${VCF_FAST_BENCH_SIZES:-10000 100000}" ./benchmark/run_benchmarks.sh
+
+bench-v09:
+	VCF_FAST_V09_SIZES="$${VCF_FAST_V09_SIZES:-10000 100000}" ./benchmark/run_v09_expression_benchmarks.sh
 
 bench-v06-smoke:
 	VCF_FAST_BENCH_MODE=synthetic VCF_FAST_BENCH_SIZES="$${VCF_FAST_BENCH_SIZES:-100}" VCF_FAST_BENCH_RUNS="$${VCF_FAST_BENCH_RUNS:-1}" VCF_FAST_BENCH_WARMUP="$${VCF_FAST_BENCH_WARMUP:-0}" ./benchmark/run_benchmarks.sh
