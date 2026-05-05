@@ -92,6 +92,17 @@ Evidence:
 - htslib-enabled integration tests cover BCF filtering, BCF TSV conversion, indexed region filtering, indexed BCF region stats, and BGZF output that is gzip-readable and tabix-indexable.
 - Competitor design notes are tracked in `docs/competitor-notes.md`.
 
+### Release Hardening
+
+VCF-Fast now has a versioned CLI, release/install documentation, a changelog, generated benchmark table, and GitHub release workflow scaffolding.
+
+Evidence:
+
+- `vcf-fast --version` is backed by the Cargo package version.
+- `docs/release.md` documents source, Docker, htslib feature, public-data, and benchmark reproduction paths.
+- `docs/public-benchmark-table.md` is generated from tracked benchmark reports by `benchmark/generate_public_benchmark_table.py`.
+- `.github/workflows/release.yml` builds macOS/Linux release archives for version tags.
+
 ## Claims Supported So Far
 
 - Correctness: VCF-Fast matches bcftools filtered core records for supported synthetic QUAL, INFO/DP, INFO/AF, and gzip-input QUAL cases.
@@ -130,6 +141,7 @@ Evidence:
 | Public parallel/workflow expansion | `benchmark/reports/v12-public-parallel-workflow-benchmark.md` | default native, parallel native, threaded BGZF input, `bcftools filter`, normalized `bcftools` query/view baselines | v1.2 measured public-heavy BGZF filter rows, 1M stress parallel rows, and DuckDB `QUAL`, `INFO/DP`, `FILTER`, and grouped `CHROM,FILTER` workflows. Public threaded BGZF input was `2.44x` to `2.55x` faster than default native and `15.13x` to `15.63x` faster than `bcftools`; stress parallel native was `1.91x` to `1.98x` faster than default and `4.85x` to `5.10x` faster than `bcftools`; amortized DuckDB workflows were `3.18x` to `25.67x` faster than repeated `bcftools` scans | Public requested 1M tier reached 191526 available records in the bounded region; predicate-only parallel was slower on the I/O-bound public QUAL filter |
 | Public data benchmarking | `benchmark/reports/public-dataset-benchmark.md`, `benchmark/reports/public-whole-cohort-benchmark.md`, `benchmark/reports/v07-heavy-run-benchmark.md` | `bcftools filter`, `bcftools query`, `bcftools stats` | GIAB HG002, IGSR chr22, stress, and bounded public-heavy 100k/1M runs measured with correctness, runtime, throughput, and RSS reporting | Whole-cohort sample-rich public evidence beyond bounded chr22 region still pending |
 | Compatibility interop | `tests/compatibility_cli_tests.rs`, `tests/compatibility_unit_tests.rs`, `benchmark/reports/compatibility-benchmark.md` | `bcftools`, `tabix`, HTSlib | BCF input, indexed region reads, and BGZF output are feature-gated, tested, benchmarked, and near parity/faster on several v0.7 rows | BCF TSV remains slower than bcftools query |
+| Release hardening | `docs/release.md`, `CHANGELOG.md`, `docs/public-benchmark-table.md`, `.github/workflows/release.yml` | N/A | Versioned CLI, install docs, Docker docs, benchmark prerequisites, htslib build docs, generated benchmark table, and binary release workflow scaffolding are tracked | Release artifacts still need a real tagged GitHub run |
 
 ## Claims Not Yet Proven
 
@@ -168,6 +180,6 @@ The project ambition is to become the best practical VCF tool, but public langua
 1. Keep v0.8 evidence current as new byte-core runs are added, and use `benchmark/reports/v08-core-efficiency-benchmark.md` as the source for README/contribution claims.
 2. Add public v0.9 expression parity benchmark rows before broadening the deterministic stress runtime claim for arbitrary `INFO/<KEY>`, selected `FORMAT/<KEY>`, or sample `ANY`/`ALL` predicates.
 3. Use the v1.2 result to guide v1.4: prefer threaded BGZF input for public BGZF QUAL-style filters, avoid claiming predicate parallel wins for I/O-bound simple filters, and keep parallel native evaluation focused on CPU-heavy FORMAT aggregates.
-4. Move v1.3 release hardening next: versioned CLI output, install docs, binary release workflow, changelog, and a polished public benchmark table generated from tracked reports.
+4. Run a real tagged v1.3 release once CI is green and confirm uploaded Linux/macOS archives.
 5. Expand v1.5 columnar workflow baselines to Polars/PyArrow and BCF/region Parquet after the measured DuckDB predicate/grouped rows.
 6. Keep BCF TSV compatibility optimization as a tracked gap.

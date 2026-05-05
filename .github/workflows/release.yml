@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  binaries:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            archive: vcf-fast-linux-x86_64.tar.gz
+          - os: macos-latest
+            archive: vcf-fast-macos-arm64.tar.gz
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Linux compatibility prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang cmake libclang-dev make pkg-config zlib1g-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build release binary
+        run: cargo build --release
+      - name: Verify version output
+        run: ./target/release/vcf-fast --version
+      - name: Package binary
+        run: |
+          mkdir -p dist
+          cp target/release/vcf-fast dist/
+          cp README.md CHANGELOG.md dist/
+          tar -czf "${{ matrix.archive }}" -C dist .
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive }}
+          path: ${{ matrix.archive }}
+
+  github-release:
+    name: Publish GitHub release
+    needs: binaries
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.tar.gz

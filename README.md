@@ -47,6 +47,7 @@ VCF-Fast stays Rust-first. Rust gives the project C-like performance, strict mem
 
 Detailed evidence lives in:
 
+- `docs/public-benchmark-table.md`
 - `benchmark/reports/synthetic-filter-benchmark.md`
 - `benchmark/reports/public-dataset-benchmark.md`
 - `benchmark/reports/stress-speed-benchmark.md`
@@ -79,6 +80,7 @@ Public evidence now supports the native selective-filter claim on measured GIAB 
 10. `v1.0 Parallel And Columnar`: opt-in native threaded BGZF input, native selected-column Parquet export, DuckDB columnar workflow evidence, broader parallel BGZF execution, release-grade claim matrix, installer docs, and reproducible benchmark reports.
 11. `v1.1 Parallel Native Execution`: opt-in parallel native predicate evaluation with ordered, line-preserving output and stress evidence for CPU-heavy FORMAT aggregate predicates.
 12. `v1.2 Public Parallel And Workflow Expansion`: public-heavy IGSR parallel filter modes, 1M stress parallel tiers, richer DuckDB Parquet query checks, and correctness-gated claim updates.
+13. `v1.3 Release Hardening`: versioned CLI output, install/release docs, changelog, generated public benchmark table, and GitHub release workflow scaffolding.
 
 ## Quickstart
 
@@ -87,6 +89,7 @@ cargo build
 cargo test
 make verify
 
+vcf-fast --version
 vcf-fast filter input.vcf.gz --where "QUAL > 30" -o output.vcf.gz
 vcf-fast stats input.vcf.gz
 vcf-fast diff a.vcf.gz b.vcf.gz -o diff.tsv
@@ -116,6 +119,7 @@ make bench-v10-parquet
 make bench-v10-columnar
 make bench-v11-parallel
 make bench-v12
+make benchmark-table
 make bench-v06-smoke
 ```
 
@@ -203,7 +207,9 @@ make clippy
 make test
 make build
 make verify
+make benchmark-table
 cargo test --features htslib-static
+cargo clippy --features htslib-static --all-targets -- -D warnings
 ```
 
 Run the smoke command:
@@ -257,3 +263,14 @@ The optional htslib backend is selected automatically for `.bcf` input, `--regio
 docker build -t vcf-fast .
 docker run --rm -v "$PWD:/work" vcf-fast cargo test
 ```
+
+## Release Hardening
+
+Release and install details are tracked in `docs/release.md`. The public benchmark summary is generated from tracked reports:
+
+```bash
+make benchmark-table
+python3 benchmark/generate_public_benchmark_table.py --check
+```
+
+`CHANGELOG.md` records the evidence-gated release train from v0.1 through v1.3. GitHub release binaries are built by `.github/workflows/release.yml` for version tags.
