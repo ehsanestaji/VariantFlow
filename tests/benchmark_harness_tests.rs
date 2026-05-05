@@ -2,6 +2,10 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+fn repo_root() -> &'static Path {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+}
+
 #[test]
 fn benchmark_harness_defines_report_and_correctness_contract() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -196,6 +200,31 @@ fn v07_report_tracks_bottleneck_caveat_and_next_action() {
         "native-stats",
     ] {
         assert!(report.contains(required), "missing {required}");
+    }
+}
+
+#[test]
+fn v08_core_efficiency_report_tracks_required_fields() {
+    let root = repo_root();
+    let report = fs::read_to_string(root.join("benchmark/reports/v08-core-efficiency-benchmark.md"))
+        .expect("v0.8 report should exist");
+
+    for required in [
+        "v0.8 Core Efficiency Benchmark",
+        "byte-core surgery",
+        "correctness result",
+        "runtime mean",
+        "runtime stddev",
+        "speedup",
+        "variants/sec",
+        "peak RSS",
+        "exact VCF-Fast command",
+        "exact competitor command",
+        "dataset source",
+        "caveat",
+        "claim decision",
+    ] {
+        assert!(report.contains(required), "missing report field: {required}");
     }
 }
 
