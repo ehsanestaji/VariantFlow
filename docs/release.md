@@ -1,6 +1,6 @@
 # VCF-Fast Release And Install Guide
 
-VCF-Fast v1.3 is the first release-hardening milestone. The project is still evidence-gated: the README and claim matrix should only be updated from tracked benchmark reports.
+VCF-Fast v1.4 carries the release-hardening surface forward while making native BGZF input acceleration the default for BGZF `.vcf.gz` reads. The project is still evidence-gated: the README and claim matrix should only be updated from tracked benchmark reports.
 
 ## Install From Source
 

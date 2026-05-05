@@ -551,6 +551,68 @@ fn v12_public_parallel_workflow_benchmark_tracks_public_and_columnar_expansion()
 }
 
 #[test]
+fn v14_public_parallel_scale_tracks_auto_bgzf_policy_and_modes() {
+    let root = repo_root();
+    let io = fs::read_to_string(root.join("src/io.rs")).unwrap();
+    let makefile = fs::read_to_string(root.join("Makefile")).unwrap();
+    let script =
+        fs::read_to_string(root.join("benchmark/run_v14_public_parallel_scale_benchmarks.sh"))
+            .unwrap();
+    let report =
+        fs::read_to_string(root.join("benchmark/reports/v14-public-parallel-scale-benchmark.md"))
+            .unwrap();
+    let readme = fs::read_to_string(root.join("README.md")).unwrap();
+
+    for required in [
+        "DEFAULT_AUTO_BGZF_THREAD_CAP",
+        "auto_native_bgzf_threads",
+        "must be auto or a positive integer",
+    ] {
+        assert!(io.contains(required), "missing io policy text {required}");
+    }
+
+    assert!(makefile.contains("bench-v14:"));
+    assert!(makefile.contains("run_v14_public_parallel_scale_benchmarks.sh"));
+    assert!(makefile.contains("bash -n benchmark/run_v14_public_parallel_scale_benchmarks.sh"));
+
+    for required in [
+        "single-thread BGZF",
+        "default auto BGZF",
+        "auto BGZF plus predicate parallelism",
+        "exact single-thread command",
+        "exact auto BGZF command",
+        "exact auto+predicate-parallel command",
+        "exact explicit BGZF command",
+        "VCF_FAST_NATIVE_BGZF_THREADS=1",
+        "env -u VCF_FAST_NATIVE_BGZF_THREADS",
+        "ANY(FORMAT/AD > 80)",
+        "smoke validation only; no speed claim from sub-10k tier",
+    ] {
+        assert!(
+            script.contains(required),
+            "missing v1.4 script text {required}"
+        );
+    }
+
+    for required in [
+        "VCF-Fast v1.4 Public Parallel Scale Benchmark",
+        "Auto BGZF policy",
+        "single-thread, auto BGZF, auto+predicate-parallel",
+        "smoke validation only; no speed claim from sub-10k tier",
+        "Equivalence diffs",
+    ] {
+        assert!(
+            report.contains(required),
+            "missing v1.4 report text {required}"
+        );
+    }
+
+    assert!(readme.contains("VCF_FAST_NATIVE_BGZF_THREADS=auto"));
+    assert!(readme.contains("VCF_FAST_NATIVE_BGZF_THREADS=1"));
+    assert!(readme.contains("make bench-v14"));
+}
+
+#[test]
 fn v13_release_hardening_tracks_install_docs_and_generated_benchmark_table() {
     let root = repo_root();
     let cargo_toml = fs::read_to_string(root.join("Cargo.toml")).unwrap();
@@ -564,7 +626,7 @@ fn v13_release_hardening_tracks_install_docs_and_generated_benchmark_table() {
         fs::read_to_string(root.join("benchmark/generate_public_benchmark_table.py")).unwrap();
     let release_workflow = fs::read_to_string(root.join(".github/workflows/release.yml")).unwrap();
 
-    assert!(cargo_toml.contains("version = \"1.3.0\""));
+    assert!(cargo_toml.contains("version = \"1.4.0\""));
     assert!(cli.contains("#[command(version)]"));
 
     assert!(makefile.contains("benchmark-table:"));
@@ -589,7 +651,7 @@ fn v13_release_hardening_tracks_install_docs_and_generated_benchmark_table() {
         );
     }
 
-    for required in ["v1.3.0", "v1.2", "v1.0", "v0.1"] {
+    for required in ["v1.4.0", "v1.3.0", "v1.2", "v1.0", "v0.1"] {
         assert!(
             changelog.contains(required),
             "missing changelog version {required}"
