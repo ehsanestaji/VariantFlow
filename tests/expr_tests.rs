@@ -17,7 +17,7 @@ fn record<'a>(
     }
 }
 
-fn record_with_format<'a>(format: FormatValues<'a>) -> EvalRecord<'a> {
+fn record_with_format<'a>(format: FormatValues) -> EvalRecord<'a> {
     EvalRecord {
         chrom: "1",
         pos: 100,
@@ -96,67 +96,47 @@ fn rejects_malformed_expressions() {
 fn evaluates_format_numeric_predicates() {
     let expr = parse_expression("FORMAT/DP > 20 && FORMAT/GQ >= 30").unwrap();
 
-    assert!(expr.evaluate(&record_with_format(FormatValues {
-        gt: Some("0/1"),
-        dp: Some("25"),
-        gq: Some("40"),
-    })));
-    assert!(!expr.evaluate(&record_with_format(FormatValues {
-        gt: Some("0/1"),
-        dp: Some("10"),
-        gq: Some("40"),
-    })));
+    assert!(
+        expr.evaluate(&record_with_format(
+            FormatValues::default()
+                .with_gt(b"0/1")
+                .with_dp(b"25")
+                .with_gq(b"40"),
+        ))
+    );
+    assert!(
+        !expr.evaluate(&record_with_format(
+            FormatValues::default()
+                .with_gt(b"0/1")
+                .with_dp(b"10")
+                .with_gq(b"40"),
+        ))
+    );
 }
 
 #[test]
 fn evaluates_format_gt_as_exact_string() {
     let expr = parse_expression("FORMAT/GT == \"0/1\"").unwrap();
 
-    assert!(expr.evaluate(&record_with_format(FormatValues {
-        gt: Some("0/1"),
-        dp: None,
-        gq: None,
-    })));
-    assert!(!expr.evaluate(&record_with_format(FormatValues {
-        gt: Some("0|1"),
-        dp: None,
-        gq: None,
-    })));
+    assert!(expr.evaluate(&record_with_format(FormatValues::default().with_gt(b"0/1"),)));
+    assert!(!expr.evaluate(&record_with_format(FormatValues::default().with_gt(b"0|1"),)));
 
     let missing_dot = parse_expression("FORMAT/GT == \".\"").unwrap();
-    assert!(!missing_dot.evaluate(&record_with_format(FormatValues {
-        gt: Some("."),
-        dp: None,
-        gq: None,
-    })));
+    assert!(!missing_dot.evaluate(&record_with_format(FormatValues::default().with_gt(b"."),)));
 
     let missing_empty = parse_expression("FORMAT/GT == \"\"").unwrap();
-    assert!(!missing_empty.evaluate(&record_with_format(FormatValues {
-        gt: Some(""),
-        dp: None,
-        gq: None,
-    })));
+    assert!(!missing_empty.evaluate(&record_with_format(FormatValues::default().with_gt(b""),)));
 }
 
 #[test]
 fn format_missing_or_invalid_numeric_values_are_false() {
     let expr = parse_expression("FORMAT/DP > 20").unwrap();
 
-    assert!(!expr.evaluate(&record_with_format(FormatValues {
-        gt: None,
-        dp: None,
-        gq: None,
-    })));
-    assert!(!expr.evaluate(&record_with_format(FormatValues {
-        gt: None,
-        dp: Some("."),
-        gq: None,
-    })));
-    assert!(!expr.evaluate(&record_with_format(FormatValues {
-        gt: None,
-        dp: Some("not-a-number"),
-        gq: None,
-    })));
+    assert!(!expr.evaluate(&record_with_format(FormatValues::default())));
+    assert!(!expr.evaluate(&record_with_format(FormatValues::default().with_dp(b"."),)));
+    assert!(!expr.evaluate(&record_with_format(
+        FormatValues::default().with_dp(b"not-a-number"),
+    )));
 }
 
 #[test]
@@ -205,5 +185,34 @@ fn arbitrary_info_missing_empty_flag_and_dot_are_false() {
     assert!(!missing.evaluate_record(&record));
     assert!(!empty.evaluate_record(&record));
     assert!(!flag.evaluate_record(&record));
+    assert!(!dot.evaluate_record(&record));
+}
+
+#[test]
+fn arbitrary_format_numeric_selected_sample_predicate_passes() {
+    let expr = parse_expression("FORMAT/AD > 8").unwrap();
+    let record =
+        EvalRecord::new(b"chr1", Some(101), Some(60.0), b"PASS").with_format_value(b"AD", b"4,11");
+
+    assert!(expr.evaluate_record(&record));
+}
+
+#[test]
+fn arbitrary_format_string_selected_sample_predicate_passes() {
+    let expr = parse_expression("FORMAT/FT == \"PASS\"").unwrap();
+    let record =
+        EvalRecord::new(b"chr1", Some(101), Some(60.0), b"PASS").with_format_value(b"FT", b"PASS");
+
+    assert!(expr.evaluate_record(&record));
+}
+
+#[test]
+fn arbitrary_format_missing_and_dot_are_false() {
+    let missing = parse_expression("FORMAT/AD > 8").unwrap();
+    let dot = parse_expression("FORMAT/FT == \"PASS\"").unwrap();
+    let record =
+        EvalRecord::new(b"chr1", Some(101), Some(60.0), b"PASS").with_format_value(b"FT", b".");
+
+    assert!(!missing.evaluate_record(&record));
     assert!(!dot.evaluate_record(&record));
 }

@@ -213,6 +213,17 @@ fn evaluate_record(
         None
     };
 
+    let mut format = FormatValues::default();
+    if let Some(value) = gt.as_deref() {
+        format = format.with_gt(value.as_bytes());
+    }
+    if let Some(value) = dp.as_deref() {
+        format = format.with_dp(value.as_bytes());
+    }
+    if let Some(value) = gq.as_deref() {
+        format = format.with_gq(value.as_bytes());
+    }
+
     let eval = EvalRecord {
         chrom: &chrom,
         pos: if required.pos {
@@ -227,11 +238,7 @@ fn evaluate_record(
         },
         filter: &filter,
         info: &info,
-        format: FormatValues {
-            gt: gt.as_deref(),
-            dp: dp.as_deref(),
-            gq: gq.as_deref(),
-        },
+        format,
     };
 
     Ok(expr.evaluate(&eval))

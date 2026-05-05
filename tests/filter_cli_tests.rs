@@ -308,6 +308,35 @@ fn format_filter_result_changes_with_sample() {
 }
 
 #[test]
+fn filter_supports_arbitrary_selected_format_field() {
+    let dir = tempdir().unwrap();
+    let output = dir.path().join("arbitrary_format_selected.vcf");
+
+    let assert = Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            fixture("tests/data/expression_parity.vcf")
+                .to_str()
+                .unwrap(),
+            "--sample",
+            "HG002",
+            "--where",
+            "FORMAT/AD > 8 && FORMAT/FT == \"PASS\"",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    assert.stderr(predicate::str::is_empty());
+    let text = std::fs::read_to_string(output).unwrap();
+    assert!(text.contains("chr1\t101\trs1\tA\tG\t60\tPASS"));
+    assert!(!text.contains("chr1\t102\trs2"));
+    assert!(!text.contains("chr1\t103\trs3"));
+}
+
+#[test]
 fn format_gt_filter_uses_exact_string_comparison() {
     let dir = tempdir().unwrap();
     let output = dir.path().join("format-gt.vcf");

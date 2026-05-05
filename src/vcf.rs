@@ -33,6 +33,7 @@ pub(crate) struct InfoView<'a> {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[allow(dead_code)]
 pub(crate) struct FormatValueBytes<'a> {
     pub(crate) gt: Option<&'a [u8]>,
     pub(crate) dp: Option<&'a [u8]>,
@@ -467,6 +468,7 @@ pub(crate) fn column_value(line: &str, target_column: usize) -> Option<&str> {
     None
 }
 
+#[allow(dead_code)]
 pub(crate) fn selected_format_values_bytes<'sample>(
     format: &[u8],
     sample: &'sample [u8],
@@ -527,7 +529,7 @@ pub fn info_value<'a>(info: &'a str, key: &str) -> Option<&'a str> {
     found
 }
 
-fn format_value_bytes<'sample>(
+pub(crate) fn format_value_bytes<'sample>(
     format: &[u8],
     sample: &'sample [u8],
     key: &[u8],

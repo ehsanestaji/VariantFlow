@@ -28,6 +28,7 @@ pub(crate) struct RequiredFields {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[allow(dead_code)]
 pub(crate) struct RequiredFormatFields {
     pub gt: bool,
     pub dp: bool,
@@ -43,6 +44,7 @@ impl RequiredFields {
         !self.format_keys.is_empty() || self.format_aggregates
     }
 
+    #[allow(dead_code)]
     pub(crate) fn legacy_format_fields(&self) -> RequiredFormatFields {
         RequiredFormatFields {
             gt: self.format_keys.iter().any(|key| key.as_slice() == b"GT"),
@@ -97,21 +99,45 @@ enum Literal {
     String(String),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct EvalRecord<'a> {
     pub chrom: &'a str,
     pub pos: u64,
     pub qual: Option<f64>,
     pub filter: &'a str,
     pub info: &'a str,
-    pub format: FormatValues<'a>,
+    pub format: FormatValues,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct FormatValues<'a> {
-    pub gt: Option<&'a str>,
-    pub dp: Option<&'a str>,
-    pub gq: Option<&'a str>,
+#[derive(Debug, Clone, Default)]
+pub struct FormatValues {
+    entries: Vec<(Vec<u8>, Vec<u8>)>,
+}
+
+impl FormatValues {
+    pub fn with(mut self, key: &[u8], value: &[u8]) -> Self {
+        self.entries.push((key.to_vec(), value.to_vec()));
+        self
+    }
+
+    pub fn with_gt(self, value: &[u8]) -> Self {
+        self.with(b"GT", value)
+    }
+
+    pub fn with_dp(self, value: &[u8]) -> Self {
+        self.with(b"DP", value)
+    }
+
+    pub fn with_gq(self, value: &[u8]) -> Self {
+        self.with(b"GQ", value)
+    }
+
+    fn get(&self, key: &[u8]) -> Option<&[u8]> {
+        self.entries
+            .iter()
+            .find(|(existing, _)| existing.as_slice() == key)
+            .map(|(_, value)| value.as_slice())
+    }
 }
 
 pub(crate) trait EvalContext {
@@ -121,9 +147,7 @@ pub(crate) trait EvalContext {
     fn filter(&self) -> Option<&[u8]>;
     fn info_value(&self, key: &[u8]) -> Option<&[u8]>;
     fn info_number_any(&self, key: &[u8], predicate: &mut dyn FnMut(f64) -> bool) -> bool;
-    fn format_gt(&self) -> Option<&[u8]>;
-    fn format_dp(&self) -> Option<&[u8]>;
-    fn format_gq(&self) -> Option<&[u8]>;
+    fn format_value(&self, key: &[u8]) -> Option<&[u8]>;
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -192,6 +216,23 @@ impl<'a> EvalRecord<'a> {
         self.info = std::str::from_utf8(info).unwrap_or(".");
         self
     }
+
+    pub fn with_format_value(mut self, key: &[u8], value: &[u8]) -> Self {
+        self.format = self.format.with(key, value);
+        self
+    }
+
+    pub fn with_format_gt(self, value: &[u8]) -> Self {
+        self.with_format_value(b"GT", value)
+    }
+
+    pub fn with_format_dp(self, value: &[u8]) -> Self {
+        self.with_format_value(b"DP", value)
+    }
+
+    pub fn with_format_gq(self, value: &[u8]) -> Self {
+        self.with_format_value(b"GQ", value)
+    }
 }
 
 impl ExprNode {
@@ -237,18 +278,16 @@ impl Comparison {
                 .info_value(key)
                 .filter(|value| is_present_value(value))
                 .is_some_and(|actual| compare_bytes(actual, expected.as_bytes(), self.op)),
-            (Field::Format(key), Literal::String(expected)) if key == b"GT" => record
-                .format_gt()
-                .and_then(parse_format_string_bytes)
+            (Field::Format(key), Literal::Number(expected)) => record
+                .format_value(key)
+                .filter(|value| is_present_value(value))
+                .is_some_and(|actual| {
+                    number_list_any(actual, |value| compare_numbers(value, *expected, self.op))
+                }),
+            (Field::Format(key), Literal::String(expected)) => record
+                .format_value(key)
+                .filter(|value| is_present_value(value))
                 .is_some_and(|actual| compare_bytes(actual, expected.as_bytes(), self.op)),
-            (Field::Format(key), Literal::Number(expected)) if key == b"DP" => record
-                .format_dp()
-                .and_then(parse_format_number_bytes)
-                .is_some_and(|actual| compare_numbers(actual, *expected, self.op)),
-            (Field::Format(key), Literal::Number(expected)) if key == b"GQ" => record
-                .format_gq()
-                .and_then(parse_format_number_bytes)
-                .is_some_and(|actual| compare_numbers(actual, *expected, self.op)),
             _ => false,
         }
     }
@@ -294,16 +333,8 @@ impl EvalContext for EvalRecord<'_> {
         vcf::InfoView::scan(self.info.as_bytes()).number_any(key, predicate)
     }
 
-    fn format_gt(&self) -> Option<&[u8]> {
-        self.format.gt.map(str::as_bytes)
-    }
-
-    fn format_dp(&self) -> Option<&[u8]> {
-        self.format.dp.map(str::as_bytes)
-    }
-
-    fn format_gq(&self) -> Option<&[u8]> {
-        self.format.gq.map(str::as_bytes)
+    fn format_value(&self, key: &[u8]) -> Option<&[u8]> {
+        self.format.get(key)
     }
 }
 
@@ -330,20 +361,23 @@ fn is_present_value(value: &[u8]) -> bool {
     !value.is_empty() && value != b"."
 }
 
-fn parse_format_number_bytes(value: &[u8]) -> Option<f64> {
-    if value == b"." || value.is_empty() {
-        None
-    } else {
-        std::str::from_utf8(value).ok()?.parse::<f64>().ok()
+fn number_list_any<F>(value: &[u8], mut predicate: F) -> bool
+where
+    F: FnMut(f64) -> bool,
+{
+    for part in value.split(|byte| *byte == b',') {
+        if part.is_empty() || part == b"." {
+            continue;
+        }
+        if std::str::from_utf8(part)
+            .ok()
+            .and_then(|text| text.parse::<f64>().ok())
+            .is_some_and(&mut predicate)
+        {
+            return true;
+        }
     }
-}
-
-fn parse_format_string_bytes(value: &[u8]) -> Option<&[u8]> {
-    if value == b"." || value.is_empty() {
-        None
-    } else {
-        Some(value)
-    }
+    false
 }
 
 struct Parser {
@@ -618,7 +652,7 @@ mod tests {
     struct ByteContext<'a> {
         record: RecordView<'a>,
         info: InfoView<'a>,
-        format: FormatValues<'a>,
+        format: FormatValues,
     }
 
     impl<'a> ByteContext<'a> {
@@ -658,16 +692,8 @@ mod tests {
             self.info.number_any(key, predicate)
         }
 
-        fn format_gt(&self) -> Option<&[u8]> {
-            self.format.gt.map(str::as_bytes)
-        }
-
-        fn format_dp(&self) -> Option<&[u8]> {
-            self.format.dp.map(str::as_bytes)
-        }
-
-        fn format_gq(&self) -> Option<&[u8]> {
-            self.format.gq.map(str::as_bytes)
+        fn format_value(&self, key: &[u8]) -> Option<&[u8]> {
+            self.format.get(key)
         }
     }
 

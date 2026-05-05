@@ -6,10 +6,7 @@ use anyhow::{Result, bail};
 use crate::compat::{Backend, CompressionMode, Region, select_backend};
 use crate::expr::{EvalContext, RequiredFields, parse_expression};
 use crate::io::{open_reader, open_vcf_writer};
-use crate::vcf::{
-    FormatValueBytes, InfoView, RecordView, column_value, resolve_sample_column,
-    selected_format_values_bytes,
-};
+use crate::vcf::{self, InfoView, RecordView, column_value, resolve_sample_column};
 
 pub fn run(
     input: &Path,
@@ -100,7 +97,8 @@ pub fn run(
 struct ByteEvalRecord<'a> {
     record: RecordView<'a>,
     info: InfoView<'a>,
-    format: FormatValueBytes<'a>,
+    format_column: Option<&'a [u8]>,
+    selected_sample: Option<&'a [u8]>,
 }
 
 impl<'a> ByteEvalRecord<'a> {
@@ -115,24 +113,24 @@ impl<'a> ByteEvalRecord<'a> {
         } else {
             InfoView::default()
         };
-        let format = if required.requires_format() {
-            let format_column = record.column(8).unwrap_or(b"");
-            let sample_value = sample_column
-                .and_then(|column| record.column(column))
-                .unwrap_or(b".");
-            selected_format_values_bytes(
-                format_column,
-                sample_value,
-                required.legacy_format_fields(),
+        let (format_column, selected_sample) = if required.requires_format() {
+            (
+                Some(record.column(8).unwrap_or(b"")),
+                Some(
+                    sample_column
+                        .and_then(|column| record.column(column))
+                        .unwrap_or(b"."),
+                ),
             )
         } else {
-            FormatValueBytes::default()
+            (None, None)
         };
 
         Ok(Self {
             record,
             info,
-            format,
+            format_column,
+            selected_sample,
         })
     }
 }
@@ -162,15 +160,9 @@ impl EvalContext for ByteEvalRecord<'_> {
         self.info.value(key)
     }
 
-    fn format_gt(&self) -> Option<&[u8]> {
-        self.format.gt
-    }
-
-    fn format_dp(&self) -> Option<&[u8]> {
-        self.format.dp
-    }
-
-    fn format_gq(&self) -> Option<&[u8]> {
-        self.format.gq
+    fn format_value(&self, key: &[u8]) -> Option<&[u8]> {
+        let format = self.format_column?;
+        let sample = self.selected_sample?;
+        vcf::format_value_bytes(format, sample, key)
     }
 }
