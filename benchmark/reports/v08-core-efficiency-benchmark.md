@@ -2,7 +2,7 @@
 
 ## Status
 
-Stress 1M repeated runs copied from `tests/output/benchmark-results/v08-stress-1m-after-byte-core.md`. Public heavy rows remain pending. This report must only be filled from generated local reports under `tests/output/benchmark-results`.
+Stress 1M repeated runs copied from `tests/output/benchmark-results/v08-stress-1m-after-byte-core.md`. Public heavy 1M repeated runs copied from `tests/output/benchmark-results/v08-public-heavy-1m-after-byte-core.md`. This report must only be filled from generated local reports under `tests/output/benchmark-results`.
 
 ## Scope
 
@@ -40,7 +40,7 @@ Each measured row copied into this report must include dataset source, dataset s
 
 ## Measured Results
 
-Stress 1M rows below were generated with `VCF_FAST_BENCH_RUNS=3` and `VCF_FAST_BENCH_WARMUP=1` on 2026-05-05.
+Stress 1M rows below were generated with `VCF_FAST_BENCH_RUNS=3` and `VCF_FAST_BENCH_WARMUP=1` on 2026-05-05. Public-heavy 1M rows were generated with `VCF_FAST_BENCH_RUNS=3` and `VCF_FAST_BENCH_WARMUP=1` on 2026-05-05.
 
 | case | dataset source | dataset shape | record count | dataset size bytes | correctness result | runtime mean | runtime stddev | speedup | variants/sec | peak RSS | exact VCF-Fast command | exact competitor command | competitor version | caveat | claim decision |
 |---|---|---|---:|---:|---|---:|---:|---:|---|---|---|---|---|---|---|
@@ -53,6 +53,8 @@ Stress 1M rows below were generated with `VCF_FAST_BENCH_RUNS=3` and `VCF_FAST_B
 | QUAL gzip input | stress synthetic data | stress INFO fields=40, samples=16, FORMAT=GT:DP:GQ:AD | 1000000 | 805816148 | matches bcftools filtered core records | 0.798898s vs 2.509340s | 0.010275s vs 0.058440s | 3.14x | 1251724 / 398511 | n/a / n/a | `./target/release/vcf-fast filter tests/output/benchmark-results/data/stress-1000000.vcf.gz --where 'QUAL > 30' -o tests/output/benchmark-results/fast-qual-gzip-input-1000000.vcf` | `bcftools filter -i 'QUAL>30' tests/output/benchmark-results/data/stress-1000000.vcf.gz -o tests/output/benchmark-results/bcftools-qual-gzip-input-1000000.vcf` | bcftools 1.23.1 | synthetic stress shape | measured win |
 | Convert TSV | stress synthetic data | stress INFO fields=40, samples=16, FORMAT=GT:DP:GQ:AD | 1000000 | 805816148 | matches normalized bcftools query TSV rows | 0.480159s vs 1.221087s | 0.008063s vs 0.015089s | 2.54x | 2082643 / 818942 | n/a / n/a | `./target/release/vcf-fast convert tests/output/benchmark-results/data/stress-1000000.vcf --to tsv -o tests/output/benchmark-results/fast-convert-tsv-1000000.tsv` | `bcftools query -u -f '%CHROM\t%POS\t%ID\t%REF\t%ALT\t%QUAL\t%FILTER\t%INFO/DP\t%INFO/AF\n' tests/output/benchmark-results/data/stress-1000000.vcf > tests/output/benchmark-results/bcftools-convert-tsv-1000000.tsv` | bcftools 1.23.1 | synthetic stress shape | measured win |
 | Stats JSON | stress synthetic data | stress INFO fields=40, samples=16, FORMAT=GT:DP:GQ:AD | 1000000 | 805816148 | Stats JSON variants match bcftools stats records | 0.451201s vs 1.125941s | 0.002160s vs 0.008828s | 2.50x | 2216307 / 888146 | n/a / n/a | `./target/release/vcf-fast stats tests/output/benchmark-results/data/stress-1000000.vcf > tests/output/benchmark-results/fast-stats-json-1000000.json` | `bcftools stats tests/output/benchmark-results/data/stress-1000000.vcf > tests/output/benchmark-results/bcftools-stats-json-1000000.stats.txt` | bcftools 1.23.1 | synthetic stress shape | measured win |
+| Heavy QUAL gzip input | 1000 Genomes high-coverage chr22 public-heavy bounded region | bounded BGZF/tabix public region chr22:1-20000000, max plain staging bytes=1073741824 | 1000000 | 75203311 | matches bcftools filtered core records | 0.867246s vs 5.214596s | 0.002260s vs 0.101318s | 6.01x | 1153075 / 191769 | n/a / n/a | `./target/release/vcf-fast filter tests/output/benchmark-results/data/public-heavy-1000000.vcf.gz --where 'QUAL > 30' -o tests/output/benchmark-results/fast-heavy-qual-gzip-input-1000000.vcf` | `bcftools filter -i 'QUAL>30' tests/output/benchmark-results/data/public-heavy-1000000.vcf.gz -o tests/output/benchmark-results/bcftools-heavy-qual-gzip-input-1000000.vcf` | bcftools 1.23.1 | bounded chr22 region | measured win |
+| Heavy Convert TSV gzip input | 1000 Genomes high-coverage chr22 public-heavy bounded region | bounded BGZF/tabix public region chr22:1-20000000, max plain staging bytes=1073741824 | 1000000 | 75203311 | matches normalized bcftools query TSV rows | 0.917093s vs 1.033839s | 0.003456s vs 0.014315s | 1.13x | 1090402 / 967269 | n/a / n/a | `./target/release/vcf-fast convert tests/output/benchmark-results/data/public-heavy-1000000.vcf.gz --to tsv -o tests/output/benchmark-results/fast-heavy-convert-tsv-gzip-input-1000000.tsv` | `bcftools query -u -f '%CHROM\t%POS\t%ID\t%REF\t%ALT\t%QUAL\t%FILTER\t%INFO/DP\t%INFO/AF\n' tests/output/benchmark-results/data/public-heavy-1000000.vcf.gz > tests/output/benchmark-results/bcftools-heavy-convert-tsv-gzip-input-1000000.tsv` | bcftools 1.23.1 | bounded chr22 region | measured win |
 
 ## Claim Decision Rules
 
