@@ -9,6 +9,7 @@ use crate::engine::{convert, diff, filter, stats};
 #[derive(Debug, Parser)]
 #[command(name = "vcf-fast")]
 #[command(about = "Fast, selective operations for VCF data")]
+#[command(version)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
