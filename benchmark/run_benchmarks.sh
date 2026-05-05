@@ -13,6 +13,8 @@ PUBLIC_RECORD_TIERS="${VCF_FAST_PUBLIC_RECORD_TIERS:-10000 100000 1000000}"
 PUBLIC_SOURCE_KIND="${VCF_FAST_PUBLIC_SOURCE:-giab-hg002}"
 PUBLIC_RECORDS="${VCF_FAST_PUBLIC_RECORDS:-10000}"
 PUBLIC_REGION="${VCF_FAST_PUBLIC_REGION:-chr22:1-20000000}"
+HEAVY_MAX_PLAIN_BYTES="${VCF_FAST_HEAVY_MAX_PLAIN_BYTES:-1073741824}"
+HEAVY_REGION="${VCF_FAST_HEAVY_REGION:-$PUBLIC_REGION}"
 COMPAT_REGION="${VCF_FAST_COMPAT_REGION:-22:1-20000000}"
 STRESS_INFO_FIELDS="${VCF_FAST_STRESS_INFO_FIELDS:-40}"
 STRESS_SAMPLES="${VCF_FAST_STRESS_SAMPLES:-16}"
@@ -107,6 +109,22 @@ markdown_cell() {
   printf '%s\n' "$value" | sed 's/|/\&#124;/g'
 }
 
+file_size_bytes() {
+  wc -c <"$1" | tr -d ' '
+}
+
+assert_plain_artifact_under_cap() {
+  local path="$1"
+  local max_bytes="$2"
+  local actual
+  actual="$(file_size_bytes "$path")"
+  if (( actual > max_bytes )); then
+    echo "deferred: plain artifact cap exceeded for $path (${actual} > ${max_bytes})" >&2
+    rm -f "$path"
+    return 77
+  fi
+}
+
 predicate_check() {
   local output="$1"
   local expression="$2"
@@ -168,6 +186,50 @@ build_public_region_dataset() {
   fi
 }
 
+build_public_heavy_dataset() {
+  local source="$1"
+  local output="$2"
+  local records="$3"
+  local region="$4"
+
+  require_tool bcftools
+  require_tool bgzip
+  require_tool tabix
+
+  local temp_plain="${output%.gz}.plain.tmp.vcf"
+
+  if ! {
+    bcftools view -h "$source"
+    bcftools view -H -r "$region" "$source" | awk -v limit="$records" 'NR <= limit'
+  } >"$temp_plain"; then
+    echo "failed to stage public-heavy records from $source region $region" >&2
+    rm -f "$temp_plain"
+    return 2
+  fi
+
+  if ! awk 'BEGIN { found = 0 } !/^#/ { found = 1 } END { exit found ? 0 : 1 }' "$temp_plain"; then
+    echo "region $region produced no records from $source; set VCF_FAST_HEAVY_REGION to a matching indexed region" >&2
+    rm -f "$temp_plain"
+    return 2
+  fi
+
+  if ! assert_plain_artifact_under_cap "$temp_plain" "$HEAVY_MAX_PLAIN_BYTES"; then
+    return 77
+  fi
+
+  if ! bgzip -c "$temp_plain" >"$output"; then
+    echo "failed to bgzip public-heavy dataset $output" >&2
+    rm -f "$temp_plain"
+    return 2
+  fi
+  if ! tabix -f -p vcf "$output"; then
+    echo "failed to index public-heavy dataset $output" >&2
+    rm -f "$temp_plain"
+    return 2
+  fi
+  rm -f "$temp_plain"
+}
+
 sort_vcf_for_indexing() {
   local input="$1"
   local output="$2"
@@ -207,6 +269,14 @@ configure_inputs() {
       fi
       echo "1000 Genomes high-coverage chr22 region ${PUBLIC_REGION}, requested record subsets|$igsr"
       ;;
+    public-heavy)
+      local igsr="tests/output/public-data/1kGP_high_coverage_Illumina.chr22.filtered.SNV_INDEL_SV_phased_panel.vcf.gz"
+      if [[ ! -s "$igsr" ]]; then
+        echo "missing $igsr; run benchmark/download_public_data.sh igsr-chr22 first" >&2
+        exit 2
+      fi
+      echo "1000 Genomes high-coverage chr22 heavy compressed/indexed tiers ${HEAVY_REGION}|$igsr"
+      ;;
     public-whole)
       local source=""
       local source_label=""
@@ -245,7 +315,7 @@ configure_inputs() {
       echo "compatibility synthetic BCF/BGZF/indexed data|"
       ;;
     *)
-      echo "unsupported VCF_FAST_BENCH_MODE=$MODE; expected synthetic, stress, public-small, public-region, public-whole, public-region-repeated, or compatibility" >&2
+      echo "unsupported VCF_FAST_BENCH_MODE=$MODE; expected synthetic, stress, public-small, public-region, public-heavy, public-whole, public-region-repeated, or compatibility" >&2
       exit 2
       ;;
   esac
@@ -258,7 +328,7 @@ if /usr/bin/time -v -o "$OUT_DIR/time-probe.txt" true >/dev/null 2>&1; then
 else
   VCF_FAST_BENCH_GNU_TIME=0
 fi
-if [[ "$MODE" == "compatibility" || "$MODE" == "public-region-repeated" ]]; then
+if [[ "$MODE" == "compatibility" || "$MODE" == "public-region-repeated" || "$MODE" == "public-heavy" ]]; then
   cargo build --release --features htslib-static
 else
   cargo build --release
@@ -270,6 +340,8 @@ if [[ "$MODE" == "stress" ]]; then
   DATASET_SHAPE="stress INFO fields=${STRESS_INFO_FIELDS}, samples=${STRESS_SAMPLES}, FORMAT=GT:DP:GQ:AD"
 elif [[ "$MODE" == "compatibility" ]]; then
   DATASET_SHAPE="synthetic VCF plus BCF, BGZF, tabix index, and region ${COMPAT_REGION}"
+elif [[ "$MODE" == "public-heavy" ]]; then
+  DATASET_SHAPE="bounded BGZF/tabix public region ${HEAVY_REGION}, max plain staging bytes=${HEAVY_MAX_PLAIN_BYTES}"
 fi
 
 if [[ "$MODE" == "public-small" || "$MODE" == "public-whole" || "$MODE" == "public-region" || "$MODE" == "public-region-repeated" ]]; then
@@ -285,6 +357,13 @@ if [[ "$MODE" == "public-region-repeated" ]]; then
     "Region QUAL|region|QUAL > 30|QUAL>30"
     "Region Convert TSV|region-convert-tsv|convert-tsv|query-tsv"
     "Region Stats JSON|region-stats-json|stats-json|stats"
+  )
+fi
+
+if [[ "$MODE" == "public-heavy" ]]; then
+  CASES=(
+    "Heavy QUAL gzip input|gzip|QUAL > 30|QUAL>30"
+    "Heavy Convert TSV gzip input|convert-tsv-gzip|convert-tsv|query-tsv"
   )
 fi
 
@@ -322,6 +401,8 @@ fi
   echo "- Dataset shape: $DATASET_SHAPE"
   echo "- Dataset sizes: \`${SIZES}\`"
   echo "- Public record tiers: \`${PUBLIC_RECORD_TIERS}\`"
+  echo "- Heavy plain artifact cap: \`${HEAVY_MAX_PLAIN_BYTES}\` bytes"
+  echo "- Heavy region: \`${HEAVY_REGION}\`"
   echo "- Repeated runs: \`${VCF_FAST_BENCH_RUNS:-3}\`"
   echo "- Warmup runs: \`${VCF_FAST_BENCH_WARMUP:-1}\`"
   echo "- hyperfine: $(tool_version hyperfine)"
@@ -356,6 +437,22 @@ for records in $SIZES; do
   elif [[ "$MODE" == "stress" ]]; then
     plain_dataset="$DATA_DIR/stress-${records}.vcf"
     ./benchmark/generate_stress_vcf.sh "$plain_dataset" "$records"
+  elif [[ "$MODE" == "public-heavy" ]]; then
+    gzip_dataset="$DATA_DIR/public-heavy-${records}.vcf.gz"
+    set +e
+    build_public_heavy_dataset "$PUBLIC_SOURCE" "$gzip_dataset" "$records" "$HEAVY_REGION"
+    heavy_status=$?
+    set -e
+    if [[ "$heavy_status" -eq 77 ]]; then
+      note="deferred: plain artifact cap exceeded"
+      printf '| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n' \
+        "public-heavy setup" "$records" "n/a" "VCF" "BGZF" "n/a" "n/a" "$note" "n/a" "n/a" "n/a" "n/a" "n/a" "n/a" "n/a" "$note" >>"$REPORT"
+      continue
+    fi
+    if [[ "$heavy_status" -ne 0 ]]; then
+      exit "$heavy_status"
+    fi
+    plain_dataset="$gzip_dataset"
   elif [[ "$MODE" == "public-region" || "$MODE" == "public-region-repeated" ]]; then
     plain_dataset="$DATA_DIR/${MODE}-${records}.vcf"
     build_public_region_dataset "$PUBLIC_SOURCE" "$plain_dataset" "$records" "$PUBLIC_REGION"
@@ -368,8 +465,12 @@ for records in $SIZES; do
     plain_dataset="$DATA_DIR/${MODE}-${records}.vcf"
     build_public_small_dataset "$PUBLIC_SOURCE" "$plain_dataset" "$records"
   fi
-  gzip_dataset="${plain_dataset}.gz"
-  gzip -c "$plain_dataset" >"$gzip_dataset"
+  if [[ "$MODE" != "public-heavy" ]]; then
+    gzip_dataset="${plain_dataset}.gz"
+  fi
+  if [[ "$MODE" != "public-heavy" ]]; then
+    gzip -c "$plain_dataset" >"$gzip_dataset"
+  fi
   bgzf_dataset="${plain_dataset%.vcf}.bgzf.vcf.gz"
   bcf_dataset="${plain_dataset%.vcf}.bcf"
 
@@ -382,7 +483,11 @@ for records in $SIZES; do
     bcftools view -Ob -o "$bcf_dataset" "$plain_dataset"
     bcftools index -f "$bcf_dataset"
   fi
-  base_dataset_size_bytes="$(wc -c <"$plain_dataset" | tr -d ' ')"
+  if [[ "$MODE" == "public-heavy" ]]; then
+    base_dataset_size_bytes="$(file_size_bytes "$gzip_dataset")"
+  else
+    base_dataset_size_bytes="$(file_size_bytes "$plain_dataset")"
+  fi
 
   for case_spec in "${CASES[@]}"; do
     IFS='|' read -r case_name input_kind fast_expr bcftools_expr sample_name <<<"$case_spec"
@@ -397,16 +502,20 @@ for records in $SIZES; do
     fast_sample_option=""
     fast_sample_hyperfine_arg=""
 
-    if [[ "$input_kind" == "gzip" ]]; then
+    if [[ "$input_kind" == "gzip" || "$input_kind" == "convert-tsv-gzip" ]]; then
       dataset="$gzip_dataset"
       input_label="gzip"
-      input_compression="gzip"
+      if [[ "$MODE" == "public-heavy" ]]; then
+        input_compression="BGZF"
+      else
+        input_compression="gzip"
+      fi
     elif [[ "$input_kind" == "bcf" || "$input_kind" == "bcf-convert-tsv" || "$input_kind" == "bcf-region-stats-json" ]]; then
       dataset="$bcf_dataset"
       input_label="bcf"
       input_format="BCF"
       input_compression="BGZF"
-      dataset_size_bytes="$(wc -c <"$dataset" | tr -d ' ')"
+      dataset_size_bytes="$(file_size_bytes "$dataset")"
       if [[ "$input_kind" == "bcf-region-stats-json" ]]; then
         region_option="$COMPAT_REGION"
       fi
@@ -419,7 +528,7 @@ for records in $SIZES; do
         dataset="$bgzf_dataset"
         region_option="$COMPAT_REGION"
       fi
-      dataset_size_bytes="$(wc -c <"$dataset" | tr -d ' ')"
+      dataset_size_bytes="$(file_size_bytes "$dataset")"
     elif [[ "$input_kind" == "bgzf-output" ]]; then
       input_label="plain-to-bgzf"
       output_compression_option="bgzf"
