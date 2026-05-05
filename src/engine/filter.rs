@@ -185,7 +185,7 @@ impl EvalContext for ByteEvalRecord<'_> {
         matched
     }
 
-    fn all_format_value(&self, key: &[u8], predicate: &mut dyn FnMut(&[u8]) -> bool) -> bool {
+    fn all_format_value(&self, key: &[u8], mut predicate: &mut dyn FnMut(&[u8]) -> bool) -> bool {
         let Some(format) = self.format_column else {
             return false;
         };
@@ -197,8 +197,7 @@ impl EvalContext for ByteEvalRecord<'_> {
             if !all_match {
                 return;
             }
-            all_match =
-                vcf::format_value_bytes(format, sample, key).is_some_and(|value| predicate(value));
+            all_match = vcf::format_value_bytes(format, sample, key).is_some_and(&mut predicate);
         });
         saw_sample && all_match
     }
