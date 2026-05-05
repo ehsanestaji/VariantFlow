@@ -206,8 +206,9 @@ fn v07_report_tracks_bottleneck_caveat_and_next_action() {
 #[test]
 fn v08_core_efficiency_report_tracks_required_fields() {
     let root = repo_root();
-    let report = fs::read_to_string(root.join("benchmark/reports/v08-core-efficiency-benchmark.md"))
-        .expect("v0.8 report should exist");
+    let report =
+        fs::read_to_string(root.join("benchmark/reports/v08-core-efficiency-benchmark.md"))
+            .expect("v0.8 report should exist");
 
     for required in [
         "v0.8 Core Efficiency Benchmark",
@@ -225,7 +226,10 @@ fn v08_core_efficiency_report_tracks_required_fields() {
         "caveat",
         "claim decision",
     ] {
-        assert!(report.contains(required), "missing report field: {required}");
+        assert!(
+            report.contains(required),
+            "missing report field: {required}"
+        );
     }
 
     assert!(
@@ -233,7 +237,9 @@ fn v08_core_efficiency_report_tracks_required_fields() {
         "measured results table should include dataset shape"
     );
     assert!(
-        report.contains("| peak RSS | exact VCF-Fast command | exact competitor command | competitor version |"),
+        report.contains(
+            "| peak RSS | exact VCF-Fast command | exact competitor command | competitor version |"
+        ),
         "measured results table should include competitor version"
     );
 }
