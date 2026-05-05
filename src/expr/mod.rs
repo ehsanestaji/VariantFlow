@@ -808,6 +808,14 @@ mod tests {
         fn format_value(&self, key: &[u8]) -> Option<&[u8]> {
             self.format.get(key)
         }
+
+        fn any_format_value(&self, key: &[u8], predicate: &mut dyn FnMut(&[u8]) -> bool) -> bool {
+            self.format.get(key).is_some_and(predicate)
+        }
+
+        fn all_format_value(&self, key: &[u8], predicate: &mut dyn FnMut(&[u8]) -> bool) -> bool {
+            self.format.get(key).is_some_and(predicate)
+        }
     }
 
     #[test]
