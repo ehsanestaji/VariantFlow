@@ -6,7 +6,7 @@ package:
   version: {{ version }}
 
 source:
-  url: https://github.com/OWNER/VariantFlow/archive/v{{ version }}.tar.gz
+  url: https://github.com/ehsanestaji/VariantFlow/archive/v{{ version }}.tar.gz
   sha256: TODO_RELEASE_SHA256
 
 build:
@@ -27,7 +27,7 @@ test:
     - run_test.sh
 
 about:
-  home: https://github.com/OWNER/VariantFlow
+  home: https://github.com/ehsanestaji/VariantFlow
   license: MIT OR Apache-2.0
   license_file:
     - LICENSE
@@ -43,4 +43,4 @@ about:
 
 extra:
   recipe-maintainers:
-    - TODO_GITHUB_HANDLE
+    - ehsanestaji

@@ -13,10 +13,11 @@ JOSS manuscript lives in `paper/paper.md`; references live in
 - Archive the release through Zenodo or another accepted archive and record a
   Zenodo DOI if submitting to JOSS after review acceptance.
 - Replace Bioconda recipe placeholders after the tagged release exists:
-  source URL, `sha256`, owner, and maintainer handle.
+  source URL and `sha256`.
 
 The project license is now `MIT OR Apache-2.0`, with the root notice in
 `LICENSE` and full license texts in `LICENSE-MIT` and `LICENSE-APACHE`.
+The GitHub owner and recipe maintainer are recorded as `ehsanestaji`.
 
 ## Submission checklist
 
@@ -59,7 +60,7 @@ The project license is now `MIT OR Apache-2.0`, with the root notice in
 
 The Bioconda recipe scaffold is already tracked under
 `packaging/bioconda/variantflow`, but the recipe must not be submitted until the
-license, tagged source archive, `sha256`, and maintainer metadata are final.
+tagged source archive and `sha256` are final.
 The paper can mention planned Bioconda distribution only after the recipe PR is
 opened or merged.
 
