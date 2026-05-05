@@ -36,14 +36,14 @@ make bench-heavy
 
 ## Required Report Fields
 
-Each measured row copied into this report must include dataset source, dataset shape, record count, dataset size bytes, correctness result, runtime mean, runtime stddev, speedup, variants/sec, peak RSS, exact VCF-Fast command, exact competitor command, caveat, and claim decision.
+Each measured row copied into this report must include dataset source, dataset shape, record count, dataset size bytes, correctness result, runtime mean, runtime stddev, speedup, variants/sec, peak RSS, exact VCF-Fast command, exact competitor command, competitor version, caveat, and claim decision.
 
 ## Measured Results
 
 No measured v0.8 rows are copied yet.
 
-| case | dataset source | dataset shape | record count | dataset size bytes | correctness result | runtime mean | runtime stddev | speedup | variants/sec | peak RSS | exact VCF-Fast command | exact competitor command | caveat | claim decision |
-|---|---|---|---:|---:|---|---:|---:|---:|---|---|---|---|---|---|
+| case | dataset source | dataset shape | record count | dataset size bytes | correctness result | runtime mean | runtime stddev | speedup | variants/sec | peak RSS | exact VCF-Fast command | exact competitor command | competitor version | caveat | claim decision |
+|---|---|---|---:|---:|---|---:|---:|---:|---|---|---|---|---|---|---|
 
 ## Claim Decision Rules
 
