@@ -32,6 +32,7 @@ fi
 TIERS="${VCF_FAST_V17_TIERS:-10000 50000 100000 250000}"
 RUNS="${VCF_FAST_V17_RUNS:-${VCF_FAST_BENCH_RUNS:-3}}"
 WARMUP="${VCF_FAST_V17_WARMUP:-${VCF_FAST_BENCH_WARMUP:-1}}"
+HEAVY_OUTPUT_RECORDS="${VCF_FAST_V17_HEAVY_OUTPUT_RECORDS:-500000}"
 FORMAT_EXPR='N_PASS(FORMAT/AD[1] > 10) >= 2'
 BCFTOOLS_EXPR='N_PASS(FMT/AD[*:1]>10)>=2'
 
@@ -127,16 +128,32 @@ stream_public_vcf() {
 }
 
 public_vcf_has_required_format() {
+  set +e
   stream_public_vcf | awk '
     /^##FORMAT=<ID=AD,/ { ad = 1 }
     /^##FORMAT=<ID=DP,/ { dp = 1 }
+    /^#CHROM/ { exit(ad && dp ? 0 : 1) }
     END { if (!(ad && dp)) exit 1 }
   '
+  local statuses=("${PIPESTATUS[@]}")
+  set -e
+  [[ "${statuses[1]}" -eq 0 ]]
 }
 
 sample_count() {
   local vcf="$1"
   bcftools query -l "$vcf" | wc -l | tr -d ' '
+}
+
+record_count() {
+  local vcf="$1"
+  local count
+  count="$(bcftools index -n "$vcf" 2>/dev/null || true)"
+  if [[ -n "$count" ]]; then
+    echo "$count"
+  else
+    bcftools view -H "$vcf" | wc -l | tr -d ' '
+  fi
 }
 
 build_bounded_subset() {
@@ -155,6 +172,58 @@ build_bounded_subset() {
     return 1
   fi
   tabix -f -p vcf "$output"
+}
+
+tier_label() {
+  local tier="$1"
+  case "$tier" in
+    full|all|full-chromosome)
+      echo "full"
+      ;;
+    *)
+      echo "$tier"
+      ;;
+  esac
+}
+
+prepare_tier_dataset() {
+  local tier="$1"
+  local output="$2"
+  case "$tier" in
+    full|all|full-chromosome)
+      echo "$PUBLIC_DATA"
+      ;;
+    *)
+      build_bounded_subset "$tier" "$output"
+      echo "$output"
+      ;;
+  esac
+}
+
+heavy_output_mode() {
+  local tier="$1"
+  local records="$2"
+  case "$tier" in
+    full|all|full-chromosome)
+      return 0
+      ;;
+  esac
+  [[ "$records" =~ ^[0-9]+$ && "$records" -ge "$HEAVY_OUTPUT_RECORDS" ]]
+}
+
+write_core_records() {
+  awk 'BEGIN { OFS = "\t" } !/^#/ { print $1, $2, $3, $4, $5 }'
+}
+
+run_heavy_core_check() {
+  local subset="$1"
+  local fast_core="$2"
+  local bcftools_core="$3"
+
+  ./target/release/variantflow filter "$subset" --where "$FORMAT_EXPR" -o /dev/stdout \
+    | write_core_records >"$fast_core"
+  bcftools filter -Ov -i "$BCFTOOLS_EXPR" "$subset" -o /dev/stdout \
+    | write_core_records >"$bcftools_core"
 }
 
 write_header() {
@@ -181,6 +250,11 @@ Repeated local timing uses \`hyperfine\` when available
 (\`VCF_FAST_V17_RUNS=$RUNS\`, \`VCF_FAST_V17_WARMUP=$WARMUP\`). Peak RSS is
 reported from GNU \`/usr/bin/time -v\` on Linux or BSD \`/usr/bin/time -l\` on
 macOS.
+
+Heavy-output policy: tiers with at least \`$HEAVY_OUTPUT_RECORDS\` records, and
+\`full\` / \`all\` / \`full-chromosome\` tiers, avoid giant plain VCF artifacts.
+They stream correctness checks through \`/dev/stdout\` into core records only
+and send timed output to \`/dev/null\`.
 
 | case | dataset | tier | exact VariantFlow command | exact competitor command | correctness result | runtime | peak RSS | claim decision | caveat |
 |---|---|---:|---|---|---|---|---|---|---|
@@ -220,28 +294,46 @@ write_header
 cargo build --release
 
 for tier in $TIERS; do
-  subset="${OUT_DIR}/format-public-${tier}.vcf.gz"
-  fast_out="${OUT_DIR}/variantflow-format-${tier}.vcf"
-  bcftools_out="${OUT_DIR}/bcftools-format-${tier}.vcf"
-  diff_out="${OUT_DIR}/equivalence-format-${tier}.diff"
+  label="$(tier_label "$tier")"
+  subset_candidate="${OUT_DIR}/format-public-${label}.vcf.gz"
+  subset="$(prepare_tier_dataset "$tier" "$subset_candidate")"
+  fast_out="${OUT_DIR}/variantflow-format-${label}.vcf"
+  bcftools_out="${OUT_DIR}/bcftools-format-${label}.vcf"
+  fast_core="${OUT_DIR}/variantflow-format-${label}.core.tsv"
+  bcftools_core="${OUT_DIR}/bcftools-format-${label}.core.tsv"
+  diff_out="${OUT_DIR}/equivalence-format-${label}.diff"
 
-  build_bounded_subset "$tier" "$subset"
-  actual_records=$(bcftools view -H "$subset" | wc -l | tr -d ' ')
+  actual_records=$(record_count "$subset")
   samples=$(sample_count "$subset")
 
-  fast_cmd=(./target/release/variantflow filter "$subset" --where "$FORMAT_EXPR" -o "$fast_out")
-  bcftools_cmd=(bcftools filter -i "$BCFTOOLS_EXPR" "$subset" -o "$bcftools_out")
-  fast_timed=(./target/release/variantflow filter "$subset" --where "$FORMAT_EXPR" -o "${OUT_DIR}/variantflow-format-${tier}.timed.vcf")
-  bcftools_timed=(bcftools filter -i "$BCFTOOLS_EXPR" "$subset" -o "${OUT_DIR}/bcftools-format-${tier}.timed.vcf")
+  if heavy_output_mode "$tier" "$actual_records"; then
+    fast_cmd=(./target/release/variantflow filter "$subset" --where "$FORMAT_EXPR" -o /dev/stdout)
+    bcftools_cmd=(bcftools filter -Ov -i "$BCFTOOLS_EXPR" "$subset" -o /dev/stdout)
+    fast_rss_cmd=(./target/release/variantflow filter "$subset" --where "$FORMAT_EXPR" -o /dev/null)
+    bcftools_rss_cmd=(bcftools filter -Ov -i "$BCFTOOLS_EXPR" "$subset" -o /dev/null)
+    fast_timed=(./target/release/variantflow filter "$subset" --where "$FORMAT_EXPR" -o /dev/null)
+    bcftools_timed=(bcftools filter -Ov -i "$BCFTOOLS_EXPR" "$subset" -o /dev/null)
+    run_heavy_core_check "$subset" "$fast_core" "$bcftools_core"
+    diff "$fast_core" "$bcftools_core" >"$diff_out" || true
+    output_policy="heavy output mode: /dev/stdout core records only for correctness; /dev/null for timed runs"
+  else
+    fast_cmd=(./target/release/variantflow filter "$subset" --where "$FORMAT_EXPR" -o "$fast_out")
+    bcftools_cmd=(bcftools filter -i "$BCFTOOLS_EXPR" "$subset" -o "$bcftools_out")
+    fast_rss_cmd=("${fast_cmd[@]}")
+    bcftools_rss_cmd=("${bcftools_cmd[@]}")
+    fast_timed=(./target/release/variantflow filter "$subset" --where "$FORMAT_EXPR" -o "${OUT_DIR}/variantflow-format-${label}.timed.vcf")
+    bcftools_timed=(bcftools filter -i "$BCFTOOLS_EXPR" "$subset" -o "${OUT_DIR}/bcftools-format-${label}.timed.vcf")
+    diff <(grep -v '^#' "$fast_out" | cut -f1-5) <(grep -v '^#' "$bcftools_out" | cut -f1-5) >"$diff_out" || true
+    output_policy="plain VCF artifacts retained for inspection"
+  fi
 
-  fast_label="variantflow-format-${tier}"
-  bcftools_label="bcftools-format-${tier}"
-  fast_rss=$(measure_peak_rss_kb "$fast_label" "${fast_cmd[@]}")
-  bcftools_rss=$(measure_peak_rss_kb "$bcftools_label" "${bcftools_cmd[@]}")
+  fast_label="variantflow-format-${label}"
+  bcftools_label="bcftools-format-${label}"
+  fast_rss=$(measure_peak_rss_kb "$fast_label" "${fast_rss_cmd[@]}")
+  bcftools_rss=$(measure_peak_rss_kb "$bcftools_label" "${bcftools_rss_cmd[@]}")
   read -r fast_seconds fast_stddev <<<"$(runtime_mean_stddev "${fast_label}" "$(shell_command "${fast_timed[@]}")")"
   read -r bcftools_seconds bcftools_stddev <<<"$(runtime_mean_stddev "${bcftools_label}" "$(shell_command "${bcftools_timed[@]}")")"
   speedup=$(speedup_ratio "$fast_seconds" "$bcftools_seconds")
-  diff <(grep -v '^#' "$fast_out" | cut -f1-5) <(grep -v '^#' "$bcftools_out" | cut -f1-5) >"$diff_out" || true
 
   if [[ -s "$diff_out" ]]; then
     correctness="not matched"
@@ -258,7 +350,7 @@ PY
     claim="correctness matched; optimization needed before claiming speed win"
   fi
 
-  echo "| public FORMAT-heavy | $PUBLIC_DATA | $tier requested / $actual_records actual | \`$(shell_command "${fast_cmd[@]}")\` | \`$(shell_command "${bcftools_cmd[@]}")\` | $correctness | VariantFlow ${fast_seconds}s +/- ${fast_stddev}s; bcftools ${bcftools_seconds}s +/- ${bcftools_stddev}s; speedup ${speedup} | VariantFlow ${fast_rss}; bcftools ${bcftools_rss} | $claim | FORMAT-rich public trio/cohort source: $PUBLIC_SOURCE_URL; samples=$samples; expression uses $FORMAT_EXPR; compare against bcftools filter; $MAYO_COHORT_NOTE |" >>"$REPORT"
+  echo "| public FORMAT-heavy | $PUBLIC_DATA | $tier requested / $actual_records actual | \`$(shell_command "${fast_cmd[@]}")\` | \`$(shell_command "${bcftools_cmd[@]}")\` | $correctness | VariantFlow ${fast_seconds}s +/- ${fast_stddev}s; bcftools ${bcftools_seconds}s +/- ${bcftools_stddev}s; speedup ${speedup} | VariantFlow ${fast_rss}; bcftools ${bcftools_rss} | $claim | FORMAT-rich public trio/cohort source: $PUBLIC_SOURCE_URL; samples=$samples; expression uses $FORMAT_EXPR; compare against bcftools filter; output policy: $output_policy; $MAYO_COHORT_NOTE |" >>"$REPORT"
 done
 
 if [[ "${VCF_FAST_ENABLE_VCFTOOLS:-0}" = "1" ]]; then
