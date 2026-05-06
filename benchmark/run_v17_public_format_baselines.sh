@@ -23,6 +23,27 @@ measure_peak_rss_kb() {
   fi
 }
 
+real_seconds_from_time() {
+  local time_file="$1"
+  awk '/ real/ {print $1; exit}' "$time_file"
+}
+
+speedup_ratio() {
+  local fast_seconds="$1"
+  local competitor_seconds="$2"
+  python3 - "$fast_seconds" "$competitor_seconds" <<'PY'
+import sys
+
+fast = float(sys.argv[1])
+competitor = float(sys.argv[2])
+print("n/a" if fast <= 0 else f"{competitor / fast:.2f}x")
+PY
+}
+
+shell_command() {
+  printf "%q " "$@"
+}
+
 stream_public_vcf() {
   case "$PUBLIC_DATA" in
     *.gz|*.bgz)
@@ -46,8 +67,8 @@ write_header() {
   cat >"$REPORT" <<EOF
 # v1.7 Public FORMAT And Optional Baselines
 
-This report is the scaffold for public FORMAT-heavy and ecosystem baseline
-evidence. Full runs stay local and reproducible; CI should use smoke tiers only.
+This report tracks public FORMAT-heavy and ecosystem baseline evidence. Full
+runs stay local and reproducible; CI should use smoke tiers only.
 
 Dataset target: FORMAT-rich public trio/cohort VCF. Default target is the
 SourceForge 123VCF NA12878 trio benchmark because it declares FORMAT/AD and
@@ -68,7 +89,8 @@ append_optional_baselines() {
 - Polars: enabled only with \`VCF_FAST_ENABLE_POLARS=1\`.
 - PyArrow: enabled only with \`VCF_FAST_ENABLE_PYARROW=1\`.
 
-Rows remain \`not yet proven\` until correctness and runtime are recorded.
+Optional baseline rows remain \`not yet proven\` until correctness and runtime
+are recorded.
 EOF
 }
 
@@ -105,19 +127,31 @@ for tier in $TIERS; do
   fast_cmd=(./target/release/variantflow filter "$subset" --where "$FORMAT_EXPR" -o "$fast_out")
   bcftools_cmd=(bcftools filter -i "$BCFTOOLS_EXPR" "$subset" -o "$bcftools_out")
 
-  fast_rss=$(measure_peak_rss_kb "variantflow-format-${tier}" "${fast_cmd[@]}")
-  bcftools_rss=$(measure_peak_rss_kb "bcftools-format-${tier}" "${bcftools_cmd[@]}")
+  fast_label="variantflow-format-${tier}"
+  bcftools_label="bcftools-format-${tier}"
+  fast_rss=$(measure_peak_rss_kb "$fast_label" "${fast_cmd[@]}")
+  bcftools_rss=$(measure_peak_rss_kb "$bcftools_label" "${bcftools_cmd[@]}")
+  fast_seconds=$(real_seconds_from_time "${OUT_DIR}/${fast_label}.time")
+  bcftools_seconds=$(real_seconds_from_time "${OUT_DIR}/${bcftools_label}.time")
+  speedup=$(speedup_ratio "$fast_seconds" "$bcftools_seconds")
   diff <(grep -v '^#' "$fast_out" | cut -f1-5) <(grep -v '^#' "$bcftools_out" | cut -f1-5) >"$diff_out" || true
 
   if [[ -s "$diff_out" ]]; then
     correctness="not matched"
     claim="no performance claim"
+  elif python3 - "$fast_seconds" "$bcftools_seconds" <<'PY'
+import sys
+raise SystemExit(0 if float(sys.argv[1]) < float(sys.argv[2]) else 1)
+PY
+  then
+    correctness="matched core records"
+    claim="measured faster on this public FORMAT-rich tier"
   else
     correctness="matched core records"
-    claim="measured row; inspect runtime before claiming win"
+    claim="correctness matched; optimization needed before claiming speed win"
   fi
 
-  echo "| public FORMAT-heavy | $PUBLIC_DATA | $tier | \`${fast_cmd[*]}\` | \`${bcftools_cmd[*]}\` | $correctness | see local timing files | VariantFlow ${fast_rss}; bcftools ${bcftools_rss} | $claim | FORMAT-rich public trio/cohort source: $PUBLIC_SOURCE_URL; expression uses $FORMAT_EXPR; compare against bcftools filter |" >>"$REPORT"
+  echo "| public FORMAT-heavy | $PUBLIC_DATA | $tier | \`$(shell_command "${fast_cmd[@]}")\` | \`$(shell_command "${bcftools_cmd[@]}")\` | $correctness | VariantFlow ${fast_seconds}s; bcftools ${bcftools_seconds}s; speedup ${speedup} | VariantFlow ${fast_rss}; bcftools ${bcftools_rss} | $claim | FORMAT-rich public trio/cohort source: $PUBLIC_SOURCE_URL; expression uses $FORMAT_EXPR; compare against bcftools filter |" >>"$REPORT"
 done
 
 if [[ "${VCF_FAST_ENABLE_VCFTOOLS:-0}" = "1" ]]; then

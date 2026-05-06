@@ -1069,6 +1069,8 @@ fn v17_public_format_and_optional_baseline_harness_is_declared() {
         "N_PASS(FORMAT/AD[1] > 10)",
         "bcftools filter",
         "measure_peak_rss_kb",
+        "real_seconds_from_time",
+        "speedup_ratio",
         "correctness result",
     ] {
         assert!(script.contains(required), "missing harness text {required}");
