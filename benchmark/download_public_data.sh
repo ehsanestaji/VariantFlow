@@ -18,6 +18,8 @@ FORMAT_WGS_TRIO_TBI_URL="https://zenodo.org/records/3697103/files/trio_NA12878-N
 FORMAT_OVIS453_URL="https://ftp.sra.ebi.ac.uk/vol1/analysis/ERZ324/ERZ324584/19.filtered_intersect.vcf.gz"
 FORMAT_OVIS453_TBI_URL="${FORMAT_OVIS453_URL}.tbi"
 FORMAT_CATTLE29_URL="https://ftp.sra.ebi.ac.uk/vol1/analysis/ERZ184/ERZ18456468/Dutch_Genebank_Cattle_Y_merged.vcf.gz"
+FORMAT_HUMAN_CHM13_CHR22_URL="https://ddbj.nig.ac.jp/public/public-human-genomes/CHM13/JointCall/CHM13_autosome_PAR.chr22.vcf.gz"
+FORMAT_HUMAN_CHM13_CHR22_CSI_URL="${FORMAT_HUMAN_CHM13_CHR22_URL}.csi"
 
 download_if_missing() {
   local url="$1"
@@ -64,6 +66,20 @@ download_format_cattle29() {
   download_if_missing "$FORMAT_CATTLE29_URL" "$OUT_DIR/Dutch_Genebank_Cattle_Y_merged.vcf.gz"
 }
 
+download_format_human_chm13_chr22() {
+  # DDBJ public-human-genomes CHM13 JointCall chr22: 3715 human samples with
+  # declared FORMAT/AD, FORMAT/DP, and FORMAT/GQ fields. The VCF is about
+  # 27 GB compressed, so the default downloader caches only the CSI index and
+  # a URL manifest. Set VCF_FAST_ALLOW_HUGE_DOWNLOAD=1 to cache the full VCF.
+  download_if_missing "$FORMAT_HUMAN_CHM13_CHR22_CSI_URL" "$OUT_DIR/CHM13_autosome_PAR.chr22.vcf.gz.csi"
+  printf '%s\n' "$FORMAT_HUMAN_CHM13_CHR22_URL" >"$OUT_DIR/CHM13_autosome_PAR.chr22.vcf.gz.url"
+  if [[ "${VCF_FAST_ALLOW_HUGE_DOWNLOAD:-0}" = "1" ]]; then
+    download_if_missing "$FORMAT_HUMAN_CHM13_CHR22_URL" "$OUT_DIR/CHM13_autosome_PAR.chr22.vcf.gz"
+  else
+    echo "skipping 27 GB CHM13 human VCF; benchmark/run_v20_human_format_cohort.sh streams bounded tiers from the URL"
+  fi
+}
+
 case "$MODE" in
   all)
     download_giab_hg002
@@ -72,6 +88,7 @@ case "$MODE" in
     download_format_wgs_trio
     download_format_ovis453
     download_format_cattle29
+    download_format_human_chm13_chr22
     ;;
   giab-hg002)
     download_giab_hg002
@@ -91,8 +108,11 @@ case "$MODE" in
   format-cattle29)
     download_format_cattle29
     ;;
+  format-human-chm13-chr22)
+    download_format_human_chm13_chr22
+    ;;
   *)
-    echo "usage: $0 [all|giab-hg002|igsr-chr22|format-trio|format-wgs-trio|format-ovis453|format-cattle29]" >&2
+    echo "usage: $0 [all|giab-hg002|igsr-chr22|format-trio|format-wgs-trio|format-ovis453|format-cattle29|format-human-chm13-chr22]" >&2
     exit 2
     ;;
 esac
@@ -105,4 +125,5 @@ FORMAT-rich NA12878 trio: $FORMAT_TRIO_URL
 Larger FORMAT-rich WGS trio: $FORMAT_WGS_TRIO_URL
 FORMAT-rich 453 sheep cohort: $FORMAT_OVIS453_URL
 FORMAT-rich 29 cattle cohort: $FORMAT_CATTLE29_URL
+FORMAT-rich 3715 human CHM13 chr22 cohort: $FORMAT_HUMAN_CHM13_CHR22_URL
 EOF
