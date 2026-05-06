@@ -39,7 +39,7 @@ def main() -> int:
         (
             '{% set name = "variantflow" %}',
             '{% set version = "1.5.0" %}',
-            "https://github.com/ehsanestaji/VariantFlow/archive/v{{ version }}.tar.gz",
+            "https://github.com/ehsanestaji/VCF-FAST/archive/v{{ version }}.tar.gz",
             "sha256: TODO_RELEASE_SHA256",
             "{{ compiler('rust') }}",
             "cargo-bundle-licenses",

@@ -8,10 +8,13 @@ This document tracks the local Bioconda recipe scaffold for `variantflow`. It is
 - Build script: `packaging/bioconda/variantflow/build.sh`
 - Install smoke test: `packaging/bioconda/variantflow/run_test.sh`
 - Local scaffold check: `make bioconda-recipe-check`
+- Current upstream repository URL: `https://github.com/ehsanestaji/VCF-FAST`
 
 ## Current Blockers
 
 - Create a tagged GitHub source release for the first packaged version.
+- Make the GitHub repository public before opening the Bioconda PR; Bioconda
+  cannot build from a private source tarball.
 - Replace `TODO_RELEASE_SHA256` with the release tarball `sha256`.
 - Run `bioconda-utils` lint/build in a clean environment.
 - First recipe decision: build the native engine only. Document `.bcf`,
@@ -52,7 +55,7 @@ The recipe follows current Bioconda Rust guidance:
 3. Compute the tarball hash:
 
    ```bash
-   curl -L -o variantflow-v1.5.0.tar.gz https://github.com/ehsanestaji/VariantFlow/archive/v1.5.0.tar.gz
+   curl -L -o variantflow-v1.5.0.tar.gz https://github.com/ehsanestaji/VCF-FAST/archive/v1.5.0.tar.gz
    shasum -a 256 variantflow-v1.5.0.tar.gz
    ```
 
