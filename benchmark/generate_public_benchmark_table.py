@@ -80,6 +80,23 @@ ROWS = [
         caveat="Docker/Linux timing; 1M/full tiers use heavy-output mode with core-record correctness and /dev/null timed output",
     ),
     Row(
+        workflow="Public FORMAT expression breadth",
+        dataset="ENA Ovis aries 453-sample cohort 1M/full chromosome FORMAT DP/GQ/AD expressions",
+        correctness="matched bcftools core records",
+        measured_result="3.22x to 8.77x faster than bcftools filter",
+        source="benchmark/reports/v18-public-format-expression-breadth.md",
+        required_tokens=(
+            "3.22x",
+            "8.77x",
+            "ANY(FORMAT/DP > 20)",
+            "ALL(FORMAT/GQ >= 30)",
+            "selected-sample FORMAT/DP > 20",
+            "full requested / 1097167 actual",
+            "matched core records",
+        ),
+        caveat="Docker/Linux repeated timing; hyperfine reported outliers on some rows; heavy-output mode avoids retained full VCF artifacts",
+    ),
+    Row(
         workflow="Native TSV conversion",
         dataset="Stress 1M after byte-core surgery",
         correctness="matched normalized TSV rows",
