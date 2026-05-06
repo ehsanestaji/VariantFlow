@@ -17,6 +17,7 @@ FORMAT_WGS_TRIO_URL="https://zenodo.org/records/3697103/files/trio_NA12878-NA128
 FORMAT_WGS_TRIO_TBI_URL="https://zenodo.org/records/3697103/files/trio_NA12878-NA12891-NA12892_hs37d5_dbsnp.vcf.gz.tbi?download=1"
 FORMAT_OVIS453_URL="https://ftp.sra.ebi.ac.uk/vol1/analysis/ERZ324/ERZ324584/19.filtered_intersect.vcf.gz"
 FORMAT_OVIS453_TBI_URL="${FORMAT_OVIS453_URL}.tbi"
+FORMAT_CATTLE29_URL="https://ftp.sra.ebi.ac.uk/vol1/analysis/ERZ184/ERZ18456468/Dutch_Genebank_Cattle_Y_merged.vcf.gz"
 
 download_if_missing() {
   local url="$1"
@@ -57,6 +58,12 @@ download_format_ovis453() {
   download_if_missing "$FORMAT_OVIS453_TBI_URL" "$OUT_DIR/19.filtered_intersect.vcf.gz.tbi"
 }
 
+download_format_cattle29() {
+  # ENA ERZ18456468 / PRJEB60909: Dutch Genebank Cattle Y merged VCF;
+  # 29 cattle with declared FORMAT/AD, FORMAT/DP, and FORMAT/GQ fields.
+  download_if_missing "$FORMAT_CATTLE29_URL" "$OUT_DIR/Dutch_Genebank_Cattle_Y_merged.vcf.gz"
+}
+
 case "$MODE" in
   all)
     download_giab_hg002
@@ -64,6 +71,7 @@ case "$MODE" in
     download_format_trio
     download_format_wgs_trio
     download_format_ovis453
+    download_format_cattle29
     ;;
   giab-hg002)
     download_giab_hg002
@@ -80,8 +88,11 @@ case "$MODE" in
   format-ovis453)
     download_format_ovis453
     ;;
+  format-cattle29)
+    download_format_cattle29
+    ;;
   *)
-    echo "usage: $0 [all|giab-hg002|igsr-chr22|format-trio|format-wgs-trio|format-ovis453]" >&2
+    echo "usage: $0 [all|giab-hg002|igsr-chr22|format-trio|format-wgs-trio|format-ovis453|format-cattle29]" >&2
     exit 2
     ;;
 esac
@@ -93,4 +104,5 @@ GIAB HG002: $GIAB_HG002_URL
 FORMAT-rich NA12878 trio: $FORMAT_TRIO_URL
 Larger FORMAT-rich WGS trio: $FORMAT_WGS_TRIO_URL
 FORMAT-rich 453 sheep cohort: $FORMAT_OVIS453_URL
+FORMAT-rich 29 cattle cohort: $FORMAT_CATTLE29_URL
 EOF
