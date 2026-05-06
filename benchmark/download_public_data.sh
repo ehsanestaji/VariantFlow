@@ -15,6 +15,8 @@ IGSR_CHR22_TBI_URL="${IGSR_CHR22_URL}.tbi"
 FORMAT_TRIO_URL="https://sourceforge.net/projects/project123vcf/files/Benchmark_Data/NA12878.trio.hg19_multianno.vcf.gz/download"
 FORMAT_WGS_TRIO_URL="https://zenodo.org/records/3697103/files/trio_NA12878-NA12891-NA12892_hs37d5_dbsnp.vcf.gz?download=1"
 FORMAT_WGS_TRIO_TBI_URL="https://zenodo.org/records/3697103/files/trio_NA12878-NA12891-NA12892_hs37d5_dbsnp.vcf.gz.tbi?download=1"
+FORMAT_OVIS453_URL="https://ftp.sra.ebi.ac.uk/vol1/analysis/ERZ324/ERZ324584/19.filtered_intersect.vcf.gz"
+FORMAT_OVIS453_TBI_URL="${FORMAT_OVIS453_URL}.tbi"
 
 download_if_missing() {
   local url="$1"
@@ -48,12 +50,20 @@ download_format_wgs_trio() {
   download_if_missing "$FORMAT_WGS_TRIO_TBI_URL" "$OUT_DIR/trio_NA12878-NA12891-NA12892_hs37d5_dbsnp.vcf.gz.tbi"
 }
 
+download_format_ovis453() {
+  # ENA ERZ324584: "Sheep genomes variants high quality - 19"; 453 sheep
+  # with FORMAT/AD and FORMAT/DP sample fields.
+  download_if_missing "$FORMAT_OVIS453_URL" "$OUT_DIR/19.filtered_intersect.vcf.gz"
+  download_if_missing "$FORMAT_OVIS453_TBI_URL" "$OUT_DIR/19.filtered_intersect.vcf.gz.tbi"
+}
+
 case "$MODE" in
   all)
     download_giab_hg002
     download_igsr_chr22
     download_format_trio
     download_format_wgs_trio
+    download_format_ovis453
     ;;
   giab-hg002)
     download_giab_hg002
@@ -67,8 +77,11 @@ case "$MODE" in
   format-wgs-trio)
     download_format_wgs_trio
     ;;
+  format-ovis453)
+    download_format_ovis453
+    ;;
   *)
-    echo "usage: $0 [all|giab-hg002|igsr-chr22|format-trio|format-wgs-trio]" >&2
+    echo "usage: $0 [all|giab-hg002|igsr-chr22|format-trio|format-wgs-trio|format-ovis453]" >&2
     exit 2
     ;;
 esac
@@ -79,4 +92,5 @@ GIAB HG002: $GIAB_HG002_URL
 1000 Genomes chr22: $IGSR_CHR22_URL
 FORMAT-rich NA12878 trio: $FORMAT_TRIO_URL
 Larger FORMAT-rich WGS trio: $FORMAT_WGS_TRIO_URL
+FORMAT-rich 453 sheep cohort: $FORMAT_OVIS453_URL
 EOF

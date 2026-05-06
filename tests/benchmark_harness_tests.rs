@@ -75,11 +75,16 @@ fn public_data_downloader_pins_giab_and_igsr_sources() {
     );
     assert!(script.contains("NA12878.trio.hg19_multianno.vcf.gz"));
     assert!(script.contains("trio_NA12878-NA12891-NA12892_hs37d5_dbsnp.vcf.gz"));
+    assert!(script.contains("19.filtered_intersect.vcf.gz"));
+    assert!(script.contains("ERZ324584"));
+    assert!(script.contains("453 sheep"));
+    assert!(script.contains("format-ovis453"));
     assert!(script.contains("format-wgs-trio"));
     assert!(script.contains("format-trio"));
     assert!(script.contains("ftp-trace.ncbi.nlm.nih.gov"));
     assert!(script.contains("ftp.1000genomes.ebi.ac.uk"));
     assert!(script.contains("sourceforge.net/projects/project123vcf"));
+    assert!(script.contains("ftp.sra.ebi.ac.uk/vol1/analysis/ERZ324/ERZ324584"));
 }
 
 #[test]
@@ -1067,11 +1072,17 @@ fn v17_public_format_and_optional_baseline_harness_is_declared() {
         "VCF_FAST_ENABLE_POLARS",
         "VCF_FAST_ENABLE_PYARROW",
         "VCF_FAST_FORMAT_VCF",
+        "VCF_FAST_FORMAT_COHORT_VCF",
         "VCF_FAST_FORMAT_WGS_TRIO_VCF",
         "VCF_FAST_V17_RUNS",
         "VCF_FAST_V17_WARMUP",
         "NA12878.trio.hg19_multianno.vcf.gz",
         "trio_NA12878-NA12891-NA12892_hs37d5_dbsnp.vcf.gz",
+        "19.filtered_intersect.vcf.gz",
+        "453-sample",
+        "ERZ324584",
+        "1097167",
+        "9dabe9929a8923e62c8808d6fbf15314",
         "Mayo VCF-Miner",
         "629 samples",
         "N_PASS(FORMAT/AD[1] > 10)",
@@ -1090,6 +1101,7 @@ fn v17_public_format_and_optional_baseline_harness_is_declared() {
         "v1.7 Public FORMAT And Optional Baselines",
         "public FORMAT-heavy",
         "FORMAT-rich public trio",
+        "FORMAT-rich public cohort",
         "larger FORMAT-rich WGS trio",
         "Repeated local timing",
         "VCFtools",

@@ -5,6 +5,13 @@ OUT_DIR="${VCF_FAST_BENCH_OUT_DIR:-tests/output/benchmark-results/v17-public-for
 REPORT="${VCF_FAST_V17_REPORT:-benchmark/reports/v17-public-format-baselines.md}"
 FORMAT_TRIO_VCF="tests/output/public-data/NA12878.trio.hg19_multianno.vcf.gz"
 FORMAT_TRIO_URL="https://sourceforge.net/projects/project123vcf/files/Benchmark_Data/NA12878.trio.hg19_multianno.vcf.gz/download"
+FORMAT_COHORT_VCF="${VCF_FAST_FORMAT_COHORT_VCF:-tests/output/public-data/19.filtered_intersect.vcf.gz}"
+FORMAT_COHORT_URL="https://ftp.sra.ebi.ac.uk/vol1/analysis/ERZ324/ERZ324584/19.filtered_intersect.vcf.gz"
+FORMAT_COHORT_ENA_ACCESSION="ERZ324584"
+FORMAT_COHORT_MD5="9dabe9929a8923e62c8808d6fbf15314"
+FORMAT_COHORT_BYTES="2213677122"
+FORMAT_COHORT_RECORDS="1097167"
+FORMAT_COHORT_SAMPLES="453"
 FORMAT_WGS_TRIO_VCF="${VCF_FAST_FORMAT_WGS_TRIO_VCF:-tests/output/public-data/trio_NA12878-NA12891-NA12892_hs37d5_dbsnp.vcf.gz}"
 FORMAT_WGS_TRIO_URL="https://zenodo.org/records/3697103/files/trio_NA12878-NA12891-NA12892_hs37d5_dbsnp.vcf.gz?download=1"
 MAYO_VCF_MINER_PAGE="https://bioinformaticstools.mayo.edu/research/vcf-miner-sample-vcfs/"
@@ -12,6 +19,9 @@ MAYO_COHORT_NOTE="Mayo VCF-Miner lists 1KG chr22 benchmark VCFs with 629 samples
 if [[ -n "${VCF_FAST_FORMAT_VCF:-}" ]]; then
   PUBLIC_DATA="$VCF_FAST_FORMAT_VCF"
   PUBLIC_SOURCE_URL="${VCF_FAST_FORMAT_VCF_URL:-user supplied VCF_FAST_FORMAT_VCF}"
+elif [[ -s "$FORMAT_COHORT_VCF" ]]; then
+  PUBLIC_DATA="$FORMAT_COHORT_VCF"
+  PUBLIC_SOURCE_URL="$FORMAT_COHORT_URL"
 elif [[ -s "$FORMAT_WGS_TRIO_VCF" ]]; then
   PUBLIC_DATA="$FORMAT_WGS_TRIO_VCF"
   PUBLIC_SOURCE_URL="$FORMAT_WGS_TRIO_URL"
@@ -155,10 +165,17 @@ This report tracks public FORMAT-heavy and ecosystem baseline evidence. Full
 runs stay local and reproducible; CI should use smoke tiers only.
 
 Dataset target: FORMAT-rich public trio/cohort VCF. Default target is the
-larger FORMAT-rich WGS trio from Zenodo when cached because it declares
-FORMAT/AD and FORMAT/DP; otherwise the SourceForge 123VCF NA12878 trio remains
-the smoke fallback. Override with \`VCF_FAST_FORMAT_VCF\` for larger public
-cohorts. $MAYO_COHORT_NOTE
+FORMAT-rich public cohort from ENA ERZ324584 when cached: an Ovis aries
+chromosome 19 VCF described by ENA as 453 sheep using GATK and samtools, with
+453-sample FORMAT/AD and FORMAT/DP columns. The larger FORMAT-rich WGS trio
+from Zenodo remains the next fallback when cached, and the SourceForge 123VCF
+NA12878 trio remains the smoke fallback. Override with \`VCF_FAST_FORMAT_VCF\`
+or \`VCF_FAST_FORMAT_COHORT_VCF\` for another validated FORMAT-rich public
+cohort. $MAYO_COHORT_NOTE
+
+Validated ENA cohort target: \`$FORMAT_COHORT_ENA_ACCESSION\`,
+\`$FORMAT_COHORT_SAMPLES\` samples, \`$FORMAT_COHORT_RECORDS\` indexed records,
+\`$FORMAT_COHORT_BYTES\` bytes, MD5 \`$FORMAT_COHORT_MD5\`.
 
 Repeated local timing uses \`hyperfine\` when available
 (\`VCF_FAST_V17_RUNS=$RUNS\`, \`VCF_FAST_V17_WARMUP=$WARMUP\`). Peak RSS is
@@ -187,7 +204,7 @@ EOF
 
 if [[ ! -f "$PUBLIC_DATA" ]]; then
   write_header
-  echo "| public FORMAT-heavy | $PUBLIC_DATA | n/a | n/a | n/a | missing public data | n/a | n/a | not yet proven | run benchmark/download_public_data.sh format-wgs-trio or set VCF_FAST_FORMAT_VCF to a cached FORMAT-rich cohort |" >>"$REPORT"
+  echo "| public FORMAT-heavy | $PUBLIC_DATA | n/a | n/a | n/a | missing public data | n/a | n/a | not yet proven | run benchmark/download_public_data.sh format-ovis453 or set VCF_FAST_FORMAT_VCF to a cached FORMAT-rich cohort |" >>"$REPORT"
   append_optional_baselines
   exit 0
 fi
