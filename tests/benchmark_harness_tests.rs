@@ -1076,6 +1076,12 @@ fn v17_public_format_and_optional_baseline_harness_is_declared() {
         "VCF_FAST_FORMAT_WGS_TRIO_VCF",
         "VCF_FAST_V17_RUNS",
         "VCF_FAST_V17_WARMUP",
+        "VCF_FAST_V17_HEAVY_OUTPUT_RECORDS",
+        "heavy_output_mode",
+        "/dev/stdout",
+        "/dev/null",
+        "core records only",
+        "full-chromosome",
         "NA12878.trio.hg19_multianno.vcf.gz",
         "trio_NA12878-NA12891-NA12892_hs37d5_dbsnp.vcf.gz",
         "19.filtered_intersect.vcf.gz",
@@ -1093,6 +1099,7 @@ fn v17_public_format_and_optional_baseline_harness_is_declared() {
         "speedup_ratio",
         "runtime_mean_stddev",
         "correctness result",
+        "/^#CHROM/ { exit(ad && dp ? 0 : 1) }",
     ] {
         assert!(script.contains(required), "missing harness text {required}");
     }

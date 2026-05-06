@@ -72,12 +72,12 @@ ROWS = [
     ),
     Row(
         workflow="Public FORMAT aggregate filter",
-        dataset="ENA Ovis aries 453-sample cohort 10k/50k/100k/250k N_PASS(FORMAT/AD[1] > 10)",
+        dataset="ENA Ovis aries 453-sample cohort through full chromosome N_PASS(FORMAT/AD[1] > 10)",
         correctness="matched bcftools core records",
-        measured_result="1.76x to 2.79x faster than bcftools filter",
+        measured_result="1.76x to 3.50x faster than bcftools filter",
         source="benchmark/reports/v17-public-format-baselines.md",
-        required_tokens=("1.76x", "2.79x", "samples=453", "250000 requested / 250000 actual", "matched core records"),
-        caveat="Docker/Linux timing; 1M/full-chromosome FORMAT cohort run pending because outputs are large",
+        required_tokens=("1.76x", "3.50x", "samples=453", "full requested / 1097167 actual", "matched core records"),
+        caveat="Docker/Linux timing; 1M/full tiers use heavy-output mode with core-record correctness and /dev/null timed output",
     ),
     Row(
         workflow="Native TSV conversion",

@@ -75,9 +75,10 @@ VCF_FAST_V12_PUBLIC_TIERS=100 VCF_FAST_V12_STRESS_TIERS=100 make bench-v12
   region, and BGZF output paths guarantee valid records, not byte identity.
 - BCF TSV remains a tracked compatibility-path optimization gap.
 - Public FORMAT-heavy aggregate evidence is correctness-positive on repeated
-  Docker/Linux ENA Ovis aries 453-sample cohort tiers through 250k records,
+  Docker/Linux ENA Ovis aries 453-sample cohort tiers through full chromosome,
   with measured speedups over `bcftools` for
-  `N_PASS(FORMAT/AD[1] > 10) >= 2`. The 1M/full-chromosome FORMAT cohort
-  run is still pending because it generates large uncompressed outputs.
+  `N_PASS(FORMAT/AD[1] > 10) >= 2`. The 1M/full-chromosome tiers use
+  heavy-output mode: compact core-record correctness files and `/dev/null`
+  timed output, not retained full VCF artifacts.
 - GATK, VCFtools, Polars, and PyArrow baselines are optional future evidence
   rows, not default CI requirements.
