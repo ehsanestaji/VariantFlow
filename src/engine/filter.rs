@@ -312,11 +312,15 @@ impl EvalContext for ByteEvalRecord<'_> {
     fn format_value(&self, key: &[u8]) -> Option<&[u8]> {
         let format = self.format_column?;
         let sample = self.selected_sample?;
-        vcf::format_value_bytes(format, sample, key)
+        let index = vcf::format_key_index(format, key)?;
+        vcf::sample_format_value_at(sample, index)
     }
 
     fn any_format_value(&self, key: &[u8], predicate: &mut dyn FnMut(&[u8]) -> bool) -> bool {
         let Some(format) = self.format_column else {
+            return false;
+        };
+        let Some(index) = vcf::format_key_index(format, key) else {
             return false;
         };
 
@@ -325,7 +329,7 @@ impl EvalContext for ByteEvalRecord<'_> {
             if matched {
                 return;
             }
-            if let Some(value) = vcf::format_value_bytes(format, sample, key) {
+            if let Some(value) = vcf::sample_format_value_at(sample, index) {
                 matched = predicate(value);
             }
         });
@@ -336,6 +340,9 @@ impl EvalContext for ByteEvalRecord<'_> {
         let Some(format) = self.format_column else {
             return false;
         };
+        let Some(index) = vcf::format_key_index(format, key) else {
+            return false;
+        };
 
         let mut saw_sample = false;
         let mut all_match = true;
@@ -344,7 +351,7 @@ impl EvalContext for ByteEvalRecord<'_> {
             if !all_match {
                 return;
             }
-            all_match = vcf::format_value_bytes(format, sample, key).is_some_and(&mut predicate);
+            all_match = vcf::sample_format_value_at(sample, index).is_some_and(&mut predicate);
         });
         saw_sample && all_match
     }
@@ -353,10 +360,13 @@ impl EvalContext for ByteEvalRecord<'_> {
         let Some(format) = self.format_column else {
             return 0;
         };
+        let Some(index) = vcf::format_key_index(format, key) else {
+            return 0;
+        };
 
         let mut count = 0;
         self.record.for_each_sample_column(|sample| {
-            if let Some(value) = vcf::format_value_bytes(format, sample, key)
+            if let Some(value) = vcf::sample_format_value_at(sample, index)
                 && predicate(value)
             {
                 count += 1;

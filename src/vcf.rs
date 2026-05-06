@@ -555,28 +555,54 @@ pub(crate) fn format_value_bytes<'sample>(
     sample: &'sample [u8],
     key: &[u8],
 ) -> Option<&'sample [u8]> {
-    let mut key_index = None;
+    let target_index = format_key_index(format, key)?;
+    sample_format_value_at(sample, target_index)
+}
+
+pub(crate) fn format_key_index(format: &[u8], key: &[u8]) -> Option<usize> {
+    if key.is_empty() {
+        return None;
+    }
+
+    let mut start = 0;
     let mut index = 0;
 
-    for_each_delimited_byte_value(format, b':', |value| {
-        if value == key && key_index.is_none() {
-            key_index = Some(index);
-        }
-        index += 1;
-    });
+    while start <= format.len() {
+        let end = memchr(b':', &format[start..]).map_or(format.len(), |offset| start + offset);
 
-    let target_index = key_index?;
-    let mut found = None;
+        if &format[start..end] == key {
+            return Some(index);
+        }
+
+        if end == format.len() {
+            break;
+        }
+        start = end + 1;
+        index += 1;
+    }
+
+    None
+}
+
+pub(crate) fn sample_format_value_at(sample: &[u8], target_index: usize) -> Option<&[u8]> {
+    let mut start = 0;
     let mut index = 0;
 
-    for_each_delimited_byte_value(sample, b':', |value| {
-        if index == target_index && found.is_none() {
-            found = Some(value);
-        }
-        index += 1;
-    });
+    while start <= sample.len() {
+        let end = memchr(b':', &sample[start..]).map_or(sample.len(), |offset| start + offset);
 
-    found
+        if index == target_index {
+            return Some(&sample[start..end]);
+        }
+
+        if end == sample.len() {
+            break;
+        }
+        start = end + 1;
+        index += 1;
+    }
+
+    None
 }
 
 fn for_each_info_value<'a>(info: &'a str, key: &str, mut observe: impl FnMut(&'a str)) {
@@ -608,25 +634,6 @@ fn for_each_info_value<'a>(info: &'a str, key: &str, mut observe: impl FnMut(&'a
             break;
         }
         entry_start = entry_end + 1;
-    }
-}
-
-fn for_each_delimited_byte_value<'a>(
-    value: &'a [u8],
-    delimiter: u8,
-    mut observe: impl FnMut(&'a [u8]),
-) {
-    let mut start = 0;
-
-    while start <= value.len() {
-        let end = memchr(delimiter, &value[start..]).map_or(value.len(), |offset| start + offset);
-
-        observe(&value[start..end]);
-
-        if end == value.len() {
-            break;
-        }
-        start = end + 1;
     }
 }
 
@@ -722,8 +729,9 @@ fn for_each_comma_number_bytes(value: &[u8], observe: &mut impl FnMut(f64)) {
 #[cfg(test)]
 mod tests {
     use super::{
-        InfoView, RecordView, column_value, for_each_info_number, info_value, parse_record_fields,
-        parse_record_line, resolve_sample_column, selected_format_values_bytes,
+        InfoView, RecordView, column_value, for_each_info_number, format_key_index, info_value,
+        parse_record_fields, parse_record_line, resolve_sample_column, sample_format_value_at,
+        selected_format_values_bytes,
     };
 
     #[test]
@@ -900,5 +908,28 @@ mod tests {
         assert_eq!(missing.gt, Some(b"0/1".as_slice()));
         assert_eq!(missing.dp, Some(b".".as_slice()));
         assert_eq!(missing.gq, None);
+    }
+
+    #[test]
+    fn format_key_index_finds_exact_colon_delimited_keys() {
+        assert_eq!(format_key_index(b"GT:DP:GQ:AD", b"GT"), Some(0));
+        assert_eq!(format_key_index(b"GT:DP:GQ:AD", b"DP"), Some(1));
+        assert_eq!(format_key_index(b"GT:DP:GQ:AD", b"AD"), Some(3));
+        assert_eq!(format_key_index(b"GT:DP:GQ:AD", b"XAD"), None);
+        assert_eq!(format_key_index(b"GT:DP:GQ:XAD", b"AD"), None);
+        assert_eq!(format_key_index(b"GT:DP:GQ:AD", b""), None);
+    }
+
+    #[test]
+    fn sample_format_value_at_reads_values_by_cached_index() {
+        let sample = b"0/1:25:40:10,15";
+
+        assert_eq!(sample_format_value_at(sample, 0), Some(b"0/1".as_slice()));
+        assert_eq!(sample_format_value_at(sample, 1), Some(b"25".as_slice()));
+        assert_eq!(sample_format_value_at(sample, 3), Some(b"10,15".as_slice()));
+        assert_eq!(sample_format_value_at(sample, 4), None);
+        assert_eq!(sample_format_value_at(b"0/1:25", 3), None);
+        assert_eq!(sample_format_value_at(b".", 0), Some(b".".as_slice()));
+        assert_eq!(sample_format_value_at(b".", 1), None);
     }
 }
