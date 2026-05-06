@@ -1251,3 +1251,62 @@ fn second_public_format_cohort_harness_is_declared() {
         assert!(report.contains(required), "missing report text {required}");
     }
 }
+
+#[test]
+fn human_public_format_cohort_harness_is_declared() {
+    let root = repo_root();
+    let makefile = fs::read_to_string(root.join("Makefile")).unwrap();
+    let downloader = fs::read_to_string(root.join("benchmark/download_public_data.sh")).unwrap();
+    let script = fs::read_to_string(root.join("benchmark/run_v20_human_format_cohort.sh")).unwrap();
+    let report =
+        fs::read_to_string(root.join("benchmark/reports/v20-human-format-cohort.md")).unwrap();
+
+    assert!(makefile.contains("bench-v20:"));
+    assert!(makefile.contains("run_v20_human_format_cohort.sh"));
+    assert!(makefile.contains("bash -n benchmark/run_v20_human_format_cohort.sh"));
+    assert!(downloader.contains("format-human-chm13-chr22"));
+    assert!(downloader.contains("CHM13_autosome_PAR.chr22.vcf.gz.csi"));
+
+    for required in [
+        "VCF_FAST_V20_TIERS",
+        "VCF_FAST_V20_RUNS",
+        "VCF_FAST_V20_WARMUP",
+        "VCF_FAST_HUMAN_FORMAT_VCF",
+        "VCF_FAST_ALLOW_REMOTE_FULL",
+        "CHM13_autosome_PAR.chr22.vcf.gz",
+        "CHM13_autosome_PAR.chr22.vcf.gz.csi",
+        "DDBJ",
+        "public-human-genomes",
+        "3715-sample",
+        "27232829080",
+        "FORMAT/AD",
+        "FORMAT/DP",
+        "FORMAT/GQ",
+        "ANY(FORMAT/DP > 20)",
+        "ALL(FORMAT/GQ >= 30)",
+        "N_PASS(FORMAT/AD[1] > 10) >= 10",
+        "QUAL > 30 && ANY(FORMAT/DP > 20)",
+        "N_PASS(FMT/DP[*]>20)>0",
+        "N_PASS(FMT/GQ[*]>=30)==",
+        "N_PASS(FMT/AD[*:1]>10)>=10",
+        "bcftools filter",
+        "hyperfine",
+        "measure_peak_rss_kb",
+        "correctness result",
+        "bounded streaming",
+        "does not cache the 27 GB VCF",
+    ] {
+        assert!(script.contains(required), "missing harness text {required}");
+    }
+
+    for required in [
+        "v2.0 Human FORMAT-Rich Cohort",
+        "DDBJ CHM13",
+        "3715-sample",
+        "1000 requested / 1000 actual",
+        "matched core records",
+        "public human",
+    ] {
+        assert!(report.contains(required), "missing report text {required}");
+    }
+}
