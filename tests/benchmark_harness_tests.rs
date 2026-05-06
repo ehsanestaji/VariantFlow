@@ -78,6 +78,10 @@ fn public_data_downloader_pins_giab_and_igsr_sources() {
     assert!(script.contains("19.filtered_intersect.vcf.gz"));
     assert!(script.contains("ERZ324584"));
     assert!(script.contains("453 sheep"));
+    assert!(script.contains("Dutch_Genebank_Cattle_Y_merged.vcf.gz"));
+    assert!(script.contains("ERZ18456468"));
+    assert!(script.contains("29 cattle"));
+    assert!(script.contains("format-cattle29"));
     assert!(script.contains("format-ovis453"));
     assert!(script.contains("format-wgs-trio"));
     assert!(script.contains("format-trio"));
@@ -85,6 +89,7 @@ fn public_data_downloader_pins_giab_and_igsr_sources() {
     assert!(script.contains("ftp.1000genomes.ebi.ac.uk"));
     assert!(script.contains("sourceforge.net/projects/project123vcf"));
     assert!(script.contains("ftp.sra.ebi.ac.uk/vol1/analysis/ERZ324/ERZ324584"));
+    assert!(script.contains("ftp.sra.ebi.ac.uk/vol1/analysis/ERZ184/ERZ18456468"));
 }
 
 #[test]
@@ -1181,6 +1186,67 @@ fn v18_public_format_expression_breadth_harness_is_declared() {
         "matched core records",
         "3.22x",
         "8.77x",
+    ] {
+        assert!(report.contains(required), "missing report text {required}");
+    }
+}
+
+#[test]
+fn second_public_format_cohort_harness_is_declared() {
+    let root = repo_root();
+    let makefile = fs::read_to_string(root.join("Makefile")).unwrap();
+    let script =
+        fs::read_to_string(root.join("benchmark/run_v19_second_public_format_cohort.sh")).unwrap();
+    let report =
+        fs::read_to_string(root.join("benchmark/reports/v19-second-public-format-cohort.md"))
+            .unwrap();
+
+    assert!(makefile.contains("bench-v19:"));
+    assert!(makefile.contains("run_v19_second_public_format_cohort.sh"));
+    assert!(makefile.contains("bash -n benchmark/run_v19_second_public_format_cohort.sh"));
+
+    for required in [
+        "VCF_FAST_V19_TIERS",
+        "VCF_FAST_V19_RUNS",
+        "VCF_FAST_V19_WARMUP",
+        "VCF_FAST_V19_HEAVY_OUTPUT_RECORDS",
+        "Dutch_Genebank_Cattle_Y_merged.vcf.gz",
+        "ERZ18456468",
+        "PRJEB60909",
+        "Bos taurus",
+        "29-sample",
+        "131795380",
+        "FORMAT/AD",
+        "FORMAT/DP",
+        "FORMAT/GQ",
+        "ANY(FORMAT/DP > 20)",
+        "ALL(FORMAT/GQ >= 30)",
+        "N_PASS(FORMAT/AD[1] > 10) >= 2",
+        "QUAL > 30 && ANY(FORMAT/DP > 20)",
+        "N_PASS(FMT/DP[*]>20)>0",
+        "N_PASS(FMT/GQ[*]>=30)==",
+        "N_PASS(FMT/AD[*:1]>10)>=2",
+        "bcftools filter",
+        "hyperfine",
+        "measure_peak_rss_kb",
+        "correctness result",
+        "/dev/stdout",
+        "/dev/null",
+        "Mayo VCF-Miner",
+        "403",
+    ] {
+        assert!(script.contains(required), "missing harness text {required}");
+    }
+
+    for required in [
+        "v1.9 Second Public FORMAT-Rich Cohort",
+        "Dutch Genebank Cattle",
+        "ERZ18456468",
+        "5488549 actual",
+        "1.46x",
+        "26.66x",
+        "second public FORMAT-rich cohort",
+        "matched core records",
     ] {
         assert!(report.contains(required), "missing report text {required}");
     }
