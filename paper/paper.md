@@ -102,10 +102,10 @@ queries, with amortized speedups of `3.18x to 25.67x`
 suggest a practical split: streaming filters remain efficient for one-pass
 selection, while Parquet becomes useful when the same variant subset is queried
 many times. Remaining caveats are tracked openly: BCF/region TSV compatibility
-paths still trail in some cases, public FORMAT-heavy evidence is pending, RSS
-measurements are incomplete on some macOS benchmark rows, and this is explicitly
-not a claim that VariantFlow replaces bcftools or GATK outside supported
-workflows.
+paths still trail in some cases, public FORMAT-heavy evidence currently comes
+from one ENA 453-sample cohort, RSS measurements are incomplete on some macOS
+benchmark rows, and this is explicitly not a claim that VariantFlow replaces bcftools or GATK
+outside supported workflows.
 
 # AI usage disclosure
 

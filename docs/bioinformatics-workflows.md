@@ -77,8 +77,9 @@ VCF_FAST_V12_PUBLIC_TIERS=100 VCF_FAST_V12_STRESS_TIERS=100 make bench-v12
 - Public FORMAT-heavy aggregate evidence is correctness-positive on repeated
   Docker/Linux ENA Ovis aries 453-sample cohort tiers through full chromosome,
   with measured speedups over `bcftools` for
-  `N_PASS(FORMAT/AD[1] > 10) >= 2`. The 1M/full-chromosome tiers use
-  heavy-output mode: compact core-record correctness files and `/dev/null`
-  timed output, not retained full VCF artifacts.
+  `N_PASS(FORMAT/AD[1] > 10) >= 2` and v1.8 DP/GQ/AD/selected-sample/mixed
+  FORMAT expressions. The 1M/full-chromosome tiers use heavy-output mode:
+  compact core-record correctness files and `/dev/null` timed output, not
+  retained full VCF artifacts.
 - GATK, VCFtools, Polars, and PyArrow baselines are optional future evidence
   rows, not default CI requirements.
