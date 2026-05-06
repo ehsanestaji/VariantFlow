@@ -2,12 +2,13 @@
 
 This report is the tracked placeholder for the next evidence expansion:
 public FORMAT-heavy predicates, reproducible Linux RSS, and optional ecosystem
-baselines. It intentionally contains no speed win until full local runs append
-measured rows.
+baselines. The harness now defaults to a FORMAT-rich public trio/cohort target
+that declares `FORMAT/AD` and `FORMAT/DP`; it intentionally contains no speed
+win until full local runs append measured rows.
 
 | case | dataset | tier | exact VariantFlow command | exact competitor command | correctness result | runtime | peak RSS | claim decision | caveat |
 |---|---|---:|---|---|---|---|---|---|---|
-| public FORMAT-heavy | IGSR chr22 cached public data | pending | `variantflow filter subset.vcf.gz --where 'N_PASS(FORMAT/AD[1] > 10) >= 2' -o out.vcf` | `bcftools filter -i 'N_PASS(FMT/AD[*:1]>10)>=2' subset.vcf.gz -o out.vcf` | not yet proven | pending | pending | not yet proven | run `make bench-v17` |
+| public FORMAT-heavy | FORMAT-rich public trio/cohort, default `NA12878.trio.hg19_multianno.vcf.gz` | pending | `variantflow filter subset.vcf.gz --where 'N_PASS(FORMAT/AD[1] > 10) >= 2' -o out.vcf` | `bcftools filter -i 'N_PASS(FMT/AD[*:1]>10)>=2' subset.vcf.gz -o out.vcf` | not yet proven | pending | pending | not yet proven | run `benchmark/download_public_data.sh format-trio && make bench-v17`; override larger cohorts with `VCF_FAST_FORMAT_VCF` |
 
 ## Optional baselines
 

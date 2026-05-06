@@ -73,8 +73,11 @@ fn public_data_downloader_pins_giab_and_igsr_sources() {
             "1kGP_high_coverage_Illumina.chr22.filtered.SNV_INDEL_SV_phased_panel.vcf.gz"
         )
     );
+    assert!(script.contains("NA12878.trio.hg19_multianno.vcf.gz"));
+    assert!(script.contains("format-trio"));
     assert!(script.contains("ftp-trace.ncbi.nlm.nih.gov"));
     assert!(script.contains("ftp.1000genomes.ebi.ac.uk"));
+    assert!(script.contains("sourceforge.net/projects/project123vcf"));
 }
 
 #[test]
@@ -1061,6 +1064,8 @@ fn v17_public_format_and_optional_baseline_harness_is_declared() {
         "VCF_FAST_ENABLE_GATK",
         "VCF_FAST_ENABLE_POLARS",
         "VCF_FAST_ENABLE_PYARROW",
+        "VCF_FAST_FORMAT_VCF",
+        "NA12878.trio.hg19_multianno.vcf.gz",
         "N_PASS(FORMAT/AD[1] > 10)",
         "bcftools filter",
         "measure_peak_rss_kb",
@@ -1072,6 +1077,7 @@ fn v17_public_format_and_optional_baseline_harness_is_declared() {
     for required in [
         "v1.7 Public FORMAT And Optional Baselines",
         "public FORMAT-heavy",
+        "FORMAT-rich public trio",
         "VCFtools",
         "GATK",
         "Polars",

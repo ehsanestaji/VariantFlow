@@ -3,9 +3,9 @@ set -euo pipefail
 
 OUT_DIR="${VCF_FAST_BENCH_OUT_DIR:-tests/output/benchmark-results/v17-public-format-baselines}"
 REPORT="${VCF_FAST_V17_REPORT:-benchmark/reports/v17-public-format-baselines.md}"
-PUBLIC_DATA="${VCF_FAST_IGSR_VCF:-tests/output/public-data/1kGP_high_coverage_Illumina.chr22.filtered.SNV_INDEL_SV_phased_panel.vcf.gz}"
-REGION="${VCF_FAST_V17_REGION:-chr22:1-20000000}"
-TIERS="${VCF_FAST_V17_TIERS:-100000 1000000}"
+PUBLIC_DATA="${VCF_FAST_FORMAT_VCF:-tests/output/public-data/NA12878.trio.hg19_multianno.vcf.gz}"
+PUBLIC_SOURCE_URL="${VCF_FAST_FORMAT_VCF_URL:-https://sourceforge.net/projects/project123vcf/files/Benchmark_Data/NA12878.trio.hg19_multianno.vcf.gz/download}"
+TIERS="${VCF_FAST_V17_TIERS:-10000 50000}"
 FORMAT_EXPR='N_PASS(FORMAT/AD[1] > 10) >= 2'
 BCFTOOLS_EXPR='N_PASS(FMT/AD[*:1]>10)>=2'
 
@@ -23,12 +23,35 @@ measure_peak_rss_kb() {
   fi
 }
 
+stream_public_vcf() {
+  case "$PUBLIC_DATA" in
+    *.gz|*.bgz)
+      gzip -cd "$PUBLIC_DATA"
+      ;;
+    *)
+      cat "$PUBLIC_DATA"
+      ;;
+  esac
+}
+
+public_vcf_has_required_format() {
+  stream_public_vcf | awk '
+    /^##FORMAT=<ID=AD,/ { ad = 1 }
+    /^##FORMAT=<ID=DP,/ { dp = 1 }
+    END { if (!(ad && dp)) exit 1 }
+  '
+}
+
 write_header() {
   cat >"$REPORT" <<EOF
 # v1.7 Public FORMAT And Optional Baselines
 
 This report is the scaffold for public FORMAT-heavy and ecosystem baseline
 evidence. Full runs stay local and reproducible; CI should use smoke tiers only.
+
+Dataset target: FORMAT-rich public trio/cohort VCF. Default target is the
+SourceForge 123VCF NA12878 trio benchmark because it declares FORMAT/AD and
+FORMAT/DP; override with \`VCF_FAST_FORMAT_VCF\` for larger public cohorts.
 
 | case | dataset | tier | exact VariantFlow command | exact competitor command | correctness result | runtime | peak RSS | claim decision | caveat |
 |---|---|---:|---|---|---|---|---|---|---|
@@ -51,26 +74,35 @@ EOF
 
 if [[ ! -f "$PUBLIC_DATA" ]]; then
   write_header
-  echo "| public FORMAT-heavy | $PUBLIC_DATA | n/a | n/a | n/a | missing public data | n/a | n/a | not yet proven | run benchmark/download_public_data.sh igsr-chr22 |" >>"$REPORT"
+  echo "| public FORMAT-heavy | $PUBLIC_DATA | n/a | n/a | n/a | missing public data | n/a | n/a | not yet proven | run benchmark/download_public_data.sh format-trio |" >>"$REPORT"
+  append_optional_baselines
+  exit 0
+fi
+
+if ! public_vcf_has_required_format; then
+  write_header
+  echo "| public FORMAT-heavy | $PUBLIC_DATA | n/a | n/a | n/a | missing FORMAT/AD or FORMAT/DP declaration | n/a | n/a | not yet proven | choose a FORMAT-rich public VCF with VCF_FAST_FORMAT_VCF; IGSR high-coverage chr22 is GT-only |" >>"$REPORT"
   append_optional_baselines
   exit 0
 fi
 
 write_header
+cargo build --release
 
 for tier in $TIERS; do
-  subset="${OUT_DIR}/igsr-format-${tier}.vcf.gz"
+  subset="${OUT_DIR}/format-public-${tier}.vcf.gz"
   fast_out="${OUT_DIR}/variantflow-format-${tier}.vcf"
   bcftools_out="${OUT_DIR}/bcftools-format-${tier}.vcf"
   diff_out="${OUT_DIR}/equivalence-format-${tier}.diff"
 
-  {
-    bcftools view -h "$PUBLIC_DATA"
-    bcftools view -H -r "$REGION" "$PUBLIC_DATA" | awk -v limit="$tier" 'NR <= limit'
-  } | bgzip -c >"$subset"
+  stream_public_vcf | awk -v limit="$tier" '
+    BEGIN { records = 0 }
+    /^#/ { print; next }
+    records < limit { print; records++ }
+  ' | bgzip -c >"$subset"
   tabix -f -p vcf "$subset"
 
-  fast_cmd=(variantflow filter "$subset" --where "$FORMAT_EXPR" -o "$fast_out")
+  fast_cmd=(./target/release/variantflow filter "$subset" --where "$FORMAT_EXPR" -o "$fast_out")
   bcftools_cmd=(bcftools filter -i "$BCFTOOLS_EXPR" "$subset" -o "$bcftools_out")
 
   fast_rss=$(measure_peak_rss_kb "variantflow-format-${tier}" "${fast_cmd[@]}")
@@ -85,7 +117,7 @@ for tier in $TIERS; do
     claim="measured row; inspect runtime before claiming win"
   fi
 
-  echo "| public FORMAT-heavy | $PUBLIC_DATA | $tier | \`${fast_cmd[*]}\` | \`${bcftools_cmd[*]}\` | $correctness | see local timing files | VariantFlow ${fast_rss}; bcftools ${bcftools_rss} | $claim | public FORMAT expression uses $FORMAT_EXPR; compare against bcftools filter |" >>"$REPORT"
+  echo "| public FORMAT-heavy | $PUBLIC_DATA | $tier | \`${fast_cmd[*]}\` | \`${bcftools_cmd[*]}\` | $correctness | see local timing files | VariantFlow ${fast_rss}; bcftools ${bcftools_rss} | $claim | FORMAT-rich public trio/cohort source: $PUBLIC_SOURCE_URL; expression uses $FORMAT_EXPR; compare against bcftools filter |" >>"$REPORT"
 done
 
 if [[ "${VCF_FAST_ENABLE_VCFTOOLS:-0}" = "1" ]]; then
