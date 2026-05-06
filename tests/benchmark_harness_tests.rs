@@ -74,6 +74,8 @@ fn public_data_downloader_pins_giab_and_igsr_sources() {
         )
     );
     assert!(script.contains("NA12878.trio.hg19_multianno.vcf.gz"));
+    assert!(script.contains("trio_NA12878-NA12891-NA12892_hs37d5_dbsnp.vcf.gz"));
+    assert!(script.contains("format-wgs-trio"));
     assert!(script.contains("format-trio"));
     assert!(script.contains("ftp-trace.ncbi.nlm.nih.gov"));
     assert!(script.contains("ftp.1000genomes.ebi.ac.uk"));
@@ -1065,12 +1067,20 @@ fn v17_public_format_and_optional_baseline_harness_is_declared() {
         "VCF_FAST_ENABLE_POLARS",
         "VCF_FAST_ENABLE_PYARROW",
         "VCF_FAST_FORMAT_VCF",
+        "VCF_FAST_FORMAT_WGS_TRIO_VCF",
+        "VCF_FAST_V17_RUNS",
+        "VCF_FAST_V17_WARMUP",
         "NA12878.trio.hg19_multianno.vcf.gz",
+        "trio_NA12878-NA12891-NA12892_hs37d5_dbsnp.vcf.gz",
+        "Mayo VCF-Miner",
+        "629 samples",
         "N_PASS(FORMAT/AD[1] > 10)",
         "bcftools filter",
+        "hyperfine",
         "measure_peak_rss_kb",
         "real_seconds_from_time",
         "speedup_ratio",
+        "runtime_mean_stddev",
         "correctness result",
     ] {
         assert!(script.contains(required), "missing harness text {required}");
@@ -1080,6 +1090,8 @@ fn v17_public_format_and_optional_baseline_harness_is_declared() {
         "v1.7 Public FORMAT And Optional Baselines",
         "public FORMAT-heavy",
         "FORMAT-rich public trio",
+        "larger FORMAT-rich WGS trio",
+        "Repeated local timing",
         "VCFtools",
         "GATK",
         "Polars",

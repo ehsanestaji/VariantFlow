@@ -74,9 +74,9 @@ VCF_FAST_V12_PUBLIC_TIERS=100 VCF_FAST_V12_STRESS_TIERS=100 make bench-v12
 - Native filtering preserves passing records byte-for-byte; htslib-backed BCF,
   region, and BGZF output paths guarantee valid records, not byte identity.
 - BCF TSV remains a tracked compatibility-path optimization gap.
-- Public FORMAT-heavy aggregate evidence is correctness-positive on the first
-  FORMAT-rich NA12878 trio tiers, with mixed runtime: the 50k tier is faster
-  than `bcftools`, while the 10k tier is slower. Larger cohort evidence is
-  still pending.
+- Public FORMAT-heavy aggregate evidence is correctness-positive on repeated
+  FORMAT-rich Zenodo WGS trio tiers through 250k records, with measured
+  speedups over `bcftools` for `N_PASS(FORMAT/AD[1] > 10) >= 2`. Larger
+  FORMAT-rich cohort evidence with more than three samples is still pending.
 - GATK, VCFtools, Polars, and PyArrow baselines are optional future evidence
   rows, not default CI requirements.

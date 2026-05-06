@@ -3,9 +3,25 @@ set -euo pipefail
 
 OUT_DIR="${VCF_FAST_BENCH_OUT_DIR:-tests/output/benchmark-results/v17-public-format-baselines}"
 REPORT="${VCF_FAST_V17_REPORT:-benchmark/reports/v17-public-format-baselines.md}"
-PUBLIC_DATA="${VCF_FAST_FORMAT_VCF:-tests/output/public-data/NA12878.trio.hg19_multianno.vcf.gz}"
-PUBLIC_SOURCE_URL="${VCF_FAST_FORMAT_VCF_URL:-https://sourceforge.net/projects/project123vcf/files/Benchmark_Data/NA12878.trio.hg19_multianno.vcf.gz/download}"
-TIERS="${VCF_FAST_V17_TIERS:-10000 50000}"
+FORMAT_TRIO_VCF="tests/output/public-data/NA12878.trio.hg19_multianno.vcf.gz"
+FORMAT_TRIO_URL="https://sourceforge.net/projects/project123vcf/files/Benchmark_Data/NA12878.trio.hg19_multianno.vcf.gz/download"
+FORMAT_WGS_TRIO_VCF="${VCF_FAST_FORMAT_WGS_TRIO_VCF:-tests/output/public-data/trio_NA12878-NA12891-NA12892_hs37d5_dbsnp.vcf.gz}"
+FORMAT_WGS_TRIO_URL="https://zenodo.org/records/3697103/files/trio_NA12878-NA12891-NA12892_hs37d5_dbsnp.vcf.gz?download=1"
+MAYO_VCF_MINER_PAGE="https://bioinformaticstools.mayo.edu/research/vcf-miner-sample-vcfs/"
+MAYO_COHORT_NOTE="Mayo VCF-Miner lists 1KG chr22 benchmark VCFs with 629 samples; use VCF_FAST_FORMAT_VCF after caching and validating FORMAT/AD or FORMAT/DP."
+if [[ -n "${VCF_FAST_FORMAT_VCF:-}" ]]; then
+  PUBLIC_DATA="$VCF_FAST_FORMAT_VCF"
+  PUBLIC_SOURCE_URL="${VCF_FAST_FORMAT_VCF_URL:-user supplied VCF_FAST_FORMAT_VCF}"
+elif [[ -s "$FORMAT_WGS_TRIO_VCF" ]]; then
+  PUBLIC_DATA="$FORMAT_WGS_TRIO_VCF"
+  PUBLIC_SOURCE_URL="$FORMAT_WGS_TRIO_URL"
+else
+  PUBLIC_DATA="$FORMAT_TRIO_VCF"
+  PUBLIC_SOURCE_URL="$FORMAT_TRIO_URL"
+fi
+TIERS="${VCF_FAST_V17_TIERS:-10000 50000 100000 250000}"
+RUNS="${VCF_FAST_V17_RUNS:-${VCF_FAST_BENCH_RUNS:-3}}"
+WARMUP="${VCF_FAST_V17_WARMUP:-${VCF_FAST_BENCH_WARMUP:-1}}"
 FORMAT_EXPR='N_PASS(FORMAT/AD[1] > 10) >= 2'
 BCFTOOLS_EXPR='N_PASS(FMT/AD[*:1]>10)>=2'
 
@@ -15,8 +31,13 @@ measure_peak_rss_kb() {
   local label="$1"
   shift
   if command -v /usr/bin/time >/dev/null 2>&1; then
-    /usr/bin/time -l "$@" >"${OUT_DIR}/${label}.stdout" 2>"${OUT_DIR}/${label}.time" || return $?
-    awk '/maximum resident set size/ {print $1}' "${OUT_DIR}/${label}.time" || true
+    if /usr/bin/time -v true >/dev/null 2>&1; then
+      /usr/bin/time -v -o "${OUT_DIR}/${label}.time" "$@" >"${OUT_DIR}/${label}.stdout" 2>"${OUT_DIR}/${label}.stderr" || return $?
+      awk -F: '/Maximum resident set size/ {gsub(/ /, "", $2); print $2}' "${OUT_DIR}/${label}.time" || true
+    else
+      /usr/bin/time -l "$@" >"${OUT_DIR}/${label}.stdout" 2>"${OUT_DIR}/${label}.time" || return $?
+      awk '/maximum resident set size/ {print $1}' "${OUT_DIR}/${label}.time" || true
+    fi
   else
     "$@" >"${OUT_DIR}/${label}.stdout"
     echo "n/a"
@@ -38,6 +59,46 @@ fast = float(sys.argv[1])
 competitor = float(sys.argv[2])
 print("n/a" if fast <= 0 else f"{competitor / fast:.2f}x")
 PY
+}
+
+runtime_mean_stddev() {
+  local label="$1"
+  local command_text="$2"
+  local json="${OUT_DIR}/${label}.hyperfine.json"
+  if command -v hyperfine >/dev/null 2>&1; then
+    hyperfine --runs "$RUNS" --warmup "$WARMUP" --export-json "$json" "$command_text" >"${OUT_DIR}/${label}.hyperfine.txt"
+    python3 - "$json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    data = json.load(handle)
+result = data["results"][0]
+stddev = result.get("stddev")
+if stddev is None:
+    stddev = 0.0
+print(f'{result["mean"]:.6f} {stddev:.6f}')
+PY
+  else
+    local start_seconds end_seconds
+    start_seconds="$(python3 - <<'PY'
+import time
+print(f"{time.perf_counter():.9f}")
+PY
+)"
+    eval "$command_text" >"${OUT_DIR}/${label}.runtime.stdout" 2>"${OUT_DIR}/${label}.runtime.stderr"
+    end_seconds="$(python3 - <<'PY'
+import time
+print(f"{time.perf_counter():.9f}")
+PY
+)"
+    python3 - "$start_seconds" "$end_seconds" <<'PY'
+import sys
+
+elapsed = float(sys.argv[2]) - float(sys.argv[1])
+print(f"{elapsed:.6f} 0.000000")
+PY
+  fi
 }
 
 shell_command() {
@@ -63,6 +124,29 @@ public_vcf_has_required_format() {
   '
 }
 
+sample_count() {
+  local vcf="$1"
+  bcftools query -l "$vcf" | wc -l | tr -d ' '
+}
+
+build_bounded_subset() {
+  local tier="$1"
+  local output="$2"
+  set +e
+  stream_public_vcf | awk -v limit="$tier" '
+    BEGIN { records = 0 }
+    /^#/ { print; next }
+    records < limit { print; records++ }
+    records >= limit { exit }
+  ' | bgzip -c >"$output"
+  local statuses=("${PIPESTATUS[@]}")
+  set -e
+  if [[ "${statuses[1]}" -ne 0 || "${statuses[2]}" -ne 0 ]]; then
+    return 1
+  fi
+  tabix -f -p vcf "$output"
+}
+
 write_header() {
   cat >"$REPORT" <<EOF
 # v1.7 Public FORMAT And Optional Baselines
@@ -71,8 +155,15 @@ This report tracks public FORMAT-heavy and ecosystem baseline evidence. Full
 runs stay local and reproducible; CI should use smoke tiers only.
 
 Dataset target: FORMAT-rich public trio/cohort VCF. Default target is the
-SourceForge 123VCF NA12878 trio benchmark because it declares FORMAT/AD and
-FORMAT/DP; override with \`VCF_FAST_FORMAT_VCF\` for larger public cohorts.
+larger FORMAT-rich WGS trio from Zenodo when cached because it declares
+FORMAT/AD and FORMAT/DP; otherwise the SourceForge 123VCF NA12878 trio remains
+the smoke fallback. Override with \`VCF_FAST_FORMAT_VCF\` for larger public
+cohorts. $MAYO_COHORT_NOTE
+
+Repeated local timing uses \`hyperfine\` when available
+(\`VCF_FAST_V17_RUNS=$RUNS\`, \`VCF_FAST_V17_WARMUP=$WARMUP\`). Peak RSS is
+reported from GNU \`/usr/bin/time -v\` on Linux or BSD \`/usr/bin/time -l\` on
+macOS.
 
 | case | dataset | tier | exact VariantFlow command | exact competitor command | correctness result | runtime | peak RSS | claim decision | caveat |
 |---|---|---:|---|---|---|---|---|---|---|
@@ -96,7 +187,7 @@ EOF
 
 if [[ ! -f "$PUBLIC_DATA" ]]; then
   write_header
-  echo "| public FORMAT-heavy | $PUBLIC_DATA | n/a | n/a | n/a | missing public data | n/a | n/a | not yet proven | run benchmark/download_public_data.sh format-trio |" >>"$REPORT"
+  echo "| public FORMAT-heavy | $PUBLIC_DATA | n/a | n/a | n/a | missing public data | n/a | n/a | not yet proven | run benchmark/download_public_data.sh format-wgs-trio or set VCF_FAST_FORMAT_VCF to a cached FORMAT-rich cohort |" >>"$REPORT"
   append_optional_baselines
   exit 0
 fi
@@ -117,22 +208,21 @@ for tier in $TIERS; do
   bcftools_out="${OUT_DIR}/bcftools-format-${tier}.vcf"
   diff_out="${OUT_DIR}/equivalence-format-${tier}.diff"
 
-  stream_public_vcf | awk -v limit="$tier" '
-    BEGIN { records = 0 }
-    /^#/ { print; next }
-    records < limit { print; records++ }
-  ' | bgzip -c >"$subset"
-  tabix -f -p vcf "$subset"
+  build_bounded_subset "$tier" "$subset"
+  actual_records=$(bcftools view -H "$subset" | wc -l | tr -d ' ')
+  samples=$(sample_count "$subset")
 
   fast_cmd=(./target/release/variantflow filter "$subset" --where "$FORMAT_EXPR" -o "$fast_out")
   bcftools_cmd=(bcftools filter -i "$BCFTOOLS_EXPR" "$subset" -o "$bcftools_out")
+  fast_timed=(./target/release/variantflow filter "$subset" --where "$FORMAT_EXPR" -o "${OUT_DIR}/variantflow-format-${tier}.timed.vcf")
+  bcftools_timed=(bcftools filter -i "$BCFTOOLS_EXPR" "$subset" -o "${OUT_DIR}/bcftools-format-${tier}.timed.vcf")
 
   fast_label="variantflow-format-${tier}"
   bcftools_label="bcftools-format-${tier}"
   fast_rss=$(measure_peak_rss_kb "$fast_label" "${fast_cmd[@]}")
   bcftools_rss=$(measure_peak_rss_kb "$bcftools_label" "${bcftools_cmd[@]}")
-  fast_seconds=$(real_seconds_from_time "${OUT_DIR}/${fast_label}.time")
-  bcftools_seconds=$(real_seconds_from_time "${OUT_DIR}/${bcftools_label}.time")
+  read -r fast_seconds fast_stddev <<<"$(runtime_mean_stddev "${fast_label}" "$(shell_command "${fast_timed[@]}")")"
+  read -r bcftools_seconds bcftools_stddev <<<"$(runtime_mean_stddev "${bcftools_label}" "$(shell_command "${bcftools_timed[@]}")")"
   speedup=$(speedup_ratio "$fast_seconds" "$bcftools_seconds")
   diff <(grep -v '^#' "$fast_out" | cut -f1-5) <(grep -v '^#' "$bcftools_out" | cut -f1-5) >"$diff_out" || true
 
@@ -151,7 +241,7 @@ PY
     claim="correctness matched; optimization needed before claiming speed win"
   fi
 
-  echo "| public FORMAT-heavy | $PUBLIC_DATA | $tier | \`$(shell_command "${fast_cmd[@]}")\` | \`$(shell_command "${bcftools_cmd[@]}")\` | $correctness | VariantFlow ${fast_seconds}s; bcftools ${bcftools_seconds}s; speedup ${speedup} | VariantFlow ${fast_rss}; bcftools ${bcftools_rss} | $claim | FORMAT-rich public trio/cohort source: $PUBLIC_SOURCE_URL; expression uses $FORMAT_EXPR; compare against bcftools filter |" >>"$REPORT"
+  echo "| public FORMAT-heavy | $PUBLIC_DATA | $tier requested / $actual_records actual | \`$(shell_command "${fast_cmd[@]}")\` | \`$(shell_command "${bcftools_cmd[@]}")\` | $correctness | VariantFlow ${fast_seconds}s +/- ${fast_stddev}s; bcftools ${bcftools_seconds}s +/- ${bcftools_stddev}s; speedup ${speedup} | VariantFlow ${fast_rss}; bcftools ${bcftools_rss} | $claim | FORMAT-rich public trio/cohort source: $PUBLIC_SOURCE_URL; samples=$samples; expression uses $FORMAT_EXPR; compare against bcftools filter; $MAYO_COHORT_NOTE |" >>"$REPORT"
 done
 
 if [[ "${VCF_FAST_ENABLE_VCFTOOLS:-0}" = "1" ]]; then

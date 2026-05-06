@@ -13,6 +13,8 @@ GIAB_HG002_TBI_URL="${GIAB_HG002_URL}.tbi"
 IGSR_CHR22_URL="https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000G_2504_high_coverage/working/20220422_3202_phased_SNV_INDEL_SV/1kGP_high_coverage_Illumina.chr22.filtered.SNV_INDEL_SV_phased_panel.vcf.gz"
 IGSR_CHR22_TBI_URL="${IGSR_CHR22_URL}.tbi"
 FORMAT_TRIO_URL="https://sourceforge.net/projects/project123vcf/files/Benchmark_Data/NA12878.trio.hg19_multianno.vcf.gz/download"
+FORMAT_WGS_TRIO_URL="https://zenodo.org/records/3697103/files/trio_NA12878-NA12891-NA12892_hs37d5_dbsnp.vcf.gz?download=1"
+FORMAT_WGS_TRIO_TBI_URL="https://zenodo.org/records/3697103/files/trio_NA12878-NA12891-NA12892_hs37d5_dbsnp.vcf.gz.tbi?download=1"
 
 download_if_missing() {
   local url="$1"
@@ -41,11 +43,17 @@ download_format_trio() {
   download_if_missing "$FORMAT_TRIO_URL" "$OUT_DIR/NA12878.trio.hg19_multianno.vcf.gz"
 }
 
+download_format_wgs_trio() {
+  download_if_missing "$FORMAT_WGS_TRIO_URL" "$OUT_DIR/trio_NA12878-NA12891-NA12892_hs37d5_dbsnp.vcf.gz"
+  download_if_missing "$FORMAT_WGS_TRIO_TBI_URL" "$OUT_DIR/trio_NA12878-NA12891-NA12892_hs37d5_dbsnp.vcf.gz.tbi"
+}
+
 case "$MODE" in
   all)
     download_giab_hg002
     download_igsr_chr22
     download_format_trio
+    download_format_wgs_trio
     ;;
   giab-hg002)
     download_giab_hg002
@@ -56,8 +64,11 @@ case "$MODE" in
   format-trio)
     download_format_trio
     ;;
+  format-wgs-trio)
+    download_format_wgs_trio
+    ;;
   *)
-    echo "usage: $0 [all|giab-hg002|igsr-chr22|format-trio]" >&2
+    echo "usage: $0 [all|giab-hg002|igsr-chr22|format-trio|format-wgs-trio]" >&2
     exit 2
     ;;
 esac
@@ -67,4 +78,5 @@ Public data cache: $OUT_DIR
 GIAB HG002: $GIAB_HG002_URL
 1000 Genomes chr22: $IGSR_CHR22_URL
 FORMAT-rich NA12878 trio: $FORMAT_TRIO_URL
+Larger FORMAT-rich WGS trio: $FORMAT_WGS_TRIO_URL
 EOF
