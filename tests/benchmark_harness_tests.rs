@@ -695,7 +695,7 @@ fn bioconda_packaging_prep_tracks_recipe_template_and_release_blockers() {
     for required in [
         "{% set name = \"variantflow\" %}",
         "{% set version = \"1.5.0\" %}",
-        "https://github.com/ehsanestaji/VariantFlow/archive/v{{ version }}.tar.gz",
+        "https://github.com/ehsanestaji/VCF-FAST/archive/v{{ version }}.tar.gz",
         "sha256: TODO_RELEASE_SHA256",
         "cargo-bundle-licenses",
         "{{ compiler('rust') }}",

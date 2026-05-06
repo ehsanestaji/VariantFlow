@@ -6,7 +6,7 @@ package:
   version: {{ version }}
 
 source:
-  url: https://github.com/ehsanestaji/VariantFlow/archive/v{{ version }}.tar.gz
+  url: https://github.com/ehsanestaji/VCF-FAST/archive/v{{ version }}.tar.gz
   sha256: TODO_RELEASE_SHA256
 
 build:

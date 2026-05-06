@@ -10,6 +10,8 @@ Goal: publish VariantFlow through Bioconda after the source release is tagged.
 - Use Bioconda package name `variantflow` unless the final pre-PR collision check finds a blocker.
 - Verify `variantflow` is not already used in Bioconda, conda-forge, crates.io, GitHub, and common bioinformatics tool indexes immediately before opening the recipe PR.
 - Create a tagged GitHub source release and record the stable source tarball URL.
+- Make the GitHub repository public before opening the Bioconda PR; the current
+  upstream repository is `https://github.com/ehsanestaji/VCF-FAST`.
 - Compute and record the source `sha256`.
 - Recipe scaffold exists at `packaging/bioconda/variantflow/meta.yaml`; copy it to `bioconda-recipes/recipes/variantflow/meta.yaml` after replacing placeholders.
 - Use the Bioconda Rust recipe pattern already captured in the scaffold: `{{ compiler('rust') }}`, `cargo-bundle-licenses`, and `cargo install -v --locked --no-track --root $PREFIX --path .`.

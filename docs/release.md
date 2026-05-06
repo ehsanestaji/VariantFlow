@@ -86,6 +86,20 @@ VCF_FAST_BENCH_WARMUP=1 \
 make bench-v12
 ```
 
+Run balanced human FORMAT-rich cohort evidence from the public DDBJ CHM13
+chr22 VCF without caching the full 27 GB remote source:
+
+```bash
+VCF_FAST_V20_TIERS="1000 10000 50000" \
+VCF_FAST_V20_RUNS=3 \
+VCF_FAST_V20_WARMUP=1 \
+make bench-v20
+```
+
+The v20 harness writes bounded BGZF subsets under ignored
+`tests/output/benchmark-results/...` paths and records only correctness-matched
+claims in `benchmark/reports/v20-human-format-cohort.md`.
+
 ## Release Checklist
 
 Before tagging a release:
@@ -105,6 +119,8 @@ Then confirm:
 - `docs/public-benchmark-table.md` was regenerated from tracked reports.
 - `docs/contribution-map.md` does not contain unmeasured speed claims.
 - Large benchmark artifacts remain under ignored `tests/output/...` paths.
+- The GitHub repository is public before using the source tarball in a
+  Bioconda PR.
 
 ## Distribution And Naming TODO
 
