@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::fs::File;
 use std::io::{BufRead, BufWriter, Write};
 use std::path::Path;
@@ -61,6 +61,13 @@ struct WindowSummary {
     segregating_sites: u64,
     site_pairs: u64,
     mismatches: u64,
+}
+
+#[derive(Debug, Clone)]
+struct LdSite {
+    chrom: String,
+    pos: u64,
+    dosages: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -434,42 +441,145 @@ pub fn run_ld(
     output: &Path,
 ) -> Result<()> {
     let selection = SampleSelection::from_files(keep, remove)?;
-    let mut sites = Vec::new();
-    stream_site_summaries(input, &selection, |site| {
-        if site.biallelic_summary().is_some() {
-            sites.push(site.clone());
-        }
-        Ok(())
-    })?;
-
+    let mut reader = open_reader(input)?;
+    let mut line = Vec::new();
+    let mut samples: Option<Vec<SampleColumn>> = None;
+    let mut window: VecDeque<LdSite> = VecDeque::new();
+    let mut pending_position = Vec::new();
     let mut writer = BufWriter::new(
         File::create(output).with_context(|| format!("failed to create {}", output.display()))?,
     );
     writeln!(writer, "CHR\tPOS1\tPOS2\tN_INDV\tR^2")?;
-    for left_index in 0..sites.len() {
-        for right_index in left_index + 1..sites.len() {
-            let left = &sites[left_index];
-            let right = &sites[right_index];
-            if left.chrom != right.chrom {
+
+    while reader.read_until(b'\n', &mut line)? != 0 {
+        if line.starts_with(b"#CHROM") {
+            samples = Some(selection.resolve(&line)?);
+        } else if !line.starts_with(b"#") {
+            let samples = samples
+                .as_ref()
+                .context("VCF header is missing #CHROM sample line")?;
+            let record = RecordView::parse(&line)?;
+            let Some(site) = ld_site_from_record(&record, samples)? else {
+                line.clear();
                 continue;
-            }
-            if max_distance.is_some_and(|distance| right.pos.saturating_sub(left.pos) > distance) {
-                continue;
-            }
-            if let Some((n, r2)) = genotype_dosage_r2(left, right) {
-                writeln!(
-                    writer,
-                    "{}\t{}\t{}\t{}\t{}",
-                    left.chrom,
-                    left.pos,
-                    right.pos,
-                    n,
-                    format_ratio(r2)
+            };
+
+            if pending_position.first().is_some_and(|pending: &LdSite| {
+                pending.chrom != site.chrom || pending.pos != site.pos
+            }) {
+                flush_ld_position(
+                    &mut writer,
+                    &mut window,
+                    &mut pending_position,
+                    max_distance,
                 )?;
+            }
+
+            pending_position.push(site);
+        }
+        line.clear();
+    }
+
+    if samples.is_none() {
+        bail!("VCF header is missing #CHROM sample line");
+    }
+    flush_ld_position(
+        &mut writer,
+        &mut window,
+        &mut pending_position,
+        max_distance,
+    )?;
+    writer.flush()?;
+    Ok(())
+}
+
+const MISSING_DOSAGE: u8 = u8::MAX;
+
+fn ld_site_from_record(
+    record: &RecordView<'_>,
+    samples: &[SampleColumn],
+) -> Result<Option<LdSite>> {
+    if memchr::memchr(b',', record.alternate()).is_some() {
+        return Ok(None);
+    }
+
+    let gt_index = record
+        .column(8)
+        .and_then(|format| format_key_index(format, b"GT"));
+    let mut dosages = vec![MISSING_DOSAGE; samples.len()];
+
+    for_each_selected_sample_value(record, samples, |index, _sample, value| {
+        dosages[index] = gt_index
+            .and_then(|index| sample_format_value_at(value, index))
+            .and_then(parse_ld_alt_dosage)
+            .unwrap_or(MISSING_DOSAGE);
+    });
+
+    Ok(Some(LdSite {
+        chrom: bytes_text(record.chrom())?.to_owned(),
+        pos: record.pos_u64()?,
+        dosages,
+    }))
+}
+
+fn flush_ld_position(
+    writer: &mut impl Write,
+    window: &mut VecDeque<LdSite>,
+    pending: &mut Vec<LdSite>,
+    max_distance: Option<u64>,
+) -> Result<()> {
+    let Some(first_pending) = pending.first() else {
+        return Ok(());
+    };
+
+    if let Some(distance) = max_distance {
+        while let Some(left) = window.front() {
+            if left.chrom != first_pending.chrom
+                || first_pending.pos.saturating_sub(left.pos) > distance
+            {
+                window.pop_front();
+            } else {
+                break;
             }
         }
     }
-    writer.flush()?;
+
+    for left in window.iter() {
+        if left.chrom != first_pending.chrom {
+            continue;
+        }
+        if max_distance
+            .is_some_and(|distance| first_pending.pos.saturating_sub(left.pos) > distance)
+        {
+            continue;
+        }
+        for right in pending.iter() {
+            write_ld_pair(writer, left, right)?;
+        }
+    }
+
+    for left_index in 0..pending.len() {
+        for right_index in left_index + 1..pending.len() {
+            write_ld_pair(writer, &pending[left_index], &pending[right_index])?;
+        }
+    }
+
+    window.extend(pending.drain(..));
+    Ok(())
+}
+
+fn write_ld_pair(writer: &mut impl Write, left: &LdSite, right: &LdSite) -> Result<()> {
+    if let Some((n, r2)) = genotype_dosage_r2(&left.dosages, &right.dosages) {
+        writeln!(
+            writer,
+            "{}\t{}\t{}\t{}\t{}",
+            left.chrom,
+            left.pos,
+            right.pos,
+            n,
+            format_ratio(r2)
+        )?;
+    }
     Ok(())
 }
 
@@ -1038,43 +1148,58 @@ fn tajima_d(pi_sum: f64, segregating_sites: u64, n_chr: u64) -> Option<f64> {
     (denominator > 0.0).then_some((pi_sum - s / a1) / denominator)
 }
 
-fn genotype_dosage_r2(left: &SiteAlleleSummary, right: &SiteAlleleSummary) -> Option<(u64, f64)> {
-    let mut pairs = Vec::new();
-    for (left_gt, right_gt) in left.genotypes.iter().zip(&right.genotypes) {
-        if let (Some(left_dosage), Some(right_dosage)) = (
-            left_gt.as_deref().and_then(alt_dosage),
-            right_gt.as_deref().and_then(alt_dosage),
-        ) {
-            pairs.push((left_dosage, right_dosage));
+fn genotype_dosage_r2(left: &[u8], right: &[u8]) -> Option<(u64, f64)> {
+    let mut n = 0_u64;
+    let mut sum_left = 0.0;
+    let mut sum_right = 0.0;
+    let mut sum_left_sq = 0.0;
+    let mut sum_right_sq = 0.0;
+    let mut sum_product = 0.0;
+
+    for (left, right) in left.iter().zip(right) {
+        if *left == MISSING_DOSAGE || *right == MISSING_DOSAGE {
+            continue;
         }
+        let left = f64::from(*left);
+        let right = f64::from(*right);
+        n += 1;
+        sum_left += left;
+        sum_right += right;
+        sum_left_sq += left * left;
+        sum_right_sq += right * right;
+        sum_product += left * right;
     }
 
-    if pairs.len() < 2 {
+    if n < 2 {
         return None;
     }
 
-    let n = pairs.len() as f64;
-    let mean_left = pairs.iter().map(|(left, _right)| left).sum::<f64>() / n;
-    let mean_right = pairs.iter().map(|(_left, right)| right).sum::<f64>() / n;
-    let mut covariance = 0.0;
-    let mut left_ss = 0.0;
-    let mut right_ss = 0.0;
-    for (left, right) in &pairs {
-        let left_delta = left - mean_left;
-        let right_delta = right - mean_right;
-        covariance += left_delta * right_delta;
-        left_ss += left_delta * left_delta;
-        right_ss += right_delta * right_delta;
-    }
+    let n_f64 = n as f64;
+    let covariance = sum_product - (sum_left * sum_right / n_f64);
+    let left_ss = sum_left_sq - (sum_left * sum_left / n_f64);
+    let right_ss = sum_right_sq - (sum_right * sum_right / n_f64);
     let denominator = left_ss * right_ss;
-    (denominator > 0.0).then_some((pairs.len() as u64, covariance * covariance / denominator))
+    (denominator > 0.0).then_some((n, covariance * covariance / denominator))
 }
 
-fn alt_dosage(genotype: &[usize]) -> Option<f64> {
-    if genotype.iter().any(|allele| *allele > 1) {
+fn parse_ld_alt_dosage(gt: &[u8]) -> Option<u8> {
+    if genotype_is_missing(gt) {
         return None;
     }
-    Some(genotype.iter().filter(|allele| **allele == 1).count() as f64)
+
+    let mut observed = false;
+    let mut invalid = false;
+    let mut dosage = 0_u8;
+    for_each_called_allele(gt, |allele| {
+        observed = true;
+        match allele {
+            0 => {}
+            1 => dosage = dosage.saturating_add(1),
+            _ => invalid = true,
+        }
+    });
+
+    (observed && !invalid).then_some(dosage)
 }
 
 impl SampleSelection {

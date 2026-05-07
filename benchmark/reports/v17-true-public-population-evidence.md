@@ -53,3 +53,7 @@ Claim decision: no broad VCFtools replacement claim. Correctness-matched public
 rows may support measured, scoped performance statements only for the staged
 bounded biallelic 1000 Genomes / IGSR cohort in this report. This report does
 not support a broad VCFtools replacement claim.
+
+Note: the LD rows in this report are pre-optimization measurements. The
+post-optimization rolling-window LD evidence is tracked separately in
+`benchmark/reports/v17-ld-rolling-window-optimization.md`.

@@ -1749,6 +1749,31 @@ fn v17_true_public_population_evidence_harness_is_declared() {
 }
 
 #[test]
+fn ld_bounded_distance_uses_rolling_window_not_full_site_storage() {
+    let root = repo_root();
+    let source = fs::read_to_string(root.join("src/engine/popgen.rs")).unwrap();
+    let ld_start = source.find("pub fn run_ld(").expect("run_ld should exist");
+    let ld_end = source[ld_start..]
+        .find("\nfn write_frequency_row")
+        .map(|offset| ld_start + offset)
+        .expect("run_ld should end before frequency writer");
+    let run_ld = &source[ld_start..ld_end];
+
+    assert!(
+        run_ld.contains("VecDeque"),
+        "bounded LD should use a rolling window"
+    );
+    assert!(
+        run_ld.contains("LdSite"),
+        "LD should store compact dosage sites instead of full SiteAlleleSummary rows"
+    );
+    assert!(
+        !run_ld.contains("sites.push(site.clone())"),
+        "LD must not retain every full site summary for bounded distance runs"
+    );
+}
+
+#[test]
 fn igsr_population_helper_parses_official_whitespace_metadata() {
     let root = repo_root();
     let tmp = tempfile::tempdir().expect("create tempdir");
