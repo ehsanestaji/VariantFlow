@@ -284,7 +284,7 @@ PY
   safe_vcftools_version="$(markdown_cell "$VCFTOOLS_VERSION")"
   safe_correctness="$(markdown_cell "$CORRECTNESS_RESULT")"
   safe_caveats="$(markdown_cell "$caveats")"
-  printf "| %s | %s | %s | %s | %s | VariantFlow %s; VCFtools %s | %s | %s | %s | %s | %s | %s | %s | %s | \`%s\` | \`%s\` | %s | %s | %s |\n" \
+  printf "| %s | %s | %s | %s | %s | VariantFlow %s; VCFtools %s | %s | %s | %s | %s | %s | %s | %s | \`%s\` | \`%s\` | %s | %s | %s |\n" \
     "$safe_tier" "$safe_case_name" "$records" "$samples" "$safe_metadata_source" "$vf_runtime" "$vcftools_runtime" "$speedup" \
     "$vf_peak_rss_kb" "$vcftools_peak_rss_kb" "$vf_cpu_seconds" "$vcftools_cpu_seconds" "$vf_cpu_hours" "$vcftools_cpu_hours" \
     "$safe_vf_command" "$safe_vcftools_command" "$safe_vcftools_version" "$safe_correctness" "$safe_caveats" >>"$ROWS_FILE"
