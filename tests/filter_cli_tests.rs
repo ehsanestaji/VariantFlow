@@ -20,6 +20,14 @@ fn gzip_fixture(input: &Path, output: &Path) {
     encoder.finish().unwrap();
 }
 
+fn bgzf_fixture(input: &Path, output: &Path) {
+    let bytes = fs::read(input).unwrap();
+    let file = fs::File::create(output).unwrap();
+    let mut writer = noodles_bgzf::io::Writer::new(file);
+    writer.write_all(&bytes).unwrap();
+    writer.finish().unwrap();
+}
+
 fn read_gzip(path: &Path) -> String {
     let file = fs::File::open(path).unwrap();
     let mut decoder = flate2::read::GzDecoder::new(file);
@@ -104,6 +112,51 @@ fn af_filter_accepts_gzip_input_and_gzip_output() {
     assert!(text.contains("rsPass"));
     assert!(text.contains("rsMulti"));
     assert!(!text.contains("rsFiltered"));
+}
+
+#[test]
+fn combined_bgzf_and_predicate_threads_preserve_native_output_order() {
+    let dir = tempdir().unwrap();
+    let input = dir.path().join("stress.vcf.gz");
+    let default_output = dir.path().join("default.vcf");
+    let combined_output = dir.path().join("combined.vcf");
+    bgzf_fixture(&fixture("tests/data/stress_small.vcf"), &input);
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            input.to_str().unwrap(),
+            "--where",
+            "QUAL > 30 || ANY(FORMAT/AD[1] > 80)",
+            "-o",
+            default_output.to_str().unwrap(),
+        ])
+        .env_remove("VCF_FAST_NATIVE_BGZF_THREADS")
+        .env_remove("VCF_FAST_NATIVE_FILTER_THREADS")
+        .assert()
+        .success();
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            input.to_str().unwrap(),
+            "--where",
+            "QUAL > 30 || ANY(FORMAT/AD[1] > 80)",
+            "-o",
+            combined_output.to_str().unwrap(),
+        ])
+        .env("VCF_FAST_NATIVE_BGZF_THREADS", "2")
+        .env("VCF_FAST_NATIVE_FILTER_THREADS", "2")
+        .env("VCF_FAST_NATIVE_FILTER_BATCH_RECORDS", "2")
+        .assert()
+        .success();
+
+    assert_eq!(
+        fs::read_to_string(default_output).unwrap(),
+        fs::read_to_string(combined_output).unwrap()
+    );
 }
 
 #[test]

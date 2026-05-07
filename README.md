@@ -121,6 +121,7 @@ variantflow ld input.vcf.gz --max-distance 50000 -o geno.ld
 variantflow diff a.vcf.gz b.vcf.gz --mode shared --key position -o diff.tsv
 variantflow convert input.vcf.gz --to tsv -o variants.tsv
 variantflow convert input.vcf.gz --to parquet -o variants.parquet
+variantflow index input.vcf.gz -o input.vcf.gz.vfi
 
 cargo build --features htslib-static
 variantflow filter input.vcf.gz --region chr22:1-20000000 --where "QUAL > 30" -o output.vcf
@@ -177,6 +178,7 @@ vcf-fast missingness tests/data/popgen_example.vcf -o tests/output/example
 vcf-fast diff tests/data/diff_a.vcf tests/data/diff_b.vcf -o tests/output/diff.tsv
 vcf-fast convert tests/data/example.vcf --to tsv -o tests/output/variants.tsv
 vcf-fast convert tests/data/example.vcf --to parquet -o tests/output/variants.parquet
+vcf-fast index tests/data/example.vcf -o tests/output/example.vcf.vfi
 ```
 
 ## Native Filter Support
@@ -283,6 +285,8 @@ CHROM POS ID REF ALT QUAL FILTER INFO/DP INFO/AF
 Missing values are written as `.`. Multi-allelic `INFO/AF` values are preserved as the original comma-separated value.
 
 `convert --to parquet` writes the same selected projection for native `.vcf` and `.vcf.gz` inputs. The first Parquet schema is typed for analysis: `POS` is int64, `QUAL` is nullable float64, `INFO/DP` is nullable int64, and `INFO/AF` remains nullable UTF-8 so comma-separated AF values stay lossless. Missing numeric values become nulls.
+
+`index` writes an explicit `.vfi` JSON sidecar with chunk-level metadata for future query-aware skipping: record counts, genomic ranges, FILTER values, QUAL min/max, INFO/DP min/max, INFO/AF presence, and FORMAT key presence. The first index version uses record-chunk metadata and does not yet emit BGZF virtual offsets. Ordinary commands still work without the sidecar; current indexed execution is a foundation for later acceleration, not a speed claim yet.
 
 ## Development
 

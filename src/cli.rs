@@ -4,7 +4,7 @@ use anyhow::Result;
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 
 use crate::compat::{CompressionMode, Region};
-use crate::engine::{convert, diff, filter, popgen, stats};
+use crate::engine::{convert, diff, filter, index, popgen, stats};
 
 #[derive(Debug, Parser)]
 #[command(about = "Selective operations for VCF/BCF variant data")]
@@ -109,6 +109,11 @@ enum Command {
         remove: Option<PathBuf>,
         #[arg(long)]
         max_distance: Option<u64>,
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+    Index {
+        input: PathBuf,
         #[arg(short, long)]
         output: PathBuf,
     },
@@ -227,6 +232,7 @@ pub fn run_with_name(name: &'static str) -> Result<()> {
             max_distance,
             &output,
         ),
+        Command::Index { input, output } => index::run(&input, &output),
         Command::Diff {
             a,
             b,
