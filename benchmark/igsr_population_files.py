@@ -29,7 +29,19 @@ def normalize_header(name: str) -> str:
 
 def read_metadata(path: Path) -> dict[str, tuple[str, str]]:
     with path.open("rt", encoding="utf-8") as handle:
-        header = [normalize_header(value) for value in handle.readline().rstrip("\n").split("\t")]
+        header: list[str] | None = None
+        header_row_number = 0
+        for header_row_number, line in enumerate(handle, start=1):
+            stripped = line.strip()
+            if not stripped or stripped.startswith("##"):
+                continue
+            if stripped.startswith("#"):
+                stripped = stripped[1:]
+            header = [normalize_header(value) for value in stripped.split("\t")]
+            break
+        if header is None:
+            raise SystemExit(f"{path} has no metadata header")
+
         sample_columns = ("sample", "sample_name", "sample_id", "sample_id_1kg")
         population_columns = ("population", "pop", "population_code")
         superpopulation_columns = ("superpopulation", "super_pop", "super_population", "superpopulation_code")
@@ -45,10 +57,10 @@ def read_metadata(path: Path) -> dict[str, tuple[str, str]]:
         super_i = choose(superpopulation_columns)
 
         labels: dict[str, tuple[str, str]] = {}
-        for row_number, line in enumerate(handle, start=2):
+        for row_number, line in enumerate(handle, start=header_row_number + 1):
             if not line.strip():
                 continue
-            fields = line.rstrip("\n").split("\t")
+            fields = [field.strip() for field in line.rstrip("\n").split("\t")]
             if len(fields) <= max(sample_i, pop_i, super_i):
                 raise SystemExit(f"{path} row {row_number} is missing required metadata fields")
             sample = fields[sample_i]
@@ -75,6 +87,16 @@ def group_samples(
             continue
         groups[label[index]].append(sample)
     return dict(groups), unmatched
+
+
+def format_unmatched_error(unmatched: list[str]) -> str:
+    preview = ", ".join(unmatched[:5])
+    if len(unmatched) > 5:
+        preview = f"{preview}, ..."
+    return (
+        f"{len(unmatched)} VCF samples are missing from metadata; "
+        f"preview: {preview}. Use --allow-unmatched to exclude them explicitly."
+    )
 
 
 def write_population_files(
@@ -110,20 +132,36 @@ def main() -> int:
     parser.add_argument("--groups", default="AFR:EUR")
     parser.add_argument("--group-level", choices=("population", "superpopulation"), default="superpopulation")
     parser.add_argument("--min-samples", type=int, default=2)
+    parser.add_argument("--allow-unmatched", action="store_true")
     args = parser.parse_args()
+
+    if args.min_samples < 1:
+        raise SystemExit("--min-samples must be at least 1")
 
     samples = read_vcf_samples(args.vcf)
     metadata = read_metadata(args.metadata)
     grouped, unmatched = group_samples(samples, metadata, args.group_level)
+    if unmatched and not args.allow_unmatched:
+        raise SystemExit(format_unmatched_error(unmatched))
+
     pop1, pop2, left_label, right_label = write_population_files(
         grouped, args.groups, args.out_prefix, args.min_samples
     )
     source = Path(f"{args.out_prefix}.population-source.tsv")
+    allow_unmatched = str(args.allow_unmatched).lower()
     source.write_text(
-        "population_file\tlabel\tlevel\tsource\tsample_count\n"
-        f"{pop1}\t{left_label}\t{args.group_level}\tofficial IGSR metadata\t{len(grouped[left_label])}\n"
-        f"{pop2}\t{right_label}\t{args.group_level}\tofficial IGSR metadata\t{len(grouped[right_label])}\n"
-        f"unmatched samples\t.\t.\tofficial IGSR metadata\t{len(unmatched)}\n",
+        "population_file\tlabel\tlevel\tsource\tsample_count\t"
+        "vcf_path\tmetadata_path\tgroup_pair\tunmatched_count\tallow_unmatched\trecord_type\n"
+        f"{pop1}\t{left_label}\t{args.group_level}\tofficial IGSR metadata\t"
+        f"{len(grouped[left_label])}\t{args.vcf}\t{args.metadata}\t{args.groups}\t"
+        f"{len(unmatched)}\t{allow_unmatched}\tpopulation\n"
+        f"{pop2}\t{right_label}\t{args.group_level}\tofficial IGSR metadata\t"
+        f"{len(grouped[right_label])}\t{args.vcf}\t{args.metadata}\t{args.groups}\t"
+        f"{len(unmatched)}\t{allow_unmatched}\tpopulation\n"
+        f"unmatched samples\t.\t.\tofficial IGSR metadata\t{len(unmatched)}\t"
+        f"{args.vcf}\t{args.metadata}\t{args.groups}\t{len(unmatched)}\t{allow_unmatched}\tunmatched\n"
+        f"settings\t.\t{args.group_level}\tofficial IGSR metadata\t.\t"
+        f"{args.vcf}\t{args.metadata}\t{args.groups}\t{len(unmatched)}\t{allow_unmatched}\tsettings\n",
         encoding="utf-8",
     )
     print(f"{pop1}\t{pop2}\t{source}\tofficial IGSR metadata; no header-fallback")
