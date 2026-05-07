@@ -36,6 +36,14 @@ join_quoted() {
   printf "%s" "$out"
 }
 
+markdown_cell() {
+  local value="$1"
+  value="${value//$'\n'/ }"
+  value="${value//$'\r'/ }"
+  value="${value//|/\\|}"
+  printf "%s" "$value"
+}
+
 stream_vcf_text() {
   if [[ "$1" == *.gz ]]; then
     gzip -dc "$1"
@@ -137,13 +145,14 @@ if [[ -z "$PUBLIC_INPUT" || ! -f "$PUBLIC_INPUT" || ! -f "$PUBLIC_METADATA" ]]; 
   exit 77
 fi
 
+if ! command -v bcftools >/dev/null 2>&1 || ! command -v bgzip >/dev/null 2>&1; then
+  write_blocked_report "True public cohort staging requires local bcftools and bgzip before benchmark rows can be generated."
+  echo "True public population evidence blocked; report written to $REPORT"
+  exit 77
+fi
+
 prepare_true_public_biallelic_dataset() {
   local input="$1" output="$2" tier_limit="$3"
-  if ! command -v bcftools >/dev/null 2>&1 || ! command -v bgzip >/dev/null 2>&1; then
-    echo "blocked: true public cohort staging requires bcftools and bgzip" >&2
-    return 1
-  fi
-
   mkdir -p "$(dirname "$output")"
   local tmp_output
   tmp_output="$(mktemp "${output}.tmp.XXXXXX")"
@@ -187,6 +196,12 @@ if ! detect_vcftools; then
   exit 77
 fi
 
+if [[ "$VCFTOOLS_MODE" == "docker" ]]; then
+  write_blocked_report "True population evidence currently requires local vcftools for parity regeneration; Docker-only VCFtools mode is blocked."
+  echo "True public population evidence blocked; report written to $REPORT"
+  exit 77
+fi
+
 cargo build --release
 make vcftools-parity
 
@@ -204,8 +219,11 @@ ROWS_FILE="$OUT_DIR/report-rows.md"
 
 append_pending_row() {
   local tier_limit="$1" blocker="$2"
+  local safe_vcftools_version safe_blocker
+  safe_vcftools_version="$(markdown_cell "$VCFTOOLS_VERSION")"
+  safe_blocker="$(markdown_cell "$blocker")"
   printf "| public cohort %s | frequency, missingness, HWE, heterozygosity, site pi, window pi, Tajima's D, LD, Weir-Cockerham Fst | pending | pending | official IGSR metadata; no header-fallback | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | %s | pending | %s |\n" \
-    "$tier_limit" "$VCFTOOLS_VERSION" "$blocker" >>"$ROWS_FILE"
+    "$tier_limit" "$safe_vcftools_version" "$safe_blocker" >>"$ROWS_FILE"
 }
 
 benchmark_pair() {
@@ -223,6 +241,7 @@ benchmark_pair() {
   local vcftools_metrics="$OUT_DIR/${safe_case}.vcftools.resources.json"
   local records samples vf_runtime vcftools_runtime speedup
   local vf_peak_rss_kb vcftools_peak_rss_kb vf_cpu_seconds vcftools_cpu_seconds vf_cpu_hours vcftools_cpu_hours
+  local safe_tier safe_case_name safe_metadata_source safe_vf_command safe_vcftools_command safe_vcftools_version safe_correctness safe_caveats
   records="$(actual_records "$dataset")"
   samples="$(count_samples "$dataset")"
   hyperfine --warmup "$WARMUP" --runs "$RUNS" \
@@ -257,10 +276,18 @@ vcf = float(sys.argv[2].removesuffix("s"))
 print(f"{vcf / vf:.2f}x" if vf else "n/a")
 PY
 )"
+  safe_tier="$(markdown_cell "$tier")"
+  safe_case_name="$(markdown_cell "$case_name")"
+  safe_metadata_source="$(markdown_cell "$metadata_source")"
+  safe_vf_command="$(markdown_cell "$vf_command")"
+  safe_vcftools_command="$(markdown_cell "$vcftools_command")"
+  safe_vcftools_version="$(markdown_cell "$VCFTOOLS_VERSION")"
+  safe_correctness="$(markdown_cell "$CORRECTNESS_RESULT")"
+  safe_caveats="$(markdown_cell "$caveats")"
   printf "| %s | %s | %s | %s | %s | VariantFlow %s; VCFtools %s | %s | %s | %s | %s | %s | %s | %s | %s | \`%s\` | \`%s\` | %s | %s | %s |\n" \
-    "$tier" "$case_name" "$records" "$samples" "$metadata_source" "$vf_runtime" "$vcftools_runtime" "$speedup" \
+    "$safe_tier" "$safe_case_name" "$records" "$samples" "$safe_metadata_source" "$vf_runtime" "$vcftools_runtime" "$speedup" \
     "$vf_peak_rss_kb" "$vcftools_peak_rss_kb" "$vf_cpu_seconds" "$vcftools_cpu_seconds" "$vf_cpu_hours" "$vcftools_cpu_hours" \
-    "$vf_command" "$vcftools_command" "$VCFTOOLS_VERSION" "$CORRECTNESS_RESULT" "$caveats" >>"$ROWS_FILE"
+    "$safe_vf_command" "$safe_vcftools_command" "$safe_vcftools_version" "$safe_correctness" "$safe_caveats" >>"$ROWS_FILE"
 }
 
 run_tier() {
