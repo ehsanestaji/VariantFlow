@@ -48,6 +48,19 @@ def is_nan(value: str) -> bool:
         return False
 
 
+def assert_matching_nan_policy(name: str, key: tuple[str, ...], left: str, right: str) -> bool:
+    left_is_nan = is_nan(left)
+    right_is_nan = is_nan(right)
+    if left_is_nan and right_is_nan:
+        return True
+    if left_is_nan != right_is_nan:
+        raise ParityError(
+            f"{name} row {key} undefined value mismatch: "
+            f"VariantFlow={left!r}; VCFtools={right!r}"
+        )
+    return False
+
+
 def split_allele_frequency(value: str) -> tuple[str, str]:
     try:
         allele, frequency = value.rsplit(":", 1)
@@ -251,20 +264,14 @@ def compare_tajima_d(out_dir: Path) -> None:
     vt_header, vt_rows = read_named_tsv(out_dir / "vcftools-tajima-d.Tajima.D")
     vf_tajima_column = choose_column("tajima-d", vf_header, ("TAJIMA_D", "TajimaD"), "VariantFlow")
     vt_tajima_column = choose_column("tajima-d", vt_header, ("TajimaD", "TAJIMA_D"), "VCFtools")
-    vf_rows = [
-        row
-        for row in vf_rows
-        if not is_nan(row_value("tajima-d", row, vf_tajima_column, "VariantFlow"))
-    ]
-    vt_rows = [
-        row
-        for row in vt_rows
-        if not is_nan(row_value("tajima-d", row, vt_tajima_column, "VCFtools"))
-    ]
     vf_index = index_rows("tajima-d VariantFlow", vf_rows, ("CHROM", "BIN_START"))
     vt_index = index_rows("tajima-d VCFtools", vt_rows, ("CHROM", "BIN_START"))
 
     for key in assert_matching_keys("tajima-d", vf_index, vt_index):
+        vf_tajima = row_value("tajima-d", vf_index[key], vf_tajima_column, "VariantFlow")
+        vt_tajima = row_value("tajima-d", vt_index[key], vt_tajima_column, "VCFtools")
+        if assert_matching_nan_policy("tajima-d", key, vf_tajima, vt_tajima):
+            continue
         assert_equal(
             f"tajima-d row {key} N_SNPS",
             row_value("tajima-d", vf_index[key], "N_SNPS", "VariantFlow"),
@@ -272,8 +279,8 @@ def compare_tajima_d(out_dir: Path) -> None:
         )
         assert_float_close(
             f"tajima-d row {key} TajimaD",
-            row_value("tajima-d", vf_index[key], vf_tajima_column, "VariantFlow"),
-            row_value("tajima-d", vt_index[key], vt_tajima_column, "VCFtools"),
+            vf_tajima,
+            vt_tajima,
         )
 
 
@@ -320,24 +327,18 @@ def compare_weir_fst(out_dir: Path) -> None:
     vt_fst_column = choose_column(
         "weir fst", vt_header, ("WEIR_AND_COCKERHAM_FST", "WC_FST"), "VCFtools"
     )
-    vf_rows = [
-        row
-        for row in vf_rows
-        if not is_nan(row_value("weir fst", row, vf_fst_column, "VariantFlow"))
-    ]
-    vt_rows = [
-        row
-        for row in vt_rows
-        if not is_nan(row_value("weir fst", row, vt_fst_column, "VCFtools"))
-    ]
     vf_index = index_rows("weir fst VariantFlow", vf_rows, ("CHROM", "POS"))
     vt_index = index_rows("weir fst VCFtools", vt_rows, ("CHROM", "POS"))
 
     for key in assert_matching_keys("weir fst", vf_index, vt_index):
+        vf_fst = row_value("weir fst", vf_index[key], vf_fst_column, "VariantFlow")
+        vt_fst = row_value("weir fst", vt_index[key], vt_fst_column, "VCFtools")
+        if assert_matching_nan_policy("weir fst", key, vf_fst, vt_fst):
+            continue
         assert_float_close(
             f"weir fst row {key} WEIR_AND_COCKERHAM_FST",
-            row_value("weir fst", vf_index[key], vf_fst_column, "VariantFlow"),
-            row_value("weir fst", vt_index[key], vt_fst_column, "VCFtools"),
+            vf_fst,
+            vt_fst,
         )
 
 
