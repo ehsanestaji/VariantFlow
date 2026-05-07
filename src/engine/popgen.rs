@@ -4,6 +4,7 @@ use std::io::{BufRead, BufWriter, Write};
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
+use clap::ValueEnum;
 
 use crate::io::open_reader;
 use crate::vcf::{RecordView, format_key_index, sample_format_value_at};
@@ -58,7 +59,14 @@ struct WindowSummary {
     end: u64,
     pi_sum: f64,
     segregating_sites: u64,
-    max_n_chr: u64,
+    site_pairs: u64,
+    mismatches: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum FstEstimator {
+    Hudson,
+    WeirCockerham,
 }
 
 pub fn run_freq(
@@ -274,7 +282,12 @@ pub fn run_het(
     Ok(())
 }
 
-pub fn run_fst(input: &Path, populations: &[std::path::PathBuf], output: &Path) -> Result<()> {
+pub fn run_fst(
+    input: &Path,
+    populations: &[std::path::PathBuf],
+    estimator: FstEstimator,
+    output: &Path,
+) -> Result<()> {
     if populations.len() != 2 {
         bail!("fst requires exactly two --pop files");
     }
@@ -286,14 +299,21 @@ pub fn run_fst(input: &Path, populations: &[std::path::PathBuf], output: &Path) 
     let mut writer = BufWriter::new(
         File::create(output).with_context(|| format!("failed to create {}", output.display()))?,
     );
-    writeln!(writer, "CHROM\tPOS\tHUDSON_FST")?;
+    match estimator {
+        FstEstimator::Hudson => writeln!(writer, "CHROM\tPOS\tHUDSON_FST")?,
+        FstEstimator::WeirCockerham => writeln!(writer, "CHROM\tPOS\tWEIR_AND_COCKERHAM_FST")?,
+    }
 
     stream_site_summaries_with_samples(input, &selection, |samples, site| {
         if pop1_indices.is_empty() && pop2_indices.is_empty() {
             pop1_indices = population_indices(samples, &pop1)?;
             pop2_indices = population_indices(samples, &pop2)?;
         }
-        if let Some(fst) = hudson_fst(site, &pop1_indices, &pop2_indices) {
+        let fst = match estimator {
+            FstEstimator::Hudson => hudson_fst(site, &pop1_indices, &pop2_indices),
+            FstEstimator::WeirCockerham => weir_cockerham_fst(site, &pop1_indices, &pop2_indices)?,
+        };
+        if let Some(fst) = fst {
             writeln!(
                 writer,
                 "{}\t{}\t{}",
@@ -320,42 +340,40 @@ pub fn run_pi(
         File::create(output).with_context(|| format!("failed to create {}", output.display()))?,
     );
     if let Some(window_size) = window_size {
+        if window_size == 0 {
+            bail!("--window-size must be positive");
+        }
         let mut windows = Vec::new();
-        stream_site_summaries(input, &selection, |site| {
-            if let Some(pi) = site_pi(site) {
-                add_window_pi(&mut windows, site, pi, window_size);
+        let mut n_chr = 0_u64;
+        stream_site_summaries_with_samples(input, &selection, |samples, site| {
+            if n_chr == 0 {
+                n_chr = samples.len() as u64 * 2;
+            }
+            if let Some(counts) = window_pi_counts(site) {
+                add_window_pi(&mut windows, site, counts, window_size);
             }
             Ok(())
         })?;
-        writeln!(
-            writer,
-            "CHROM\tBIN_START\tBIN_END\tN_VARIANTS\tPI_SUM\tPI_PER_VARIANT"
-        )?;
+        writeln!(writer, "CHROM\tBIN_START\tBIN_END\tN_VARIANTS\tPI")?;
         for window in windows {
+            let monomorphic_sites = window_size.saturating_sub(window.segregating_sites);
+            let total_site_pairs = n_chr * n_chr.saturating_sub(1);
+            let denominator = window.site_pairs + monomorphic_sites * total_site_pairs;
             writeln!(
                 writer,
-                "{}\t{}\t{}\t{}\t{}\t{}",
+                "{}\t{}\t{}\t{}\t{}",
                 window.chrom,
                 window.start,
                 window.end,
                 window.segregating_sites,
-                format_ratio(window.pi_sum),
-                format_fraction_f64(window.pi_sum, window.segregating_sites)
+                format_fraction(window.mismatches, denominator)
             )?;
         }
     } else {
-        writeln!(writer, "CHROM\tPOS\tN_CHR\tPI")?;
+        writeln!(writer, "CHROM\tPOS\tPI")?;
         stream_site_summaries(input, &selection, |site| {
             if let Some(pi) = site_pi(site) {
-                let n_chr = site.allele_counts.iter().sum::<u64>();
-                writeln!(
-                    writer,
-                    "{}\t{}\t{}\t{}",
-                    site.chrom,
-                    site.pos,
-                    n_chr,
-                    format_ratio(pi)
-                )?;
+                writeln!(writer, "{}\t{}\t{}", site.chrom, site.pos, format_ratio(pi))?;
             }
             Ok(())
         })?;
@@ -376,12 +394,13 @@ pub fn run_tajima_d(
     }
     let selection = SampleSelection::from_files(keep, remove)?;
     let mut windows = Vec::new();
-    stream_site_summaries(input, &selection, |site| {
-        if let Some(pi) = site_pi(site) {
-            add_window_pi(&mut windows, site, pi, window_size);
-            if let Some(window) = windows.last_mut() {
-                window.max_n_chr = window.max_n_chr.max(site.allele_counts.iter().sum());
-            }
+    let mut n_chr = 0_u64;
+    stream_site_summaries_with_samples(input, &selection, |samples, site| {
+        if n_chr == 0 {
+            n_chr = samples.len() as u64 * 2;
+        }
+        if let Some(pi) = tajima_site_pi_component(site, n_chr)? {
+            add_tajima_window(&mut windows, site, pi, window_size);
         }
         Ok(())
     })?;
@@ -389,18 +408,15 @@ pub fn run_tajima_d(
     let mut writer = BufWriter::new(
         File::create(output).with_context(|| format!("failed to create {}", output.display()))?,
     );
-    writeln!(writer, "CHROM\tBIN_START\tN_SNPS\tN_CHR\tPI_SUM\tTAJIMA_D")?;
+    writeln!(writer, "CHROM\tBIN_START\tN_SNPS\tTajimaD")?;
     for window in windows {
-        if let Some(tajima_d) = tajima_d(window.pi_sum, window.segregating_sites, window.max_n_chr)
-        {
+        if let Some(tajima_d) = tajima_d(window.pi_sum, window.segregating_sites, n_chr) {
             writeln!(
                 writer,
-                "{}\t{}\t{}\t{}\t{}\t{}",
+                "{}\t{}\t{}\t{}",
                 window.chrom,
                 window.start,
                 window.segregating_sites,
-                window.max_n_chr,
-                format_ratio(window.pi_sum),
                 format_ratio(tajima_d)
             )?;
         }
@@ -428,7 +444,7 @@ pub fn run_ld(
     let mut writer = BufWriter::new(
         File::create(output).with_context(|| format!("failed to create {}", output.display()))?,
     );
-    writeln!(writer, "CHROM\tPOS1\tPOS2\tN_INDV\tR2")?;
+    writeln!(writer, "CHR\tPOS1\tPOS2\tN_INDV\tR^2")?;
     for left_index in 0..sites.len() {
         for right_index in left_index + 1..sites.len() {
             let left = &sites[left_index];
@@ -471,18 +487,15 @@ fn write_frequency_row(
         return Ok(());
     };
 
-    for sample in samples {
-        if let Some(gt) = record
-            .column(sample.column)
-            .and_then(|value| sample_format_value_at(value, gt_index))
-        {
+    for_each_selected_sample_value(record, samples, |_index, _sample, value| {
+        if let Some(gt) = sample_format_value_at(value, gt_index) {
             for_each_called_allele(gt, |allele| {
                 if let Some(count) = counts.get_mut(allele) {
                     *count += 1;
                 }
             });
         }
-    }
+    });
 
     let n_chr = counts.iter().sum::<u64>();
     write!(
@@ -536,19 +549,29 @@ fn write_site_missingness_row(
     let mut missing = 0_u64;
     let mut n_data = 0_u64;
 
-    for (sample, counts) in samples.iter().zip(sample_missingness) {
+    let mut visited = vec![false; samples.len()];
+    for counts in sample_missingness.iter_mut() {
         counts.n_data += 1;
-        let genotype = gt_index.and_then(|index| {
-            record
-                .column(sample.column)
-                .and_then(|value| sample_format_value_at(value, index))
-        });
+    }
+
+    for_each_selected_sample_value(record, samples, |index, _sample, value| {
+        visited[index] = true;
+        let counts = &mut sample_missingness[index];
+        let genotype = gt_index.and_then(|index| sample_format_value_at(value, index));
         let allele_slots = genotype.map_or(2, genotype_allele_slots);
         n_data += allele_slots;
         let is_missing = genotype.is_none_or(genotype_is_missing);
         if is_missing {
             counts.n_missing += 1;
             missing += allele_slots;
+        }
+    });
+
+    for (was_visited, counts) in visited.into_iter().zip(sample_missingness.iter_mut()) {
+        if !was_visited {
+            n_data += 2;
+            missing += 2;
+            counts.n_missing += 1;
         }
     }
 
@@ -572,6 +595,23 @@ fn genotype_allele_slots(gt: &[u8]) -> u64 {
         .iter()
         .filter(|byte| **byte == b'/' || **byte == b'|')
         .count() as u64
+}
+
+fn for_each_selected_sample_value<'a>(
+    record: &RecordView<'a>,
+    samples: &[SampleColumn],
+    mut visit: impl FnMut(usize, &SampleColumn, &'a [u8]),
+) {
+    let mut selected = 0_usize;
+    record.for_each_sample_column_with_index(|column, value| {
+        while selected < samples.len() && samples[selected].column < column {
+            selected += 1;
+        }
+        if selected < samples.len() && samples[selected].column == column {
+            visit(selected, &samples[selected], value);
+            selected += 1;
+        }
+    });
 }
 
 impl SiteAlleleSummary {
@@ -647,15 +687,11 @@ fn site_allele_summary(
     let gt_index = record
         .column(8)
         .and_then(|format| format_key_index(format, b"GT"));
-    let mut genotypes = Vec::with_capacity(samples.len());
+    let mut genotypes = vec![None; samples.len()];
 
-    for sample in samples {
+    for_each_selected_sample_value(record, samples, |index, _sample, value| {
         let genotype = gt_index
-            .and_then(|index| {
-                record
-                    .column(sample.column)
-                    .and_then(|value| sample_format_value_at(value, index))
-            })
+            .and_then(|index| sample_format_value_at(value, index))
             .and_then(parse_called_genotype);
         if let Some(genotype) = &genotype {
             for allele in genotype {
@@ -664,8 +700,8 @@ fn site_allele_summary(
                 }
             }
         }
-        genotypes.push(genotype);
-    }
+        genotypes[index] = genotype;
+    });
 
     Ok(SiteAlleleSummary {
         chrom: bytes_text(record.chrom())?.to_owned(),
@@ -754,6 +790,88 @@ fn population_alt_counts(site: &SiteAlleleSummary, indices: &[usize]) -> Option<
     (n > 0).then_some((alt, n))
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+struct PopulationWeirSummary {
+    called_individuals: u64,
+    alt_count: u64,
+    heterozygotes: u64,
+}
+
+fn weir_cockerham_fst(
+    site: &SiteAlleleSummary,
+    pop1: &[usize],
+    pop2: &[usize],
+) -> Result<Option<f64>> {
+    if site.allele_counts.len() != 2 {
+        bail!("weir-cockerham fst supports only biallelic sites");
+    }
+
+    let pop1 = population_weir_summary(site, pop1)?;
+    let pop2 = population_weir_summary(site, pop2)?;
+    let n1 = pop1.called_individuals as f64;
+    let n2 = pop2.called_individuals as f64;
+    if n1 == 0.0 || n2 == 0.0 {
+        return Ok(None);
+    }
+
+    let r = 2.0;
+    let n_sum = n1 + n2;
+    let nbar = n_sum / r;
+    if nbar <= 1.0 {
+        return Ok(None);
+    }
+    let sum_nsqr = n1.powi(2) + n2.powi(2);
+    let nc = (n_sum - (sum_nsqr / n_sum)) / (r - 1.0);
+    if nc == 0.0 {
+        return Ok(None);
+    }
+
+    let p1 = pop1.alt_count as f64 / (2.0 * n1);
+    let p2 = pop2.alt_count as f64 / (2.0 * n2);
+    let pbar = (pop1.alt_count + pop2.alt_count) as f64 / (2.0 * n_sum);
+    let hbar = (pop1.heterozygotes + pop2.heterozygotes) as f64 / n_sum;
+    let ssqr = (n1 * (p1 - pbar).powi(2) + n2 * (p2 - pbar).powi(2)) / ((r - 1.0) * nbar);
+
+    // VCFtools' --weir-fst-pop implementation of Weir and Cockerham's biallelic
+    // variance components. This path is intentionally scoped to called diploid
+    // biallelic genotypes.
+    let a = (ssqr - (pbar * (1.0 - pbar) - (((r - 1.0) * ssqr) / r) - (hbar / 4.0)) / (nbar - 1.0))
+        * nbar
+        / nc;
+    let b = (pbar * (1.0 - pbar)
+        - (ssqr * (r - 1.0) / r)
+        - hbar * (((2.0 * nbar) - 1.0) / (4.0 * nbar)))
+        * nbar
+        / (nbar - 1.0);
+    let c = hbar / 2.0;
+    let denominator = a + b + c;
+    if denominator.is_nan() || denominator == 0.0 {
+        return Ok(None);
+    }
+    Ok(Some(a / denominator))
+}
+
+fn population_weir_summary(
+    site: &SiteAlleleSummary,
+    indices: &[usize],
+) -> Result<PopulationWeirSummary> {
+    let mut summary = PopulationWeirSummary::default();
+    for index in indices {
+        let Some(genotype) = site.genotypes.get(*index).and_then(Option::as_ref) else {
+            continue;
+        };
+        if genotype.len() != 2 || genotype.iter().any(|allele| *allele > 1) {
+            bail!("weir-cockerham fst supports only diploid biallelic called genotypes");
+        }
+        summary.called_individuals += 1;
+        summary.alt_count += genotype.iter().filter(|allele| **allele == 1).count() as u64;
+        if genotype[0] != genotype[1] {
+            summary.heterozygotes += 1;
+        }
+    }
+    Ok(summary)
+}
+
 fn site_pi(site: &SiteAlleleSummary) -> Option<f64> {
     let n_chr = site.allele_counts.iter().sum::<u64>();
     if n_chr < 2 {
@@ -770,10 +888,57 @@ fn site_pi(site: &SiteAlleleSummary) -> Option<f64> {
     Some(n_chr as f64 / (n_chr as f64 - 1.0) * (1.0 - homozygosity))
 }
 
+#[derive(Debug, Clone, Copy)]
+struct WindowPiCounts {
+    site_pairs: u64,
+    mismatches: u64,
+}
+
+fn window_pi_counts(site: &SiteAlleleSummary) -> Option<WindowPiCounts> {
+    let n_chr = site.allele_counts.iter().sum::<u64>();
+    if n_chr < 2 {
+        return None;
+    }
+
+    let mismatches = site
+        .allele_counts
+        .iter()
+        .map(|count| count * (n_chr - count))
+        .sum::<u64>();
+    (mismatches > 0).then_some(WindowPiCounts {
+        site_pairs: n_chr * (n_chr - 1),
+        mismatches,
+    })
+}
+
+fn tajima_site_pi_component(site: &SiteAlleleSummary, n_chr: u64) -> Result<Option<f64>> {
+    if site.allele_counts.len() != 2 {
+        bail!("tajima-d supports only biallelic sites");
+    }
+    if n_chr < 2 {
+        return Ok(None);
+    }
+    for genotype in site.genotypes.iter().flatten() {
+        if genotype.len() != 2 || genotype.iter().any(|allele| *allele > 1) {
+            bail!("tajima-d supports only diploid biallelic called genotypes");
+        }
+    }
+
+    let observed_n_chr = site.allele_counts.iter().sum::<u64>();
+    if observed_n_chr == 0 || site.allele_counts[0] == 0 || site.allele_counts[1] == 0 {
+        return Ok(None);
+    }
+
+    let p_ref = site.allele_counts[0] as f64 / observed_n_chr as f64;
+    Ok(Some(
+        2.0 * p_ref * (1.0 - p_ref) * n_chr as f64 / (n_chr as f64 - 1.0),
+    ))
+}
+
 fn add_window_pi(
     windows: &mut Vec<WindowSummary>,
     site: &SiteAlleleSummary,
-    pi: f64,
+    counts: WindowPiCounts,
     window_size: u64,
 ) {
     let start = ((site.pos - 1) / window_size) * window_size + 1;
@@ -782,9 +947,37 @@ fn add_window_pi(
         .last_mut()
         .filter(|window| window.chrom == site.chrom && window.start == start)
     {
+        window.segregating_sites += 1;
+        window.site_pairs += counts.site_pairs;
+        window.mismatches += counts.mismatches;
+        return;
+    }
+
+    windows.push(WindowSummary {
+        chrom: site.chrom.clone(),
+        start,
+        end,
+        pi_sum: 0.0,
+        segregating_sites: 1,
+        site_pairs: counts.site_pairs,
+        mismatches: counts.mismatches,
+    });
+}
+
+fn add_tajima_window(
+    windows: &mut Vec<WindowSummary>,
+    site: &SiteAlleleSummary,
+    pi: f64,
+    window_size: u64,
+) {
+    let start = (site.pos / window_size) * window_size;
+    let end = start + window_size - 1;
+    if let Some(window) = windows
+        .last_mut()
+        .filter(|window| window.chrom == site.chrom && window.start == start)
+    {
         window.pi_sum += pi;
         window.segregating_sites += 1;
-        window.max_n_chr = window.max_n_chr.max(site.allele_counts.iter().sum());
         return;
     }
 
@@ -794,16 +987,9 @@ fn add_window_pi(
         end,
         pi_sum: pi,
         segregating_sites: 1,
-        max_n_chr: site.allele_counts.iter().sum(),
+        site_pairs: 0,
+        mismatches: 0,
     });
-}
-
-fn format_fraction_f64(numerator: f64, denominator: u64) -> String {
-    if denominator == 0 {
-        ".".to_owned()
-    } else {
-        format_ratio(numerator / denominator as f64)
-    }
 }
 
 fn tajima_d(pi_sum: f64, segregating_sites: u64, n_chr: u64) -> Option<f64> {

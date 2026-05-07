@@ -182,6 +182,7 @@ S4\t1\t0.9\t2\t0.09677\n"
 fn fst_reports_pairwise_population_estimates() {
     let dir = tempdir().unwrap();
     let output = dir.path().join("out.fst");
+    let explicit_output = dir.path().join("out.explicit-hudson.fst");
 
     Command::cargo_bin("variantflow")
         .unwrap()
@@ -197,14 +198,90 @@ fn fst_reports_pairwise_population_estimates() {
         ])
         .assert()
         .success();
+    Command::cargo_bin("variantflow")
+        .unwrap()
+        .args([
+            "fst",
+            fixture("tests/data/popgen_stats.vcf").to_str().unwrap(),
+            "--pop",
+            fixture("tests/data/popgen_pop1.txt").to_str().unwrap(),
+            "--pop",
+            fixture("tests/data/popgen_pop2.txt").to_str().unwrap(),
+            "--estimator",
+            "hudson",
+            "-o",
+            explicit_output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let expected = "CHROM\tPOS\tHUDSON_FST\n\
+1\t100\t0.2\n\
+1\t200\t0\n\
+1\t300\t-0.166667\n";
+    assert_eq!(fs::read_to_string(&output).unwrap(), expected);
+    assert_eq!(fs::read_to_string(explicit_output).unwrap(), expected);
+}
+
+#[test]
+fn fst_reports_weir_cockerham_estimates_when_requested() {
+    let dir = tempdir().unwrap();
+    let output = dir.path().join("out.weir.fst");
+
+    Command::cargo_bin("variantflow")
+        .unwrap()
+        .args([
+            "fst",
+            fixture("tests/data/popgen_stats.vcf").to_str().unwrap(),
+            "--pop",
+            fixture("tests/data/popgen_pop1.txt").to_str().unwrap(),
+            "--pop",
+            fixture("tests/data/popgen_pop2.txt").to_str().unwrap(),
+            "--estimator",
+            "weir-cockerham",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
 
     assert_eq!(
         fs::read_to_string(output).unwrap(),
-        "CHROM\tPOS\tHUDSON_FST\n\
+        "CHROM\tPOS\tWEIR_AND_COCKERHAM_FST\n\
 1\t100\t0.2\n\
-1\t200\t0\n\
-1\t300\t-0.166667\n"
+1\t200\t0.6\n\
+1\t300\t-0.5\n"
     );
+}
+
+#[test]
+fn weir_cockerham_fst_rejects_multiallelic_sites() {
+    let dir = tempdir().unwrap();
+    let pop1 = dir.path().join("pop1.txt");
+    let pop2 = dir.path().join("pop2.txt");
+    let output = dir.path().join("out.weir.fst");
+    fs::write(&pop1, "S1\nS2\n").unwrap();
+    fs::write(&pop2, "S3\n").unwrap();
+
+    Command::cargo_bin("variantflow")
+        .unwrap()
+        .args([
+            "fst",
+            fixture("tests/data/popgen_example.vcf").to_str().unwrap(),
+            "--pop",
+            pop1.to_str().unwrap(),
+            "--pop",
+            pop2.to_str().unwrap(),
+            "--estimator",
+            "weir-cockerham",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "weir-cockerham fst supports only biallelic sites",
+        ));
 }
 
 #[test]
@@ -238,17 +315,37 @@ fn pi_and_window_pi_report_site_diversity() {
 
     assert_eq!(
         fs::read_to_string(site_output).unwrap(),
-        "CHROM\tPOS\tN_CHR\tPI\n\
-1\t100\t8\t0.571429\n\
-1\t200\t6\t0.333333\n\
-1\t300\t8\t0.535714\n"
+        "CHROM\tPOS\tPI\n\
+1\t100\t0.571429\n\
+1\t200\t0.333333\n\
+1\t300\t0.535714\n"
     );
     assert_eq!(
         fs::read_to_string(window_output).unwrap(),
-        "CHROM\tBIN_START\tBIN_END\tN_VARIANTS\tPI_SUM\tPI_PER_VARIANT\n\
-1\t1\t200\t2\t0.904762\t0.452381\n\
-1\t201\t400\t1\t0.535714\t0.535714\n"
+        "CHROM\tBIN_START\tBIN_END\tN_VARIANTS\tPI\n\
+1\t1\t200\t2\t0.003759\n\
+1\t201\t400\t1\t0.002679\n"
     );
+}
+
+#[test]
+fn pi_rejects_zero_window_size() {
+    let dir = tempdir().unwrap();
+    let output = dir.path().join("out.windowed.pi");
+
+    Command::cargo_bin("variantflow")
+        .unwrap()
+        .args([
+            "pi",
+            fixture("tests/data/popgen_stats.vcf").to_str().unwrap(),
+            "--window-size",
+            "0",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("--window-size must be positive"));
 }
 
 #[test]
@@ -262,7 +359,7 @@ fn tajima_d_reports_windowed_summary() {
             "tajima-d",
             fixture("tests/data/popgen_stats.vcf").to_str().unwrap(),
             "--window-size",
-            "500",
+            "200",
             "-o",
             output.to_str().unwrap(),
         ])
@@ -271,9 +368,32 @@ fn tajima_d_reports_windowed_summary() {
 
     assert_eq!(
         fs::read_to_string(output).unwrap(),
-        "CHROM\tBIN_START\tN_SNPS\tN_CHR\tPI_SUM\tTAJIMA_D\n\
-1\t1\t3\t8\t1.440476\t1.008047\n"
+        "CHROM\tBIN_START\tN_SNPS\tTajimaD\n\
+1\t0\t1\t1.444161\n\
+1\t200\t2\t0.395054\n"
     );
+}
+
+#[test]
+fn tajima_d_rejects_multiallelic_sites() {
+    let dir = tempdir().unwrap();
+    let output = dir.path().join("out.Tajima.D");
+
+    Command::cargo_bin("variantflow")
+        .unwrap()
+        .args([
+            "tajima-d",
+            fixture("tests/data/popgen_example.vcf").to_str().unwrap(),
+            "--window-size",
+            "200",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains(
+            "tajima-d supports only biallelic sites",
+        ));
 }
 
 #[test]
@@ -296,7 +416,7 @@ fn ld_reports_genotype_dosage_r2_between_biallelic_sites() {
 
     assert_eq!(
         fs::read_to_string(output).unwrap(),
-        "CHROM\tPOS1\tPOS2\tN_INDV\tR2\n\
+        "CHR\tPOS1\tPOS2\tN_INDV\tR^2\n\
 1\t100\t200\t3\t0.75\n\
 1\t100\t300\t4\t0.181818\n\
 1\t200\t300\t3\t0.25\n"

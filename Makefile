@@ -1,4 +1,4 @@
-.PHONY: build test test-htslib fmt clippy verify release-candidate-check bioconda-recipe-check paper-check benchmark-table vcftools-parity bench-smoke bench-stress bench-public bench-public-region bench-heavy bench-compat bench-v09 bench-v10-compressed bench-v10-parquet bench-v10-columnar bench-v11-parallel bench-v12 bench-v14 bench-v17 bench-v18 bench-v19 bench-v20 bench-v06-smoke
+.PHONY: build test test-htslib fmt clippy verify release-candidate-check bioconda-recipe-check paper-check benchmark-table vcftools-parity bench-vcftools-popgen bench-smoke bench-stress bench-public bench-public-region bench-heavy bench-compat bench-v09 bench-v10-compressed bench-v10-parquet bench-v10-columnar bench-v11-parallel bench-v12 bench-v14 bench-v17 bench-v18 bench-v19 bench-v20 bench-v06-smoke
 
 build:
 	cargo build
@@ -35,6 +35,7 @@ verify:
 	bash -n benchmark/run_v18_public_format_expression_breadth.sh
 	bash -n benchmark/run_v19_second_public_format_cohort.sh
 	bash -n benchmark/run_v20_human_format_cohort.sh
+	bash -n benchmark/run_vcftools_population_benchmarks.sh
 	bash -n benchmark/run_vcftools_parity.sh
 	bash -n packaging/bioconda/variantflow/build.sh
 	bash -n packaging/bioconda/variantflow/run_test.sh
@@ -72,6 +73,9 @@ benchmark-table:
 
 vcftools-parity:
 	./benchmark/run_vcftools_parity.sh
+
+bench-vcftools-popgen:
+	./benchmark/run_vcftools_population_benchmarks.sh
 
 bench-smoke:
 	./benchmark/run_benchmarks.sh

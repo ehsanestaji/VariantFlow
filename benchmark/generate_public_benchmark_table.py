@@ -184,6 +184,25 @@ ROWS = [
         required_tokens=("BCF input", "BGZF output", "tabix -p vcf"),
         caveat="htslib-backed TSV remains a tracked optimization gap",
     ),
+    Row(
+        workflow="VCFtools-style population summaries",
+        dataset="Staged bounded DDBJ CHM13 3715-sample human biallelic cohort",
+        correctness="normalized VCFtools parity passed for supported diploid biallelic rows",
+        measured_result="1.43x to 8.54x faster than VCFtools across frequency, missingness, HWE, heterozygosity, site/window pi, Tajima's D, LD, and Weir-Cockerham Fst",
+        source="benchmark/reports/vcftools-popgen-parity-benchmark.md",
+        required_tokens=(
+            "public cohort",
+            "3715",
+            "682",
+            "3.21x",
+            "8.54x",
+            "1.43x",
+            "Weir-Cockerham Fst",
+            "passed: make vcftools-parity",
+            "This report does not support a broad VCFtools replacement claim",
+        ),
+        caveat="one measured run on a 682-record staged cohort; HWE exact p-value is outside current output; auto-derived Fst population files are benchmark-only",
+    ),
 ]
 
 

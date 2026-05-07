@@ -1310,3 +1310,85 @@ fn human_public_format_cohort_harness_is_declared() {
         assert!(report.contains(required), "missing report text {required}");
     }
 }
+
+#[test]
+fn vcftools_popgen_benchmark_scaffold_tracks_required_fields() {
+    let root = repo_root();
+    let makefile = fs::read_to_string(root.join("Makefile")).unwrap();
+    let script = fs::read_to_string(root.join("benchmark/run_vcftools_population_benchmarks.sh"))
+        .expect("read VCFtools population benchmark script");
+    let report =
+        fs::read_to_string(root.join("benchmark/reports/vcftools-popgen-parity-benchmark.md"))
+            .expect("read VCFtools population benchmark report");
+
+    assert!(makefile.contains("bench-vcftools-popgen:"));
+    assert!(makefile.contains("run_vcftools_population_benchmarks.sh"));
+    assert!(makefile.contains("bash -n benchmark/run_vcftools_population_benchmarks.sh"));
+
+    for required in [
+        "VCF_FAST_VCFTOOLS_POPGEN_INPUT",
+        "VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_INPUT",
+        "VCF_FAST_VCFTOOLS_POPGEN_REPORT",
+        "VCF_FAST_VCFTOOLS_POPGEN_RUNS",
+        "VCF_FAST_VCFTOOLS_POPGEN_WARMUP",
+        "vcftools_input_flag",
+        "--gzvcf",
+        "derive_population_files",
+        "prepare_public_biallelic_dataset",
+        "bcftools view -m2 -M2",
+        "VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_RECORD_LIMIT",
+        "human-format-cohort-1000.vcf.gz",
+        "tests/data/popgen_stats.vcf",
+        "make vcftools-parity",
+        "benchmark/check_vcftools_parity.py",
+        "frequency",
+        "missingness",
+        "HWE",
+        "heterozygosity",
+        "site pi",
+        "window pi",
+        "Tajima's D",
+        "LD",
+        "Weir-Cockerham Fst",
+        "vcftools --version",
+        "record count",
+        "sample count",
+        "runtime",
+        "speedup",
+        "exact VariantFlow command",
+        "exact VCFtools command",
+        "correctness result",
+        "caveats",
+        "pending",
+    ] {
+        assert!(script.contains(required), "missing script text {required}");
+    }
+
+    for required in [
+        "VCFtools Population-Genetics Parity Benchmark",
+        "runtime",
+        "speedup",
+        "input size",
+        "record count",
+        "sample count",
+        "exact VariantFlow command",
+        "exact VCFtools command",
+        "VCFtools version",
+        "correctness result",
+        "caveats",
+        "frequency",
+        "missingness",
+        "HWE",
+        "heterozygosity",
+        "site pi",
+        "window pi",
+        "Tajima's D",
+        "LD",
+        "Weir-Cockerham Fst",
+        "staged bounded biallelic cohort",
+        "public biallelic staged cohort",
+        "This report does not support a broad VCFtools replacement claim",
+    ] {
+        assert!(report.contains(required), "missing report text {required}");
+    }
+}
