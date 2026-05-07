@@ -313,7 +313,7 @@ run_tier() {
   vcftools_base="$VCFTOOLS_PREFIX"
   input_flag="$(vcftools_input_flag "$dataset")"
   actual_count="$(actual_records "$dataset")"
-  scope_caveat="true public biallelic human cohort; population metadata source: $population_source; no header-fallback; requested tier $tier_limit; actual records $actual_count"
+  scope_caveat="true public biallelic human cohort; population metadata source: $population_source; requested tier $tier_limit; actual records $actual_count"
 
   benchmark_pair "$tier" "frequency" "$dataset" "$population_source" \
     "$vf_base freq $(shell_quote "$dataset") -o $(shell_quote "$prefix/variantflow.frq")" \
@@ -390,8 +390,8 @@ Runs: \`$RUNS\`; warmup: \`$WARMUP\`; public tiers: \`$PUBLIC_TIERS\`; groups:
 Public tier labels are requested staging limits; the actual record count column
 records how many biallelic SNP records were available after
 \`bcftools view -m2 -M2 -v snps\` streaming into bgzip. Population files come
-from official IGSR metadata through \`$POPULATION_HELPER\`; the harness uses no
-header-fallback population files.
+from official population metadata (IGSR sample metadata) through
+\`$POPULATION_HELPER\`; the harness uses no header-fallback population files.
 
 Correctness gate: \`make vcftools-parity\` plus
 \`benchmark/check_vcftools_parity.py\` on each measured tier output directory.
