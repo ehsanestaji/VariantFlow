@@ -9,6 +9,8 @@ import hashlib
 from collections import defaultdict
 from pathlib import Path
 
+KNOWN_1000G_SUPERPOPULATIONS = ("AFR", "AMR", "EAS", "EUR", "SAS")
+
 
 def open_text(path: Path):
     if path.suffix == ".gz":
