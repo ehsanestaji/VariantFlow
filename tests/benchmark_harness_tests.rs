@@ -1538,4 +1538,19 @@ fn v17_true_public_population_evidence_harness_is_declared() {
     ] {
         assert!(report.contains(required), "missing report text {required}");
     }
+
+    for forbidden in [
+        "supports a broad VCFtools replacement claim",
+        "broad VCFtools replacement claim is supported",
+        "VariantFlow replaces VCFtools",
+    ] {
+        assert!(
+            !script.contains(forbidden),
+            "forbidden broad claim text in script: {forbidden}"
+        );
+        assert!(
+            !report.contains(forbidden),
+            "forbidden broad claim text in report: {forbidden}"
+        );
+    }
 }
