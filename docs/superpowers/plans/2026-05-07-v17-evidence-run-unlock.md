@@ -184,7 +184,10 @@ Then add these assertions before the report assertions:
     ));
     assert!(downloader.contains("igsr-1000g-3202-sample-ped-population.txt"));
     assert!(downloader.contains("download_igsr_true_population"));
-    assert!(!downloader.contains("blocked: choose official IGSR sample metadata URL before true population evidence run"));
+    assert!(!downloader.contains(concat!(
+        "blocked: choose official IGSR sample ",
+        "metadata URL before true population evidence run"
+    )));
 ```
 
 - [ ] **Step 5: Run the targeted test and confirm it fails**
@@ -401,7 +404,7 @@ Expected: commit succeeds with the downloader staged.
 Replace:
 
 ```bash
-PUBLIC_METADATA="${VCF_FAST_V17_TRUE_POP_METADATA:-tests/output/public-data/igsr-1000g-sample-metadata.tsv}"
+PUBLIC_METADATA="${VCF_FAST_V17_TRUE_POP_METADATA:-tests/output/public-data/igsr-1000g-3202-sample-ped-population.txt}"
 ```
 
 with:
@@ -520,12 +523,8 @@ The `igsr-true-population` downloader caches the pinned 1000 Genomes high-covera
 
 - [ ] **Step 3: Check the documentation does not reference the old metadata path**
 
-Run:
-
-```bash
-rg "igsr-1000g-sample-metadata.tsv|choose official IGSR sample metadata" docs benchmark tests
-```
-
+Run the stale-token search for the retired sample-metadata filename and the
+retired metadata-blocker wording across `docs`, `benchmark`, and `tests`.
 Expected: no matches.
 
 - [ ] **Step 4: Commit documentation**

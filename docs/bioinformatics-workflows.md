@@ -75,13 +75,19 @@ The serious VCFtools-replacement benchmark requires a cached 1000 Genomes / IGSR
 VCF and official sample metadata with `sample`, `population`, and
 `superpopulation` columns. Header-derived fallback groups are validation-only
 and must not support public population-genetics claims.
+The `igsr-true-population` downloader caches the pinned 1000 Genomes
+high-coverage 3202-sample metadata file
+`20130606_g1k_3202_samples_ped_population.txt` and the chr22 VCF/TBI under
+`tests/output/public-data`, which remains ignored by git.
 
 ```bash
 benchmark/download_public_data.sh igsr-true-population
-VCF_FAST_V17_TRUE_POP_INPUT="tests/output/public-data/<cached-igsr-vcf>.vcf.gz" \
-VCF_FAST_V17_TRUE_POP_METADATA="tests/output/public-data/igsr-1000g-sample-metadata.tsv" \
+VCF_FAST_V17_TRUE_POP_INPUT="tests/output/public-data/1kGP_high_coverage_Illumina.chr22.filtered.SNV_INDEL_SV_phased_panel.vcf.gz" \
+VCF_FAST_V17_TRUE_POP_METADATA="tests/output/public-data/igsr-1000g-3202-sample-ped-population.txt" \
 VCF_FAST_V17_TRUE_POP_TIERS="10000 50000 100000" \
 VCF_FAST_V17_TRUE_POP_GROUPS="AFR:EUR" \
+VCF_FAST_V17_TRUE_POP_RUNS=3 \
+VCF_FAST_V17_TRUE_POP_WARMUP=1 \
 make bench-vcftools-true-popgen
 ```
 

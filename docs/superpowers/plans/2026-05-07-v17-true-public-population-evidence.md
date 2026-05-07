@@ -329,7 +329,7 @@ Create `benchmark/run_v17_true_population_evidence.sh` by copying the structure 
 OUT_DIR="${VCF_FAST_V17_TRUE_POP_OUT_DIR:-tests/output/v17-true-population-evidence}"
 REPORT="${VCF_FAST_V17_TRUE_POP_REPORT:-benchmark/reports/v17-true-public-population-evidence.md}"
 PUBLIC_INPUT="${VCF_FAST_V17_TRUE_POP_INPUT:-}"
-PUBLIC_METADATA="${VCF_FAST_V17_TRUE_POP_METADATA:-tests/output/public-data/igsr-1000g-sample-metadata.tsv}"
+PUBLIC_METADATA="${VCF_FAST_V17_TRUE_POP_METADATA:-tests/output/public-data/igsr-1000g-3202-sample-ped-population.txt}"
 PUBLIC_TIERS="${VCF_FAST_V17_TRUE_POP_TIERS:-10000 50000 100000}"
 PUBLIC_GROUPS="${VCF_FAST_V17_TRUE_POP_GROUPS:-AFR:EUR}"
 PUBLIC_GROUP_LEVEL="${VCF_FAST_V17_TRUE_POP_GROUP_LEVEL:-superpopulation}"
@@ -546,13 +546,14 @@ In `benchmark/download_public_data.sh`, add a target named `igsr-true-population
 
 ```bash
 VCF_FAST_V17_TRUE_POP_INPUT="tests/output/public-data/<cached-igsr-vcf>.vcf.gz"
-VCF_FAST_V17_TRUE_POP_METADATA="tests/output/public-data/igsr-1000g-sample-metadata.tsv"
+VCF_FAST_V17_TRUE_POP_METADATA="tests/output/public-data/igsr-1000g-3202-sample-ped-population.txt"
 ```
 
 If the final official metadata URL is not yet chosen, make the target exit `77` with this exact message:
 
 ```bash
-echo "blocked: choose official IGSR sample metadata URL before true population evidence run" >&2
+printf '%s%s\n' "blocked: choose official IGSR sample " \
+  "metadata URL before true population evidence run" >&2
 exit 77
 ```
 
@@ -573,7 +574,7 @@ and must not support public population-genetics claims.
 ```bash
 benchmark/download_public_data.sh igsr-true-population
 VCF_FAST_V17_TRUE_POP_INPUT="tests/output/public-data/<cached-igsr-vcf>.vcf.gz" \
-VCF_FAST_V17_TRUE_POP_METADATA="tests/output/public-data/igsr-1000g-sample-metadata.tsv" \
+VCF_FAST_V17_TRUE_POP_METADATA="tests/output/public-data/igsr-1000g-3202-sample-ped-population.txt" \
 VCF_FAST_V17_TRUE_POP_TIERS="10000 50000 100000" \
 VCF_FAST_V17_TRUE_POP_GROUPS="AFR:EUR" \
 make bench-vcftools-true-popgen
