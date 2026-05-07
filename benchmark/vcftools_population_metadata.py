@@ -15,6 +15,10 @@ def open_text(path: Path):
     return path.open("rt", encoding="utf-8")
 
 
+def append_suffix(path: Path, suffix: str) -> Path:
+    return Path(f"{path}{suffix}")
+
+
 def read_samples(vcf: Path) -> list[str]:
     with open_text(vcf) as handle:
         for line in handle:
@@ -73,9 +77,9 @@ def main() -> int:
     labels = read_metadata(args.metadata)
     pop1_label, pop2_label, pop1, pop2, source = choose_populations(samples, labels)
     args.out_prefix.parent.mkdir(parents=True, exist_ok=True)
-    pop1_path = args.out_prefix.with_suffix(".pop1.txt")
-    pop2_path = args.out_prefix.with_suffix(".pop2.txt")
-    meta_path = args.out_prefix.with_suffix(".population-source.tsv")
+    pop1_path = append_suffix(args.out_prefix, ".pop1.txt")
+    pop2_path = append_suffix(args.out_prefix, ".pop2.txt")
+    meta_path = append_suffix(args.out_prefix, ".population-source.tsv")
     pop1_path.write_text("\n".join(pop1) + "\n", encoding="utf-8")
     pop2_path.write_text("\n".join(pop2) + "\n", encoding="utf-8")
     meta_path.write_text(
