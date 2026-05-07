@@ -403,12 +403,15 @@ Larger public cohorts remain opt-in through
 
 Runs: \`$RUNS\`; warmup: \`$WARMUP\`; public tiers:
 \`$PUBLIC_TIERS\`.
+Public tier labels are requested staging limits; the actual record count column
+is the evidence source for how many biallelic records were available after
+staging.
 
 Correctness gate: \`make vcftools-parity\` plus
 \`benchmark/check_vcftools_parity.py\` on each measured tier output directory.
 
 Measured rows report hyperfine runtime mean and resource metrics captured by
-\`$RESOURCE_RUNNER\` from \`python3 benchmark/command_resource_metrics.py\`.
+\`$RESOURCE_RUNNER\`.
 The resource helper runs each exact VariantFlow and VCFtools command once with
 \`--json-out <metrics.json> -- bash -lc "\$command"\` and records peak RSS KB,
 CPU seconds, and CPU-hour estimate fields. A resource helper failure fails the
