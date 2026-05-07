@@ -4,7 +4,7 @@ use anyhow::Result;
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 
 use crate::compat::{CompressionMode, Region};
-use crate::engine::{convert, diff, filter, stats};
+use crate::engine::{convert, diff, filter, popgen, stats};
 
 #[derive(Debug, Parser)]
 #[command(about = "Selective operations for VCF/BCF variant data")]
@@ -33,6 +33,24 @@ enum Command {
         input: PathBuf,
         #[arg(long)]
         region: Option<Region>,
+    },
+    Freq {
+        input: PathBuf,
+        #[arg(long)]
+        keep: Option<PathBuf>,
+        #[arg(long)]
+        remove: Option<PathBuf>,
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+    Missingness {
+        input: PathBuf,
+        #[arg(long)]
+        keep: Option<PathBuf>,
+        #[arg(long)]
+        remove: Option<PathBuf>,
+        #[arg(short, long)]
+        output: PathBuf,
     },
     Diff {
         a: PathBuf,
@@ -80,6 +98,18 @@ pub fn run_with_name(name: &'static str) -> Result<()> {
             compression,
         ),
         Command::Stats { input, region } => stats::run(&input, region.as_ref()),
+        Command::Freq {
+            input,
+            keep,
+            remove,
+            output,
+        } => popgen::run_freq(&input, keep.as_deref(), remove.as_deref(), &output),
+        Command::Missingness {
+            input,
+            keep,
+            remove,
+            output,
+        } => popgen::run_missingness(&input, keep.as_deref(), remove.as_deref(), &output),
         Command::Diff {
             a,
             b,
