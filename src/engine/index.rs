@@ -5,42 +5,15 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use memchr::memchr;
-use serde::Serialize;
 
 use crate::io::open_reader;
 use crate::vcf::{InfoView, RecordView};
 
+mod schema;
+
+use schema::{IndexChunk, OffsetModel, VariantFlowIndex, source_identity};
+
 const DEFAULT_CHUNK_RECORDS: u64 = 8192;
-
-#[derive(Debug, Serialize)]
-struct VariantFlowIndex {
-    schema_version: u32,
-    index_kind: &'static str,
-    offset_model: &'static str,
-    virtual_offsets_available: bool,
-    source: String,
-    chunk_record_target: u64,
-    record_count: u64,
-    chunks: Vec<IndexChunk>,
-}
-
-#[derive(Debug, Serialize)]
-struct IndexChunk {
-    ordinal: u64,
-    first_record: u64,
-    record_count: u64,
-    chrom_start: String,
-    chrom_end: String,
-    pos_min: u64,
-    pos_max: u64,
-    qual_min: Option<f64>,
-    qual_max: Option<f64>,
-    filters: Vec<String>,
-    info_dp_min: Option<i64>,
-    info_dp_max: Option<i64>,
-    has_info_af: bool,
-    format_keys: Vec<String>,
-}
 
 #[derive(Debug)]
 struct ChunkBuilder {
@@ -137,7 +110,12 @@ impl ChunkBuilder {
             info_dp_min: self.info_dp_min,
             info_dp_max: self.info_dp_max,
             has_info_af: self.has_info_af,
+            info_af_min: None,
+            info_af_max: None,
+            info_af_complete: false,
             format_keys: self.format_keys.into_iter().collect(),
+            virtual_start: None,
+            virtual_end: None,
         })
     }
 }
@@ -182,11 +160,11 @@ fn write_index(input: &Path, output: &Path, chunk_record_target: u64) -> Result<
     }
 
     let index = VariantFlowIndex {
-        schema_version: 1,
+        schema_version: 2,
         index_kind: "variantflow-vfi",
-        offset_model: "record-chunk",
+        offset_model: OffsetModel::RecordChunk,
         virtual_offsets_available: false,
-        source: input.display().to_string(),
+        source: source_identity(input)?,
         chunk_record_target,
         record_count,
         chunks,
