@@ -79,13 +79,13 @@ fn missingness_writes_vcftools_style_site_and_individual_reports() {
     assert_eq!(
         fs::read_to_string(prefix.with_extension("lmiss")).unwrap(),
         "CHR\tPOS\tN_DATA\tN_GENOTYPE_FILTERED\tN_MISS\tF_MISS\n\
-1\t100\t3\t0\t1\t0.333333\n\
-1\t200\t3\t0\t0\t0\n\
-1\t300\t3\t0\t2\t0.666667\n"
+1\t100\t6\t0\t2\t0.333333\n\
+1\t200\t6\t0\t0\t0\n\
+1\t300\t5\t0\t3\t0.6\n"
     );
     assert_eq!(
         fs::read_to_string(prefix.with_extension("imiss")).unwrap(),
-        "INDV\tN_DATA\tN_GENOTYPE_FILTERED\tN_MISS\tF_MISS\n\
+        "INDV\tN_DATA\tN_GENOTYPES_FILTERED\tN_MISS\tF_MISS\n\
 S1\t3\t0\t1\t0.333333\n\
 S2\t3\t0\t1\t0.333333\n\
 S3\t3\t0\t1\t0.333333\n"
@@ -115,13 +115,13 @@ fn missingness_respects_remove_sample_file() {
     assert_eq!(
         fs::read_to_string(prefix.with_extension("lmiss")).unwrap(),
         "CHR\tPOS\tN_DATA\tN_GENOTYPE_FILTERED\tN_MISS\tF_MISS\n\
-1\t100\t2\t0\t0\t0\n\
-1\t200\t2\t0\t0\t0\n\
-1\t300\t2\t0\t2\t1\n"
+1\t100\t4\t0\t0\t0\n\
+1\t200\t4\t0\t0\t0\n\
+1\t300\t3\t0\t3\t1\n"
     );
     assert_eq!(
         fs::read_to_string(prefix.with_extension("imiss")).unwrap(),
-        "INDV\tN_DATA\tN_GENOTYPE_FILTERED\tN_MISS\tF_MISS\n\
+        "INDV\tN_DATA\tN_GENOTYPES_FILTERED\tN_MISS\tF_MISS\n\
 S1\t3\t0\t1\t0.333333\n\
 S2\t3\t0\t1\t0.333333\n"
     );
@@ -171,10 +171,10 @@ fn het_reports_individual_observed_expected_homozygosity() {
     assert_eq!(
         fs::read_to_string(output).unwrap(),
         "INDV\tO_HOM\tE_HOM\tN_SITES\tF\n\
-S1\t2\t1.753472\t3\t-0.197772\n\
-S2\t2\t1.753472\t3\t-0.197772\n\
-S3\t2\t1.753472\t3\t-0.197772\n\
-S4\t1\t1.03125\t2\t0.032258\n"
+S1\t2\t1.6\t3\t0.30579\n\
+S2\t2\t1.6\t3\t0.30579\n\
+S3\t2\t1.6\t3\t0.30579\n\
+S4\t1\t0.9\t2\t0.09677\n"
     );
 }
 

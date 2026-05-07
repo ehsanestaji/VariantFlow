@@ -1,4 +1,4 @@
-##fileformat=VCFv4.3
+##fileformat=VCFv4.2
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
 ##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">
 ##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">

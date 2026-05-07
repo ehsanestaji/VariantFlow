@@ -241,15 +241,18 @@ CHROM	POS	N_ALLELES	N_CHR	{ALLELE:FREQ}
 - `output_prefix.imiss`: individual missingness with `INDV`, `N_DATA`,
   `N_GENOTYPE_FILTERED`, `N_MISS`, and `F_MISS`.
 
-These commands are correctness-focused initial coverage for common VCFtools
-workflows. `hardy`, `het`, `pi`, `tajima-d`, and `ld` currently operate on
-called diploid biallelic genotypes. `fst` reports a site-level Hudson Fst
-estimator for two population files; exact Weir-Cockerham parity with VCFtools is
-tracked as a remaining validation item. These commands are not yet benchmarked
-as VCFtools speed claims.
+These commands are correctness-focused coverage for common VCFtools workflows.
+The Dockerized `make vcftools-parity` harness checks `freq`, `missingness`,
+`hardy`, and `het` against VCFtools 0.1.16 on the regression fixture. `hardy`,
+`het`, `pi`, `tajima-d`, and `ld` currently operate on called diploid biallelic
+genotypes. `fst` reports a site-level Hudson Fst estimator for two population
+files; exact Weir-Cockerham parity with VCFtools is tracked as a remaining
+validation item. These commands are not yet benchmarked as VCFtools speed
+claims.
 
 When VCFtools is installed, run `make vcftools-parity` to generate side-by-side
-VariantFlow and VCFtools artifacts under `tests/output/vcftools-parity`.
+VariantFlow and VCFtools artifacts under `tests/output/vcftools-parity` and
+check normalized parity for the supported VCFtools rows.
 
 ## Diff Output
 

@@ -22,9 +22,12 @@ cargo build --release
 ./target/release/variantflow het "$INPUT" -o "$OUT_DIR/variantflow.het"
 
 vcftools --vcf "$INPUT" --freq --out "$OUT_DIR/vcftools-freq"
-vcftools --vcf "$INPUT" --missing-site --missing-indv --out "$OUT_DIR/vcftools-missingness"
+vcftools --vcf "$INPUT" --missing-site --out "$OUT_DIR/vcftools-missing-site"
+vcftools --vcf "$INPUT" --missing-indv --out "$OUT_DIR/vcftools-missing-indv"
 vcftools --vcf "$INPUT" --hardy --out "$OUT_DIR/vcftools-hardy"
 vcftools --vcf "$INPUT" --het --out "$OUT_DIR/vcftools-het"
+
+python3 benchmark/check_vcftools_parity.py "$OUT_DIR"
 
 cat > "$OUT_DIR/README.md" <<EOF
 # Optional VCFtools parity artifacts
@@ -35,9 +38,10 @@ Generated from:
 - VariantFlow: \`./target/release/variantflow\`
 - VCFtools: \`$(vcftools --version 2>&1 | head -n 1)\`
 
-This optional harness captures side-by-side outputs for manual/exact normalizer
-development. The default repository tests use deterministic fixtures because
-\`vcftools\` is not required for CI.
+This optional harness captures side-by-side outputs and checks normalized parity
+for frequency, site/individual missingness, HWE observed/expected/chi-square,
+and heterozygosity. Fst, pi, Tajima's D, and LD are still deterministic
+VariantFlow tests until exact VCFtools normalizers are added.
 EOF
 
 echo "VCFtools parity artifacts written to $OUT_DIR"

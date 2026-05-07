@@ -138,7 +138,7 @@ pub fn run_missingness(
         File::create(&imiss_path)
             .with_context(|| format!("failed to create {}", imiss_path.display()))?,
     );
-    writeln!(imiss, "INDV\tN_DATA\tN_GENOTYPE_FILTERED\tN_MISS\tF_MISS")?;
+    writeln!(imiss, "INDV\tN_DATA\tN_GENOTYPES_FILTERED\tN_MISS\tF_MISS")?;
     for (sample, counts) in samples.iter().zip(sample_missingness) {
         writeln!(
             imiss,
@@ -225,9 +225,10 @@ pub fn run_het(
         if biallelic.n_chr == 0 {
             return Ok(());
         }
-        let p_ref = biallelic.ref_count as f64 / biallelic.n_chr as f64;
-        let p_alt = biallelic.alt_count as f64 / biallelic.n_chr as f64;
-        let expected_hom = p_ref * p_ref + p_alt * p_alt;
+        let Some(pi) = site_pi(site) else {
+            return Ok(());
+        };
+        let expected_hom = 1.0 - pi;
 
         for (genotype, summary) in site.genotypes.iter().zip(&mut summaries) {
             let Some(genotype) = genotype else {
@@ -254,14 +255,17 @@ pub fn run_het(
         let f = if denominator == 0.0 {
             ".".to_owned()
         } else {
-            format_ratio((summary.expected_hom - summary.observed_hom as f64) / denominator)
+            format_fixed_trimmed(
+                (summary.observed_hom as f64 - summary.expected_hom) / denominator,
+                5,
+            )
         };
         writeln!(
             writer,
             "{}\t{}\t{}\t{}\t{}",
             sample,
             summary.observed_hom,
-            format_ratio(summary.expected_hom),
+            format_fixed_trimmed(summary.expected_hom, 1),
             summary.n_sites,
             f
         )?;
@@ -530,23 +534,24 @@ fn write_site_missingness_row(
         .column(8)
         .and_then(|format| format_key_index(format, b"GT"));
     let mut missing = 0_u64;
+    let mut n_data = 0_u64;
 
     for (sample, counts) in samples.iter().zip(sample_missingness) {
         counts.n_data += 1;
-        let is_missing = gt_index
-            .and_then(|index| {
-                record
-                    .column(sample.column)
-                    .and_then(|value| sample_format_value_at(value, index))
-            })
-            .is_none_or(genotype_is_missing);
+        let genotype = gt_index.and_then(|index| {
+            record
+                .column(sample.column)
+                .and_then(|value| sample_format_value_at(value, index))
+        });
+        let allele_slots = genotype.map_or(2, genotype_allele_slots);
+        n_data += allele_slots;
+        let is_missing = genotype.is_none_or(genotype_is_missing);
         if is_missing {
             counts.n_missing += 1;
-            missing += 1;
+            missing += allele_slots;
         }
     }
 
-    let n_data = samples.len() as u64;
     writeln!(
         writer,
         "{}\t{}\t{}\t0\t{}\t{}",
@@ -557,6 +562,16 @@ fn write_site_missingness_row(
         format_fraction(missing, n_data)
     )?;
     Ok(())
+}
+
+fn genotype_allele_slots(gt: &[u8]) -> u64 {
+    if gt.is_empty() {
+        return 1;
+    }
+    1 + gt
+        .iter()
+        .filter(|byte| **byte == b'/' || **byte == b'|')
+        .count() as u64
 }
 
 impl SiteAlleleSummary {
@@ -988,7 +1003,14 @@ fn format_fraction(numerator: u64, denominator: u64) -> String {
 }
 
 fn format_ratio(value: f64) -> String {
+    format_fixed_trimmed(value, 6)
+}
+
+fn format_fixed_trimmed(value: f64, precision: usize) -> String {
     let mut text = format!("{value:.6}");
+    if precision != 6 {
+        text = format!("{value:.precision$}");
+    }
     while text.contains('.') && text.ends_with('0') {
         text.pop();
     }
