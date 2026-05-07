@@ -1490,6 +1490,8 @@ fn v16_vcftools_public_evidence_tracks_tiers_real_populations_and_resources() {
 fn v17_true_public_population_evidence_harness_is_declared() {
     let root = repo_root();
     let makefile = fs::read_to_string(root.join("Makefile")).expect("read Makefile");
+    let downloader = fs::read_to_string(root.join("benchmark/download_public_data.sh"))
+        .expect("read public data downloader");
     let script = fs::read_to_string(root.join("benchmark/run_v17_true_population_evidence.sh"))
         .expect("read v1.7 true public population benchmark script");
     let helper = fs::read_to_string(root.join("benchmark/igsr_population_files.py"))
@@ -1502,6 +1504,9 @@ fn v17_true_public_population_evidence_harness_is_declared() {
     assert!(makefile.contains("run_v17_true_population_evidence.sh"));
     assert!(makefile.contains("bash -n benchmark/run_v17_true_population_evidence.sh"));
     assert!(makefile.contains("python3 -m py_compile benchmark/igsr_population_files.py"));
+    assert!(script.contains("igsr-1000g-3202-sample-ped-population.txt"));
+    assert!(helper.contains("sampleid"));
+    assert!(helper.contains("split_metadata_fields"));
 
     for required in [
         "VCF_FAST_V17_TRUE_POP_INPUT",
@@ -1549,6 +1554,15 @@ fn v17_true_public_population_evidence_harness_is_declared() {
         assert!(helper.contains(required), "missing helper text {required}");
     }
 
+    assert!(downloader.contains(
+        "https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000G_2504_high_coverage/20130606_g1k_3202_samples_ped_population.txt"
+    ));
+    assert!(downloader.contains("igsr-1000g-3202-sample-ped-population.txt"));
+    assert!(downloader.contains("download_igsr_true_population"));
+    assert!(!downloader.contains(
+        "blocked: choose official IGSR sample metadata URL before true population evidence run"
+    ));
+
     for required in [
         "VariantFlow v1.7 True Public Population Evidence",
         "1000 Genomes / IGSR",
@@ -1577,4 +1591,106 @@ fn v17_true_public_population_evidence_harness_is_declared() {
             "forbidden broad claim text in report: {forbidden}"
         );
     }
+}
+
+#[test]
+fn igsr_population_helper_parses_official_whitespace_metadata() {
+    let root = repo_root();
+    let tmp = tempfile::tempdir().expect("create tempdir");
+    let vcf = tmp.path().join("mini-igsr.vcf");
+    let metadata = tmp
+        .path()
+        .join("20130606_g1k_3202_samples_ped_population.txt");
+    let out_prefix = tmp.path().join("pop/public");
+
+    fs::write(
+        &vcf,
+        "##fileformat=VCFv4.2\n\
+         #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tHG00096\tHG00097\tNA18486\tNA18487\n\
+         22\t100\t.\tA\tG\t50\tPASS\t.\tGT\t0/0\t0/1\t1/1\t0/1\n",
+    )
+    .expect("write mini VCF");
+    fs::write(
+        &metadata,
+        "FamilyID SampleID FatherID MotherID Sex Population Superpopulation\n\
+         0 HG00096 0 0 1 GBR EUR\n\
+         0 HG00097 0 0 2 GBR EUR\n\
+         0 NA18486 0 0 1 YRI AFR\n\
+         0 NA18487 0 0 2 YRI AFR\n",
+    )
+    .expect("write official-style metadata");
+
+    let output = Command::new("python3")
+        .current_dir(&root)
+        .arg("benchmark/igsr_population_files.py")
+        .arg("--vcf")
+        .arg(&vcf)
+        .arg("--metadata")
+        .arg(&metadata)
+        .arg("--out-prefix")
+        .arg(&out_prefix)
+        .arg("--groups")
+        .arg("AFR:EUR")
+        .output()
+        .expect("run population helper");
+
+    assert!(
+        output.status.success(),
+        "helper failed: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let afr = fs::read_to_string(tmp.path().join("pop/public.AFR.txt")).expect("read AFR pop");
+    let eur = fs::read_to_string(tmp.path().join("pop/public.EUR.txt")).expect("read EUR pop");
+    let source = fs::read_to_string(tmp.path().join("pop/public.population-source.tsv"))
+        .expect("read population provenance");
+
+    assert_eq!(afr, "NA18486\nNA18487\n");
+    assert_eq!(eur, "HG00096\nHG00097\n");
+    assert!(source.contains("official IGSR metadata"));
+    assert!(source.contains("no header-fallback"));
+    assert!(source.contains("metadata_sha256"));
+    assert!(source.contains("vcf_sha256"));
+}
+
+#[test]
+fn igsr_population_helper_rejects_unmatched_vcf_samples_without_override() {
+    let root = repo_root();
+    let tmp = tempfile::tempdir().expect("create tempdir");
+    let vcf = tmp.path().join("mini-igsr.vcf");
+    let metadata = tmp.path().join("metadata.txt");
+    let out_prefix = tmp.path().join("pop/public");
+
+    fs::write(
+        &vcf,
+        "##fileformat=VCFv4.2\n\
+         #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tHG00096\tMISSING1\n\
+         22\t100\t.\tA\tG\t50\tPASS\t.\tGT\t0/0\t0/1\n",
+    )
+    .expect("write mini VCF");
+    fs::write(
+        &metadata,
+        "FamilyID SampleID FatherID MotherID Sex Population Superpopulation\n\
+         0 HG00096 0 0 1 GBR EUR\n",
+    )
+    .expect("write official-style metadata");
+
+    let output = Command::new("python3")
+        .current_dir(&root)
+        .arg("benchmark/igsr_population_files.py")
+        .arg("--vcf")
+        .arg(&vcf)
+        .arg("--metadata")
+        .arg(&metadata)
+        .arg("--out-prefix")
+        .arg(&out_prefix)
+        .output()
+        .expect("run population helper");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("VCF samples are missing from metadata"));
+    assert!(stderr.contains("MISSING1"));
+    assert!(stderr.contains("--allow-unmatched"));
 }
