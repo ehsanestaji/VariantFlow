@@ -47,10 +47,22 @@ def normalize_header(name: str) -> str:
     return name.strip().lower().replace(" ", "_").replace("-", "_")
 
 
+def split_metadata_fields(line: str) -> list[str]:
+    stripped = line.rstrip("\n\r")
+    if "\t" in stripped:
+        return [field.strip() for field in stripped.split("\t")]
+    return stripped.split()
+
+
 def read_metadata(path: Path) -> dict[str, tuple[str, str]]:
-    sample_columns = ("sample", "sample_name", "sample_id", "sample_id_1kg")
+    sample_columns = ("sample", "sample_name", "sample_id", "sampleid", "sample_id_1kg")
     population_columns = ("population", "pop", "population_code")
-    superpopulation_columns = ("superpopulation", "super_pop", "super_population", "superpopulation_code")
+    superpopulation_columns = (
+        "superpopulation",
+        "super_pop",
+        "super_population",
+        "superpopulation_code",
+    )
 
     def has_required_columns(candidate_header: list[str]) -> bool:
         return (
@@ -68,7 +80,7 @@ def read_metadata(path: Path) -> dict[str, tuple[str, str]]:
                 continue
             if stripped.startswith("#"):
                 stripped = stripped[1:]
-            candidate_header = [normalize_header(value) for value in stripped.split("\t")]
+            candidate_header = [normalize_header(value) for value in split_metadata_fields(stripped)]
             if has_required_columns(candidate_header):
                 header = candidate_header
                 break
@@ -91,7 +103,7 @@ def read_metadata(path: Path) -> dict[str, tuple[str, str]]:
         for row_number, line in enumerate(handle, start=header_row_number + 1):
             if not line.strip():
                 continue
-            fields = [field.strip() for field in line.rstrip("\n").split("\t")]
+            fields = split_metadata_fields(line)
             if len(fields) <= max(sample_i, pop_i, super_i):
                 raise SystemExit(f"{path} row {row_number} is missing required metadata fields")
             sample = fields[sample_i]
