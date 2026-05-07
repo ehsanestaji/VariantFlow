@@ -1392,3 +1392,42 @@ fn vcftools_popgen_benchmark_scaffold_tracks_required_fields() {
         assert!(report.contains(required), "missing report text {required}");
     }
 }
+
+#[test]
+fn v16_vcftools_public_evidence_tracks_tiers_real_populations_and_resources() {
+    let root = repo_root();
+    let makefile = fs::read_to_string(root.join("Makefile")).expect("read Makefile");
+    let script = fs::read_to_string(root.join("benchmark/run_vcftools_population_benchmarks.sh"))
+        .expect("read VCFtools population benchmark script");
+    let report = fs::read_to_string(
+        root.join("benchmark/reports/vcftools-popgen-parity-benchmark.md"),
+    )
+    .expect("read VCFtools population benchmark report");
+
+    assert!(makefile.contains("bench-vcftools-popgen:"));
+    assert!(script.contains("VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_TIERS"));
+    assert!(script.contains("1000 10000 50000"));
+    assert!(script.contains("vcftools_population_metadata.py"));
+    assert!(script.contains("command_resource_metrics.py"));
+    assert!(script.contains("peak RSS"));
+    assert!(script.contains("CPU seconds"));
+    assert!(script.contains("CPU-hour estimate"));
+    assert!(script.contains("real population files"));
+    assert!(script.contains("public cohort 1000"));
+    assert!(script.contains("public cohort 10000"));
+    assert!(script.contains("public cohort 50000"));
+    assert!(!script.contains(".plain.tmp.vcf"));
+
+    for required in [
+        "runtime mean/stddev",
+        "peak RSS",
+        "CPU seconds",
+        "CPU-hour estimate",
+        "population source",
+        "tier",
+        "correctness result",
+        "This report does not support a broad VCFtools replacement claim",
+    ] {
+        assert!(report.contains(required), "missing report text {required}");
+    }
+}
