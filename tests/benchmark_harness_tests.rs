@@ -1560,7 +1560,10 @@ fn v17_true_public_population_evidence_harness_is_declared() {
     assert!(downloader.contains("igsr-1000g-3202-sample-ped-population.txt"));
     assert!(downloader.contains("download_igsr_true_population"));
     assert!(!downloader.contains(
-        "blocked: choose official IGSR sample metadata URL before true population evidence run"
+        concat!(
+            "blocked: choose official IGSR sample ",
+            "metadata URL before true population evidence run"
+        )
     ));
 
     for required in [
