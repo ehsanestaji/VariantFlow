@@ -1416,6 +1416,8 @@ fn v16_vcftools_public_evidence_tracks_tiers_real_populations_and_resources() {
     assert!(script.contains("public cohort 1000"));
     assert!(script.contains("public cohort 10000"));
     assert!(script.contains("public cohort 50000"));
+    assert!(script.contains("blocked: public cohort tier staging requires bcftools and bgzip"));
+    assert!(!script.contains("public cohort %s pending"));
     assert!(!script.contains(".plain.tmp.vcf"));
 
     for required in [
@@ -1430,4 +1432,8 @@ fn v16_vcftools_public_evidence_tracks_tiers_real_populations_and_resources() {
     ] {
         assert!(report.contains(required), "missing report text {required}");
     }
+    assert!(report.contains("| public cohort 1000 |"));
+    assert!(report.contains("| public cohort 10000 |"));
+    assert!(report.contains("| public cohort 50000 |"));
+    assert!(!report.contains("| public cohort |"));
 }
