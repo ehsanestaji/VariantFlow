@@ -110,7 +110,10 @@ fn true_population_downloader_documents_igsr_metadata_inputs() {
         "VCF_FAST_V17_TRUE_POP_INPUT",
         "VCF_FAST_V17_TRUE_POP_METADATA",
     ] {
-        assert!(downloader.contains(required) || workflows.contains(required), "missing {required}");
+        assert!(
+            downloader.contains(required) || workflows.contains(required),
+            "missing {required}"
+        );
     }
 }
 
@@ -1491,10 +1494,9 @@ fn v17_true_public_population_evidence_harness_is_declared() {
         .expect("read v1.7 true public population benchmark script");
     let helper = fs::read_to_string(root.join("benchmark/igsr_population_files.py"))
         .expect("read IGSR population metadata helper");
-    let report = fs::read_to_string(
-        root.join("benchmark/reports/v17-true-public-population-evidence.md"),
-    )
-    .expect("read v1.7 true public population report");
+    let report =
+        fs::read_to_string(root.join("benchmark/reports/v17-true-public-population-evidence.md"))
+            .expect("read v1.7 true public population report");
 
     assert!(makefile.contains("bench-vcftools-true-popgen:"));
     assert!(makefile.contains("run_v17_true_population_evidence.sh"));
