@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import hashlib
 from collections import defaultdict
 from pathlib import Path
 
@@ -13,6 +14,14 @@ def open_text(path: Path):
     if path.suffix == ".gz":
         return gzip.open(path, "rt", encoding="utf-8")
     return path.open("rt", encoding="utf-8")
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def read_vcf_samples(vcf: Path) -> list[str]:
@@ -28,7 +37,7 @@ def normalize_header(name: str) -> str:
 
 
 def read_metadata(path: Path) -> dict[str, tuple[str, str]]:
-    with path.open("rt", encoding="utf-8") as handle:
+    with open_text(path) as handle:
         header: list[str] | None = None
         header_row_number = 0
         for header_row_number, line in enumerate(handle, start=1):
@@ -108,7 +117,7 @@ def write_population_files(
     min_samples: int,
 ) -> tuple[Path, Path, str, str]:
     try:
-        left_label, right_label = group_pair.split(":", 1)
+        left_label, right_label = [label.strip() for label in group_pair.split(":", 1)]
     except ValueError as error:
         raise SystemExit("--groups must use LABEL1:LABEL2 syntax, for example AFR:EUR") from error
     left = groups.get(left_label, [])
@@ -151,19 +160,28 @@ def main() -> int:
     )
     source = Path(f"{args.out_prefix}.population-source.tsv")
     allow_unmatched = str(args.allow_unmatched).lower()
+    vcf_sha256 = sha256_file(args.vcf)
+    metadata_sha256 = sha256_file(args.metadata)
+    unmatched_sample_ids = ",".join(unmatched) if unmatched else "."
+    group_pair = f"{left_label}:{right_label}"
     source.write_text(
         "population_file\tlabel\tlevel\tsource\tsample_count\t"
-        "vcf_path\tmetadata_path\tgroup_pair\tunmatched_count\tallow_unmatched\trecord_type\n"
+        "vcf_path\tmetadata_path\tgroup_pair\tunmatched_count\tallow_unmatched\t"
+        "vcf_sha256\tmetadata_sha256\tunmatched_sample_ids\trecord_type\n"
         f"{pop1}\t{left_label}\t{args.group_level}\tofficial IGSR metadata\t"
-        f"{len(grouped[left_label])}\t{args.vcf}\t{args.metadata}\t{args.groups}\t"
-        f"{len(unmatched)}\t{allow_unmatched}\tpopulation\n"
+        f"{len(grouped[left_label])}\t{args.vcf}\t{args.metadata}\t{group_pair}\t"
+        f"{len(unmatched)}\t{allow_unmatched}\t{vcf_sha256}\t{metadata_sha256}\t"
+        f"{unmatched_sample_ids}\tpopulation\n"
         f"{pop2}\t{right_label}\t{args.group_level}\tofficial IGSR metadata\t"
-        f"{len(grouped[right_label])}\t{args.vcf}\t{args.metadata}\t{args.groups}\t"
-        f"{len(unmatched)}\t{allow_unmatched}\tpopulation\n"
+        f"{len(grouped[right_label])}\t{args.vcf}\t{args.metadata}\t{group_pair}\t"
+        f"{len(unmatched)}\t{allow_unmatched}\t{vcf_sha256}\t{metadata_sha256}\t"
+        f"{unmatched_sample_ids}\tpopulation\n"
         f"unmatched samples\t.\t.\tofficial IGSR metadata\t{len(unmatched)}\t"
-        f"{args.vcf}\t{args.metadata}\t{args.groups}\t{len(unmatched)}\t{allow_unmatched}\tunmatched\n"
+        f"{args.vcf}\t{args.metadata}\t{group_pair}\t{len(unmatched)}\t{allow_unmatched}\t"
+        f"{vcf_sha256}\t{metadata_sha256}\t{unmatched_sample_ids}\tunmatched\n"
         f"settings\t.\t{args.group_level}\tofficial IGSR metadata\t.\t"
-        f"{args.vcf}\t{args.metadata}\t{args.groups}\t{len(unmatched)}\t{allow_unmatched}\tsettings\n",
+        f"{args.vcf}\t{args.metadata}\t{group_pair}\t{len(unmatched)}\t{allow_unmatched}\t"
+        f"{vcf_sha256}\t{metadata_sha256}\t{unmatched_sample_ids}\tsettings\n",
         encoding="utf-8",
     )
     print(f"{pop1}\t{pop2}\t{source}\tofficial IGSR metadata; no header-fallback")
