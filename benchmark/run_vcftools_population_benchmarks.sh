@@ -12,11 +12,19 @@ POP2="${VCF_FAST_VCFTOOLS_POPGEN_POP2:-tests/data/popgen_pop2.txt}"
 PUBLIC_INPUT="${VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_INPUT:-}"
 PUBLIC_POP1="${VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_POP1:-}"
 PUBLIC_POP2="${VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_POP2:-}"
+PUBLIC_TIERS="${VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_TIERS:-1000 10000 50000}"
+PUBLIC_METADATA="${VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_METADATA:-tests/data/popgen_sample_metadata.tsv}"
+RESOURCE_RUNNER="${VCF_FAST_RESOURCE_RUNNER:-python3 benchmark/command_resource_metrics.py}"
+POPULATION_METADATA_HELPER="${VCF_FAST_POPULATION_METADATA_HELPER:-python3 benchmark/vcftools_population_metadata.py}"
+# Default tier labels: public cohort 1000, public cohort 10000,
+# public cohort 50000. Population sources include real population files when
+# provided through VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_POP1/2.
+# Task 5 will integrate $RESOURCE_RUNNER into measured rows for peak RSS,
+# CPU seconds, and CPU-hour estimate fields.
 WINDOW_SIZE="${VCF_FAST_VCFTOOLS_POPGEN_WINDOW_SIZE:-200}"
 LD_WINDOW_BP="${VCF_FAST_VCFTOOLS_POPGEN_LD_WINDOW_BP:-500}"
 RUNS="${VCF_FAST_VCFTOOLS_POPGEN_RUNS:-3}"
 WARMUP="${VCF_FAST_VCFTOOLS_POPGEN_WARMUP:-1}"
-PUBLIC_RECORD_LIMIT="${VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_RECORD_LIMIT:-1000}"
 VCFTOOLS_DOCKER_IMAGE="${VCF_FAST_VCFTOOLS_DOCKER_IMAGE:-biocontainers/vcftools:v0.1.16-1-deb_cv1}"
 DEFAULT_PUBLIC_INPUTS=(
   "tests/output/benchmark-results/v20-human-format-cohort/human-format-cohort-1000.vcf.gz"
@@ -102,30 +110,8 @@ select_default_public_input() {
   return 1
 }
 
-derive_population_files() {
-  local dataset="$1" prefix="$2"
-  local pop1="$prefix.auto-pop1.txt"
-  local pop2="$prefix.auto-pop2.txt"
-  stream_vcf_text "$dataset" \
-    | awk -v pop1="$pop1" -v pop2="$pop2" '
-      BEGIN { FS = "\t" }
-      /^#CHROM/ {
-        if (NF < 13) {
-          printf "public cohort requires at least four samples for auto populations; found %d\n", NF - 9 > "/dev/stderr"
-          exit 2
-        }
-        print $10 > pop1
-        print $11 > pop1
-        print $12 > pop2
-        print $13 > pop2
-        exit
-      }
-    '
-  printf "%s\t%s" "$pop1" "$pop2"
-}
-
 prepare_public_biallelic_dataset() {
-  local input="$1" output="$2"
+  local input="$1" output="$2" tier_limit="$3"
   if ! command -v bcftools >/dev/null 2>&1 || ! command -v bgzip >/dev/null 2>&1; then
     printf "%s" "$input"
     return 0
@@ -139,7 +125,7 @@ prepare_public_biallelic_dataset() {
   mkdir -p "$(dirname "$output")"
   set +o pipefail
   bcftools view -m2 -M2 -v snps "$input" \
-    | awk -v limit="$PUBLIC_RECORD_LIMIT" '
+    | awk -v limit="$tier_limit" '
       /^#/ { print; next }
       seen < limit { print; seen++ }
       seen >= limit { exit }
@@ -156,6 +142,18 @@ prepare_public_biallelic_dataset() {
     return 1
   fi
   printf "%s" "$output"
+}
+
+public_population_files() {
+  local tier_input="$1" tier_limit="$2"
+  if [[ -n "$PUBLIC_POP1" && -n "$PUBLIC_POP2" ]]; then
+    printf "%s\t%s\tprovided\tprovided real population files" "$PUBLIC_POP1" "$PUBLIC_POP2"
+    return 0
+  fi
+  $POPULATION_METADATA_HELPER \
+    --vcf "$tier_input" \
+    --metadata "$PUBLIC_METADATA" \
+    --out-prefix "$OUT_DIR/public-cohort-$tier_limit"
 }
 
 write_blocker_report() {
@@ -252,7 +250,7 @@ PY
 }
 
 run_tier() {
-  local tier="$1" dataset="$2" pop1="$3" pop2="$4"
+  local tier="$1" dataset="$2" pop1="$3" pop2="$4" population_source="${5:-fixture population files}"
   local prefix="$OUT_DIR/$tier"
   mkdir -p "$prefix"
   local vf_base vcftools_base input_flag scope_caveat
@@ -262,7 +260,7 @@ run_tier() {
   if [[ "$tier" == "fixture" ]]; then
     scope_caveat="fixture timing only"
   else
-    scope_caveat="public biallelic staged cohort"
+    scope_caveat="public biallelic staged cohort; population source: $population_source"
   fi
 
   benchmark_pair "$tier" "frequency" "$dataset" \
@@ -272,35 +270,35 @@ run_tier() {
   benchmark_pair "$tier" "missingness" "$dataset" \
     "$vf_base missingness $(shell_quote "$dataset") -o $(shell_quote "$prefix/variantflow-missingness")" \
     "$vcftools_base $input_flag $(shell_quote "$dataset") --missing-site --out $(shell_quote "$prefix/vcftools-missing-site") && $vcftools_base $input_flag $(shell_quote "$dataset") --missing-indv --out $(shell_quote "$prefix/vcftools-missing-indv")" \
-    "matches VCFtools on supported diploid biallelic parity fixtures; VCFtools site and individual missingness are two commands"
+    "matches VCFtools on supported diploid biallelic parity fixtures; VCFtools site and individual missingness are two commands; $scope_caveat"
   benchmark_pair "$tier" "HWE" "$dataset" \
     "$vf_base hardy $(shell_quote "$dataset") -o $(shell_quote "$prefix/variantflow.hwe")" \
     "$vcftools_base $input_flag $(shell_quote "$dataset") --hardy --out $(shell_quote "$prefix/vcftools-hardy")" \
-    "matches VCFtools on supported diploid biallelic parity fixtures; exact p-value column is outside current output"
+    "matches VCFtools on supported diploid biallelic parity fixtures; exact p-value column is outside current output; $scope_caveat"
   benchmark_pair "$tier" "heterozygosity" "$dataset" \
     "$vf_base het $(shell_quote "$dataset") -o $(shell_quote "$prefix/variantflow.het")" \
     "$vcftools_base $input_flag $(shell_quote "$dataset") --het --out $(shell_quote "$prefix/vcftools-het")" \
-    "matches VCFtools on supported diploid biallelic parity fixtures"
+    "matches VCFtools on supported diploid biallelic parity fixtures; $scope_caveat"
   benchmark_pair "$tier" "site pi" "$dataset" \
     "$vf_base pi $(shell_quote "$dataset") -o $(shell_quote "$prefix/variantflow.sites.pi")" \
     "$vcftools_base $input_flag $(shell_quote "$dataset") --site-pi --out $(shell_quote "$prefix/vcftools-pi")" \
-    "matches VCFtools on supported diploid biallelic parity fixtures"
+    "matches VCFtools on supported diploid biallelic parity fixtures; $scope_caveat"
   benchmark_pair "$tier" "window pi" "$dataset" \
     "$vf_base pi $(shell_quote "$dataset") --window-size $(shell_quote "$WINDOW_SIZE") -o $(shell_quote "$prefix/variantflow.windowed.pi")" \
     "$vcftools_base $input_flag $(shell_quote "$dataset") --window-pi $(shell_quote "$WINDOW_SIZE") --out $(shell_quote "$prefix/vcftools-window-pi")" \
-    "matches VCFtools on supported diploid biallelic parity fixtures; window size $WINDOW_SIZE"
+    "matches VCFtools on supported diploid biallelic parity fixtures; window size $WINDOW_SIZE; $scope_caveat"
   benchmark_pair "$tier" "Tajima's D" "$dataset" \
     "$vf_base tajima-d $(shell_quote "$dataset") --window-size $(shell_quote "$WINDOW_SIZE") -o $(shell_quote "$prefix/variantflow.Tajima.D")" \
     "$vcftools_base $input_flag $(shell_quote "$dataset") --TajimaD $(shell_quote "$WINDOW_SIZE") --out $(shell_quote "$prefix/vcftools-tajima-d")" \
-    "matches VCFtools on supported diploid biallelic parity fixtures; window size $WINDOW_SIZE"
+    "matches VCFtools on supported diploid biallelic parity fixtures; window size $WINDOW_SIZE; $scope_caveat"
   benchmark_pair "$tier" "LD" "$dataset" \
     "$vf_base ld $(shell_quote "$dataset") --max-distance $(shell_quote "$LD_WINDOW_BP") -o $(shell_quote "$prefix/variantflow.geno.ld")" \
     "$vcftools_base $input_flag $(shell_quote "$dataset") --geno-r2 --ld-window-bp $(shell_quote "$LD_WINDOW_BP") --out $(shell_quote "$prefix/vcftools-ld")" \
-    "matches VCFtools on supported diploid biallelic parity fixtures; genotype dosage R2"
+    "matches VCFtools on supported diploid biallelic parity fixtures; genotype dosage R2; $scope_caveat"
   benchmark_pair "$tier" "Weir-Cockerham Fst" "$dataset" \
     "$vf_base fst $(shell_quote "$dataset") --pop $(shell_quote "$pop1") --pop $(shell_quote "$pop2") --estimator weir-cockerham -o $(shell_quote "$prefix/variantflow.weir.fst")" \
     "$vcftools_base $input_flag $(shell_quote "$dataset") --weir-fst-pop $(shell_quote "$pop1") --weir-fst-pop $(shell_quote "$pop2") --out $(shell_quote "$prefix/vcftools-weir-fst")" \
-    "matches VCFtools on supported diploid biallelic parity fixtures; two population files required"
+    "matches VCFtools on supported diploid biallelic parity fixtures; two population files required; $scope_caveat"
 }
 
 run_tier "fixture" "$INPUT" "$POP1" "$POP2"
@@ -315,37 +313,54 @@ if [[ -z "$PUBLIC_INPUT" ]]; then
 fi
 
 if [[ -n "$PUBLIC_INPUT" && -f "$PUBLIC_INPUT" ]]; then
-  PUBLIC_INPUT="$(prepare_public_biallelic_dataset "$PUBLIC_INPUT" "$OUT_DIR/public-cohort.biallelic.${PUBLIC_RECORD_LIMIT}.vcf.gz")"
-  if [[ -z "$PUBLIC_POP1" || -z "$PUBLIC_POP2" ]]; then
-    public_pop_files="$(derive_population_files "$PUBLIC_INPUT" "$OUT_DIR/public-cohort")"
-    PUBLIC_POP1="${public_pop_files%%$'\t'*}"
-    PUBLIC_POP2="${public_pop_files#*$'\t'}"
-  fi
-  run_tier "public cohort" "$PUBLIC_INPUT" "$PUBLIC_POP1" "$PUBLIC_POP2"
-  python3 benchmark/check_vcftools_parity.py "$OUT_DIR/public cohort" >/tmp/vcftools-popgen-public-check.txt 2>&1 || {
-    cat /tmp/vcftools-popgen-public-check.txt
-    echo "Public benchmark outputs failed VCFtools parity checks."
-    exit 1
-  }
+  for tier_limit in $PUBLIC_TIERS; do
+    tier_name="public cohort $tier_limit"
+    tier_input="$(prepare_public_biallelic_dataset "$PUBLIC_INPUT" "$OUT_DIR/public-cohort.biallelic.${tier_limit}.vcf.gz" "$tier_limit")"
+    public_pop_files="$(public_population_files "$tier_input" "$tier_limit")"
+    IFS=$'\t' read -r tier_pop1 tier_pop2 tier_population_metadata tier_population_source <<<"$public_pop_files"
+    if [[ -z "$tier_pop1" || -z "$tier_pop2" || -z "$tier_population_source" ]]; then
+      echo "Population metadata helper must return pop1, pop2, metadata, and source fields for $tier_name." >&2
+      exit 1
+    fi
+    run_tier "$tier_name" "$tier_input" "$tier_pop1" "$tier_pop2" "$tier_population_source"
+    python3 benchmark/check_vcftools_parity.py "$OUT_DIR/$tier_name" >/tmp/vcftools-popgen-public-check.txt 2>&1 || {
+      cat /tmp/vcftools-popgen-public-check.txt
+      echo "Public benchmark outputs failed VCFtools parity checks for $tier_name."
+      exit 1
+    }
+  done
 else
-  printf "| public cohort pending | all population-genetics cases | pending | pending | pending | pending | pending | pending | pending | %s | pending | set VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_INPUT to a cached public VCF; large artifacts remain ignored |\n" "$VCFTOOLS_VERSION" >>"$ROWS_FILE"
+  for tier_limit in $PUBLIC_TIERS; do
+    printf "| public cohort %s pending | all population-genetics cases | pending | pending | pending | pending | pending | pending | pending | %s | pending | set VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_INPUT to a cached public VCF; large artifacts remain ignored |\n" "$tier_limit" "$VCFTOOLS_VERSION" >>"$ROWS_FILE"
+  done
 fi
 
 cat >"$REPORT" <<EOF
 # VCFtools Population-Genetics Parity Benchmark
 
 Status: benchmark rows generated by \`make bench-vcftools-popgen\`. When no
-public input is provided, the harness uses the cached
-\`human-format-cohort-1000.vcf.gz\` if available, stages a bounded biallelic
-subset with \`bcftools view -m2 -M2\`, and derives two small population files
-from the sample header. Larger public cohorts remain opt-in through
+public input is provided, the harness uses the first cached default public VCF
+if available, stages bounded biallelic public cohort tiers with
+\`bcftools view -m2 -M2\`, and derives real population files from
+\`$PUBLIC_METADATA\` with \`$POPULATION_METADATA_HELPER\` unless
+\`VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_POP1\` and
+\`VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_POP2\` provide real population files.
+Larger public cohorts remain opt-in through
 \`VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_INPUT\`.
 
-Runs: \`$RUNS\`; warmup: \`$WARMUP\`; public record limit:
-\`$PUBLIC_RECORD_LIMIT\`.
+Runs: \`$RUNS\`; warmup: \`$WARMUP\`; public tiers:
+\`$PUBLIC_TIERS\`.
 
 Correctness gate: \`make vcftools-parity\` plus
 \`benchmark/check_vcftools_parity.py\` on each measured tier output directory.
+
+Resource metrics integration is reserved for Task 5. The planned runner is
+\`$RESOURCE_RUNNER\`; future measured rows must add peak RSS, CPU seconds, and
+CPU-hour estimate fields. Until then, measured rows below report runtime
+mean/stddev only through hyperfine timing and do not claim RSS or CPU-hour
+measurements.
+
+The population source is recorded in public-tier caveats for each non-fixture row.
 
 | tier | case | runtime | speedup | input size | record count | sample count | exact VariantFlow command | exact VCFtools command | VCFtools version | correctness result | caveats |
 |---|---|---:|---:|---:|---:|---:|---|---|---|---|---|
