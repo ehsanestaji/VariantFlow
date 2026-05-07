@@ -1435,6 +1435,160 @@ fn vcftools_popgen_benchmark_scaffold_tracks_required_fields() {
 }
 
 #[test]
+fn vcftools_parity_normalizer_allows_duplicate_position_occurrences() {
+    let root = repo_root();
+    let tmp = tempfile::tempdir().expect("create tempdir");
+    let out = tmp.path();
+
+    fs::write(
+        out.join("variantflow.frq"),
+        "CHROM\tPOS\tN_ALLELES\tN_CHR\t{ALLELE:FREQ}\n\
+         1\t100\t2\t8\tA:0.5\tG:0.5\n\
+         1\t100\t2\t8\tA:0.75\tT:0.25\n",
+    )
+    .expect("write variantflow freq");
+    fs::write(
+        out.join("vcftools-freq.frq"),
+        "CHROM\tPOS\tN_ALLELES\tN_CHR\t{ALLELE:FREQ}\n\
+         1\t100\t2\t8\tA:0.5\tG:0.5\n\
+         1\t100\t2\t8\tA:0.75\tT:0.25\n",
+    )
+    .expect("write vcftools freq");
+    fs::write(
+        out.join("variantflow-missingness.lmiss"),
+        "CHR\tPOS\tN_DATA\tN_GENOTYPE_FILTERED\tN_MISS\tF_MISS\n\
+         1\t100\t8\t0\t0\t0\n\
+         1\t100\t8\t0\t2\t0.25\n",
+    )
+    .expect("write variantflow lmiss");
+    fs::write(
+        out.join("vcftools-missing-site.lmiss"),
+        "CHR\tPOS\tN_DATA\tN_GENOTYPE_FILTERED\tN_MISS\tF_MISS\n\
+         1\t100\t8\t0\t0\t0\n\
+         1\t100\t8\t0\t2\t0.25\n",
+    )
+    .expect("write vcftools lmiss");
+    fs::write(
+        out.join("variantflow-missingness.imiss"),
+        "INDV\tN_DATA\tN_GENOTYPES_FILTERED\tN_MISS\tF_MISS\n\
+         S1\t2\t0\t0\t0\n",
+    )
+    .expect("write variantflow imiss");
+    fs::write(
+        out.join("vcftools-missing-indv.imiss"),
+        "INDV\tN_DATA\tN_GENOTYPES_FILTERED\tN_MISS\tF_MISS\n\
+         S1\t2\t0\t0\t0\n",
+    )
+    .expect("write vcftools imiss");
+    fs::write(
+        out.join("variantflow.hwe"),
+        "CHROM\tPOS\tOBS_HOM_REF\tOBS_HET\tOBS_HOM_ALT\tE_HOM_REF\tE_HET\tE_HOM_ALT\tCHISQ_HWE\n\
+         1\t100\t1\t2\t1\t1\t2\t1\t0\n\
+         1\t100\t2\t1\t0\t2.083333\t0.833333\t0.083333\t0.12\n",
+    )
+    .expect("write variantflow hwe");
+    fs::write(
+        out.join("vcftools-hardy.hwe"),
+        "CHR\tPOS\tOBS(HOM1/HET/HOM2)\tE(HOM1/HET/HOM2)\tChiSq_HWE\tP_HWE\tP_HET_DEFICIT\tP_HET_EXCESS\n\
+         1\t100\t1/2/1\t1.00/2.00/1.00\t0.000000e+00\t1.000000e+00\t7.714286e-01\t9.142857e-01\n\
+         1\t100\t2/1/0\t2.08/0.83/0.08\t1.200000e-01\t1.000000e+00\t1.000000e+00\t1.000000e+00\n",
+    )
+    .expect("write vcftools hwe");
+    fs::write(
+        out.join("variantflow.het"),
+        "INDV\tO_HOM\tE_HOM\tN_SITES\tF\n\
+         S1\t1\t1\t2\t0\n",
+    )
+    .expect("write variantflow het");
+    fs::write(
+        out.join("vcftools-het.het"),
+        "INDV\tO(HOM)\tE(HOM)\tN_SITES\tF\n\
+         S1\t1\t1\t2\t0\n",
+    )
+    .expect("write vcftools het");
+    fs::write(
+        out.join("variantflow.sites.pi"),
+        "CHROM\tPOS\tPI\n\
+         1\t100\t0.571429\n\
+         1\t100\t0.333333\n",
+    )
+    .expect("write variantflow site pi");
+    fs::write(
+        out.join("vcftools-pi.sites.pi"),
+        "CHROM\tPOS\tPI\n\
+         1\t100\t0.571429\n\
+         1\t100\t0.333333\n",
+    )
+    .expect("write vcftools site pi");
+    fs::write(
+        out.join("variantflow.windowed.pi"),
+        "CHROM\tBIN_START\tBIN_END\tN_VARIANTS\tPI\n\
+         1\t1\t200\t2\t0.003759\n",
+    )
+    .expect("write variantflow window pi");
+    fs::write(
+        out.join("vcftools-window-pi.windowed.pi"),
+        "CHROM\tBIN_START\tBIN_END\tN_VARIANTS\tPI\n\
+         1\t1\t200\t2\t0.00375873\n",
+    )
+    .expect("write vcftools window pi");
+    fs::write(
+        out.join("variantflow.Tajima.D"),
+        "CHROM\tBIN_START\tN_SNPS\tTajimaD\n\
+         1\t0\t2\t0.395054\n",
+    )
+    .expect("write variantflow Tajima");
+    fs::write(
+        out.join("vcftools-tajima-d.Tajima.D"),
+        "CHROM\tBIN_START\tN_SNPS\tTajimaD\n\
+         1\t0\t2\t0.395054\n",
+    )
+    .expect("write vcftools Tajima");
+    fs::write(
+        out.join("variantflow.geno.ld"),
+        "CHR\tPOS1\tPOS2\tN_INDV\tR^2\n\
+         1\t90\t100\t4\t0.75\n\
+         1\t90\t100\t4\t0.25\n",
+    )
+    .expect("write variantflow LD");
+    fs::write(
+        out.join("vcftools-ld.geno.ld"),
+        "CHR\tPOS1\tPOS2\tN_INDV\tR^2\n\
+         1\t90\t100\t4\t0.75\n\
+         1\t90\t100\t4\t0.25\n",
+    )
+    .expect("write vcftools LD");
+    fs::write(
+        out.join("variantflow.weir.fst"),
+        "CHROM\tPOS\tWEIR_AND_COCKERHAM_FST\n\
+         1\t100\t0.2\n\
+         1\t100\tnan\n",
+    )
+    .expect("write variantflow Fst");
+    fs::write(
+        out.join("vcftools-weir-fst.weir.fst"),
+        "CHROM\tPOS\tWEIR_AND_COCKERHAM_FST\n\
+         1\t100\t0.2\n\
+         1\t100\tnan\n",
+    )
+    .expect("write vcftools Fst");
+
+    let output = Command::new("python3")
+        .current_dir(root)
+        .arg("benchmark/check_vcftools_parity.py")
+        .arg(out)
+        .output()
+        .expect("run VCFtools parity checker");
+
+    assert!(
+        output.status.success(),
+        "parity checker should accept duplicate position occurrences; stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn v16_vcftools_public_evidence_tracks_tiers_real_populations_and_resources() {
     let root = repo_root();
     let makefile = fs::read_to_string(root.join("Makefile")).expect("read Makefile");

@@ -100,6 +100,24 @@ def index_rows(
     return indexed
 
 
+def index_rows_by_occurrence(
+    name: str,
+    rows: list[dict[str, str]],
+    key_columns: tuple[str, ...],
+) -> dict[tuple[str, ...], dict[str, str]]:
+    indexed: dict[tuple[str, ...], dict[str, str]] = {}
+    counts: dict[tuple[str, ...], int] = {}
+    for row in rows:
+        try:
+            base_key = tuple(row[column] for column in key_columns)
+        except KeyError as error:
+            raise ParityError(f"{name} is missing key column {error.args[0]!r}") from error
+        occurrence = counts.get(base_key, 0)
+        counts[base_key] = occurrence + 1
+        indexed[base_key + (str(occurrence),)] = row
+    return indexed
+
+
 def assert_matching_keys(
     name: str,
     left: dict[tuple[str, ...], dict[str, str]],
@@ -195,12 +213,14 @@ def compare_missingness(
     variantflow_path: Path,
     vcftools_path: Path,
     key_columns: tuple[str, ...],
+    allow_duplicate_keys: bool = False,
 ) -> None:
     vf_header, vf_rows = read_named_tsv(variantflow_path)
     vt_header, vt_rows = read_named_tsv(vcftools_path)
     assert_equal(f"{name} header", vf_header, vt_header)
-    vf_index = index_rows(f"{name} VariantFlow", vf_rows, key_columns)
-    vt_index = index_rows(f"{name} VCFtools", vt_rows, key_columns)
+    indexer = index_rows_by_occurrence if allow_duplicate_keys else index_rows
+    vf_index = indexer(f"{name} VariantFlow", vf_rows, key_columns)
+    vt_index = indexer(f"{name} VCFtools", vt_rows, key_columns)
 
     for key in assert_matching_keys(name, vf_index, vt_index):
         for column in vf_header:
@@ -225,8 +245,8 @@ def compare_site_pi(out_dir: Path) -> None:
     vt_header, vt_rows = read_named_tsv(out_dir / "vcftools-pi.sites.pi")
     vf_pi_column = choose_column("site pi", vf_header, ("PI",), "VariantFlow")
     vt_pi_column = choose_column("site pi", vt_header, ("PI",), "VCFtools")
-    vf_index = index_rows("site pi VariantFlow", vf_rows, ("CHROM", "POS"))
-    vt_index = index_rows("site pi VCFtools", vt_rows, ("CHROM", "POS"))
+    vf_index = index_rows_by_occurrence("site pi VariantFlow", vf_rows, ("CHROM", "POS"))
+    vt_index = index_rows_by_occurrence("site pi VCFtools", vt_rows, ("CHROM", "POS"))
 
     for key in assert_matching_keys("site pi", vf_index, vt_index):
         assert_float_close(
@@ -299,8 +319,8 @@ def compare_ld(out_dir: Path) -> None:
         {**row, "CHROM_KEY": row_value("ld", row, vt_chrom_column, "VCFtools")}
         for row in vt_rows
     ]
-    vf_index = index_rows("ld VariantFlow", vf_normalized, ("CHROM_KEY", "POS1", "POS2"))
-    vt_index = index_rows("ld VCFtools", vt_normalized, ("CHROM_KEY", "POS1", "POS2"))
+    vf_index = index_rows_by_occurrence("ld VariantFlow", vf_normalized, ("CHROM_KEY", "POS1", "POS2"))
+    vt_index = index_rows_by_occurrence("ld VCFtools", vt_normalized, ("CHROM_KEY", "POS1", "POS2"))
 
     for key in assert_matching_keys("ld", vf_index, vt_index):
         assert_equal(
@@ -327,8 +347,8 @@ def compare_weir_fst(out_dir: Path) -> None:
     vt_fst_column = choose_column(
         "weir fst", vt_header, ("WEIR_AND_COCKERHAM_FST", "WC_FST"), "VCFtools"
     )
-    vf_index = index_rows("weir fst VariantFlow", vf_rows, ("CHROM", "POS"))
-    vt_index = index_rows("weir fst VCFtools", vt_rows, ("CHROM", "POS"))
+    vf_index = index_rows_by_occurrence("weir fst VariantFlow", vf_rows, ("CHROM", "POS"))
+    vt_index = index_rows_by_occurrence("weir fst VCFtools", vt_rows, ("CHROM", "POS"))
 
     for key in assert_matching_keys("weir fst", vf_index, vt_index):
         vf_fst = row_value("weir fst", vf_index[key], vf_fst_column, "VariantFlow")
@@ -370,6 +390,7 @@ def main() -> None:
                 out_dir / "variantflow-missingness.lmiss",
                 out_dir / "vcftools-missing-site.lmiss",
                 ("CHR", "POS"),
+                allow_duplicate_keys=True,
             ),
         ),
         (
