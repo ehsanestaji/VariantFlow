@@ -8,6 +8,12 @@ import math
 from collections.abc import Callable
 from pathlib import Path
 
+FLOAT_TOLERANCE = 1e-5
+NORMALIZER_POLICY = (
+    "exact keys and counts; numeric tolerance for floating statistics; "
+    "undefined nan rows are ignored only when both tools mark the value undefined"
+)
+
 
 class ParityError(AssertionError):
     pass
@@ -22,7 +28,9 @@ def assert_equal(name: str, left: object, right: object) -> None:
         raise ParityError(f"{name} mismatch:\nVariantFlow={left!r}\nVCFtools={right!r}")
 
 
-def assert_float_close(name: str, left: str, right: str, tolerance: float = 1e-5) -> None:
+def assert_float_close(
+    name: str, left: str, right: str, tolerance: float = FLOAT_TOLERANCE
+) -> None:
     left_value = float(left)
     right_value = float(right)
     if not math.isclose(left_value, right_value, rel_tol=tolerance, abs_tol=tolerance):
@@ -385,7 +393,8 @@ def main() -> None:
         raise SystemExit("VCFtools parity failures:\n\n" + "\n\n".join(failures))
     print(
         "VCFtools parity checks passed for freq, missingness, hardy, het, "
-        "pi, Tajima's D, LD, and Weir-Cockerham Fst."
+        "pi, Tajima's D, LD, and Weir-Cockerham Fst. "
+        f"Normalizer policy: {NORMALIZER_POLICY}."
     )
 
 
