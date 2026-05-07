@@ -1460,3 +1460,82 @@ fn v16_vcftools_public_evidence_tracks_tiers_real_populations_and_resources() {
     );
     assert!(!report.contains("| public cohort |"));
 }
+
+#[test]
+fn v17_true_public_population_evidence_harness_is_declared() {
+    let root = repo_root();
+    let makefile = fs::read_to_string(root.join("Makefile")).expect("read Makefile");
+    let script = fs::read_to_string(root.join("benchmark/run_v17_true_population_evidence.sh"))
+        .expect("read v1.7 true public population benchmark script");
+    let helper = fs::read_to_string(root.join("benchmark/igsr_population_files.py"))
+        .expect("read IGSR population metadata helper");
+    let report = fs::read_to_string(
+        root.join("benchmark/reports/v17-true-public-population-evidence.md"),
+    )
+    .expect("read v1.7 true public population report");
+
+    assert!(makefile.contains("bench-vcftools-true-popgen:"));
+    assert!(makefile.contains("run_v17_true_population_evidence.sh"));
+    assert!(makefile.contains("bash -n benchmark/run_v17_true_population_evidence.sh"));
+    assert!(makefile.contains("python3 -m py_compile benchmark/igsr_population_files.py"));
+
+    for required in [
+        "VCF_FAST_V17_TRUE_POP_INPUT",
+        "VCF_FAST_V17_TRUE_POP_METADATA",
+        "VCF_FAST_V17_TRUE_POP_TIERS",
+        "10000 50000 100000",
+        "VCF_FAST_V17_TRUE_POP_GROUPS",
+        "AFR:EUR",
+        "prepare_true_public_biallelic_dataset",
+        "bcftools view -m2 -M2 -v snps",
+        "actual_records",
+        "igsr_population_files.py",
+        "population metadata source",
+        "official",
+        "no header-fallback",
+        "frequency",
+        "missingness",
+        "HWE",
+        "heterozygosity",
+        "site pi",
+        "window pi",
+        "Tajima's D",
+        "LD",
+        "Weir-Cockerham Fst",
+        "peak RSS KB",
+        "CPU seconds",
+        "CPU-hour estimate",
+        "This report does not support a broad VCFtools replacement claim",
+    ] {
+        assert!(script.contains(required), "missing script text {required}");
+    }
+
+    for required in [
+        "sample",
+        "population",
+        "superpopulation",
+        "write_population_files",
+        "unmatched samples",
+        "AFR",
+        "EUR",
+        "EAS",
+        "SAS",
+        "AMR",
+    ] {
+        assert!(helper.contains(required), "missing helper text {required}");
+    }
+
+    for required in [
+        "VariantFlow v1.7 True Public Population Evidence",
+        "1000 Genomes / IGSR",
+        "actual record count",
+        "official population metadata",
+        "population metadata source",
+        "peak RSS KB",
+        "CPU seconds",
+        "CPU-hour estimate",
+        "no broad VCFtools replacement claim",
+    ] {
+        assert!(report.contains(required), "missing report text {required}");
+    }
+}
