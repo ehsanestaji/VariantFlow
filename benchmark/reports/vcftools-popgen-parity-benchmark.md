@@ -20,7 +20,7 @@ Correctness gate: `make vcftools-parity` plus
 Resource metrics integration is reserved for Task 5. The planned runner is
 `python3 benchmark/command_resource_metrics.py`; future measured rows must add
 peak RSS, CPU seconds, and CPU-hour estimate fields. Until then, measured rows
-below report runtime mean/stddev only through hyperfine timing and do not claim
+below report runtime mean only through hyperfine timing and do not claim
 RSS or CPU-hour measurements.
 
 The population source is recorded in public-tier caveats for each non-fixture row.
