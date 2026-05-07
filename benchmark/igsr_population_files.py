@@ -28,7 +28,16 @@ def read_vcf_samples(vcf: Path) -> list[str]:
     with open_text(vcf) as handle:
         for line in handle:
             if line.startswith("#CHROM"):
-                return line.rstrip("\n").split("\t")[9:]
+                samples = line.rstrip("\n").split("\t")[9:]
+                seen: set[str] = set()
+                duplicates: list[str] = []
+                for sample in samples:
+                    if sample in seen and sample not in duplicates:
+                        duplicates.append(sample)
+                    seen.add(sample)
+                if duplicates:
+                    raise SystemExit(f"{vcf} #CHROM header duplicates VCF sample IDs: {', '.join(duplicates)}")
+                return samples
     raise SystemExit(f"{vcf} has no #CHROM header")
 
 
@@ -37,6 +46,17 @@ def normalize_header(name: str) -> str:
 
 
 def read_metadata(path: Path) -> dict[str, tuple[str, str]]:
+    sample_columns = ("sample", "sample_name", "sample_id", "sample_id_1kg")
+    population_columns = ("population", "pop", "population_code")
+    superpopulation_columns = ("superpopulation", "super_pop", "super_population", "superpopulation_code")
+
+    def has_required_columns(candidate_header: list[str]) -> bool:
+        return (
+            any(column in candidate_header for column in sample_columns)
+            and any(column in candidate_header for column in population_columns)
+            and any(column in candidate_header for column in superpopulation_columns)
+        )
+
     with open_text(path) as handle:
         header: list[str] | None = None
         header_row_number = 0
@@ -46,14 +66,14 @@ def read_metadata(path: Path) -> dict[str, tuple[str, str]]:
                 continue
             if stripped.startswith("#"):
                 stripped = stripped[1:]
-            header = [normalize_header(value) for value in stripped.split("\t")]
-            break
+            candidate_header = [normalize_header(value) for value in stripped.split("\t")]
+            if has_required_columns(candidate_header):
+                header = candidate_header
+                break
         if header is None:
-            raise SystemExit(f"{path} has no metadata header")
-
-        sample_columns = ("sample", "sample_name", "sample_id", "sample_id_1kg")
-        population_columns = ("population", "pop", "population_code")
-        superpopulation_columns = ("superpopulation", "super_pop", "super_population", "superpopulation_code")
+            raise SystemExit(
+                f"{path} has no metadata header with required sample, population, and superpopulation columns"
+            )
 
         def choose(candidates: tuple[str, ...]) -> int:
             for candidate in candidates:
@@ -164,24 +184,25 @@ def main() -> int:
     metadata_sha256 = sha256_file(args.metadata)
     unmatched_sample_ids = ",".join(unmatched) if unmatched else "."
     group_pair = f"{left_label}:{right_label}"
+    metadata_policy = "no header-fallback"
     source.write_text(
         "population_file\tlabel\tlevel\tsource\tsample_count\t"
         "vcf_path\tmetadata_path\tgroup_pair\tunmatched_count\tallow_unmatched\t"
-        "vcf_sha256\tmetadata_sha256\tunmatched_sample_ids\trecord_type\n"
+        "vcf_sha256\tmetadata_sha256\tunmatched_sample_ids\tmetadata_policy\trecord_type\n"
         f"{pop1}\t{left_label}\t{args.group_level}\tofficial IGSR metadata\t"
         f"{len(grouped[left_label])}\t{args.vcf}\t{args.metadata}\t{group_pair}\t"
         f"{len(unmatched)}\t{allow_unmatched}\t{vcf_sha256}\t{metadata_sha256}\t"
-        f"{unmatched_sample_ids}\tpopulation\n"
+        f"{unmatched_sample_ids}\t{metadata_policy}\tpopulation\n"
         f"{pop2}\t{right_label}\t{args.group_level}\tofficial IGSR metadata\t"
         f"{len(grouped[right_label])}\t{args.vcf}\t{args.metadata}\t{group_pair}\t"
         f"{len(unmatched)}\t{allow_unmatched}\t{vcf_sha256}\t{metadata_sha256}\t"
-        f"{unmatched_sample_ids}\tpopulation\n"
+        f"{unmatched_sample_ids}\t{metadata_policy}\tpopulation\n"
         f"unmatched samples\t.\t.\tofficial IGSR metadata\t{len(unmatched)}\t"
         f"{args.vcf}\t{args.metadata}\t{group_pair}\t{len(unmatched)}\t{allow_unmatched}\t"
-        f"{vcf_sha256}\t{metadata_sha256}\t{unmatched_sample_ids}\tunmatched\n"
+        f"{vcf_sha256}\t{metadata_sha256}\t{unmatched_sample_ids}\t{metadata_policy}\tunmatched\n"
         f"settings\t.\t{args.group_level}\tofficial IGSR metadata\t.\t"
         f"{args.vcf}\t{args.metadata}\t{group_pair}\t{len(unmatched)}\t{allow_unmatched}\t"
-        f"{vcf_sha256}\t{metadata_sha256}\t{unmatched_sample_ids}\tsettings\n",
+        f"{vcf_sha256}\t{metadata_sha256}\t{unmatched_sample_ids}\t{metadata_policy}\tsettings\n",
         encoding="utf-8",
     )
     print(f"{pop1}\t{pop2}\t{source}\tofficial IGSR metadata; no header-fallback")
