@@ -190,6 +190,10 @@ impl<'a> RecordView<'a> {
     }
 
     pub(crate) fn for_each_sample_column(&self, mut visit: impl FnMut(&'a [u8])) {
+        self.for_each_sample_column_with_index(|_column, value| visit(value));
+    }
+
+    pub(crate) fn for_each_sample_column_with_index(&self, mut visit: impl FnMut(usize, &'a [u8])) {
         let mut column = CORE_FIELD_COUNT;
         let mut start = self.fields[CORE_FIELD_COUNT - 1].1.saturating_add(1);
 
@@ -198,7 +202,7 @@ impl<'a> RecordView<'a> {
                 .map_or(self.line_end, |offset| start + offset);
 
             if column >= 9 {
-                visit(trim_line_end(&self.line[start..end]));
+                visit(column, trim_line_end(&self.line[start..end]));
             }
 
             if end == self.line_end {
@@ -856,6 +860,22 @@ mod tests {
         assert_eq!(view.column(9), Some(b"0/1:25:40".as_slice()));
         assert_eq!(view.column(10), Some(b"0/0:5:10".as_slice()));
         assert_eq!(view.column(11), None);
+    }
+
+    #[test]
+    fn byte_record_view_streams_sample_columns_with_absolute_indexes() {
+        let view =
+            RecordView::parse(b"1\t20\t.\tA\tG\t42\tPASS\tDP=11\tGT:DP\t0/1:25\t0/0:5\n").unwrap();
+        let mut observed = Vec::new();
+
+        view.for_each_sample_column_with_index(|column, value| {
+            observed.push((column, value.to_vec()));
+        });
+
+        assert_eq!(
+            observed,
+            vec![(9, b"0/1:25".to_vec()), (10, b"0/0:5".to_vec())]
+        );
     }
 
     #[test]

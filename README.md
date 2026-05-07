@@ -73,9 +73,10 @@ Detailed evidence lives in:
 - `benchmark/reports/v18-public-format-expression-breadth.md`
 - `benchmark/reports/v19-second-public-format-cohort.md`
 - `benchmark/reports/v20-human-format-cohort.md`
+- `benchmark/reports/vcftools-popgen-parity-benchmark.md`
 - `docs/contribution-map.md`
 
-Public evidence now supports the native selective-filter claim on measured GIAB and IGSR tiers. The v0.7 heavy run also shows the optimized native TSV path can beat `bcftools query` on bounded sample-rich gzip workloads through 1M records, v0.9 stress evidence shows the expanded native expression engine beating `bcftools filter` on measured deterministic stress cases, and the v1.0 slices show opt-in threaded native BGZF input, typed Parquet export, and a measured bounded-IGSR row-count workflow win through DuckDB. The first v1.1 slice adds opt-in parallel native predicate evaluation for CPU-heavy expressions while preserving byte-for-byte output. v1.2 moves that evidence into public-heavy BGZF filter rows, 1M stress parallel rows, and richer DuckDB predicate/grouped workflow checks. v1.4 completes the next public scale pass: default auto BGZF input wins the bounded public I/O-heavy QUAL filter, while opt-in native predicate parallelism wins the CPU-heavy FORMAT aggregate stress case. v1.7 through v2.0 now add repeated public FORMAT-rich cohort rows: correctness matches `bcftools` on the ENA 453-sample Ovis aries chromosome 19 VCF, a second ENA Dutch Genebank Cattle 29-sample full Y-chromosome VCF, and DDBJ CHM13 3715-sample human chr22 bounded 1k/10k/50k tiers, with aggregate AD and broader DP/GQ/selected-sample/mixed FORMAT expressions winning on the measured rows. Honest gaps remain: BCF TSV still trails `bcftools query`, ordinary gzip is not parallelized, the human evidence is bounded rather than a full 27 GB run, GATK/VCFtools external baselines are later rows, and Polars/PyArrow plus larger whole-cohort columnar evidence are still pending.
+Public evidence now supports the native selective-filter claim on measured GIAB and IGSR tiers. The v0.7 heavy run also shows the optimized native TSV path can beat `bcftools query` on bounded sample-rich gzip workloads through 1M records, v0.9 stress evidence shows the expanded native expression engine beating `bcftools filter` on measured deterministic stress cases, and the v1.0 slices show opt-in threaded native BGZF input, typed Parquet export, and a measured bounded-IGSR row-count workflow win through DuckDB. The first v1.1 slice adds opt-in parallel native predicate evaluation for CPU-heavy expressions while preserving byte-for-byte output. v1.2 moves that evidence into public-heavy BGZF filter rows, 1M stress parallel rows, and richer DuckDB predicate/grouped workflow checks. v1.4 completes the next public scale pass: default auto BGZF input wins the bounded public I/O-heavy QUAL filter, while opt-in native predicate parallelism wins the CPU-heavy FORMAT aggregate stress case. v1.7 through v2.0 now add repeated public FORMAT-rich cohort rows: correctness matches `bcftools` on the ENA 453-sample Ovis aries chromosome 19 VCF, a second ENA Dutch Genebank Cattle 29-sample full Y-chromosome VCF, and DDBJ CHM13 3715-sample human chr22 bounded 1k/10k/50k tiers, with aggregate AD and broader DP/GQ/selected-sample/mixed FORMAT expressions winning on the measured rows. The VCFtools population-genetics layer now matches VCFtools on supported diploid biallelic fixture rows and on a staged bounded 3715-sample human cohort, with measured public-cohort wins from 1.43x to 8.54x across frequency, missingness, HWE, heterozygosity, pi, Tajima's D, LD, and Weir-Cockerham Fst. Honest gaps remain: BCF TSV still trails `bcftools query`, ordinary gzip is not parallelized, the human evidence is bounded rather than a full 27 GB run, GATK external baselines are later rows, VCFtools evidence is still scoped to diploid biallelic normalized rows, and Polars/PyArrow plus larger whole-cohort columnar evidence are still pending.
 
 ## Milestones
 
@@ -147,6 +148,7 @@ make bench-v12
 make bench-v14
 make bench-v17
 make vcftools-parity
+make bench-vcftools-popgen
 make benchmark-table
 make bench-v06-smoke
 ```
@@ -242,17 +244,22 @@ CHROM	POS	N_ALLELES	N_CHR	{ALLELE:FREQ}
   `N_GENOTYPE_FILTERED`, `N_MISS`, and `F_MISS`.
 
 These commands are correctness-focused coverage for common VCFtools workflows.
-The Dockerized `make vcftools-parity` harness checks `freq`, `missingness`,
-`hardy`, and `het` against VCFtools 0.1.16 on the regression fixture. `hardy`,
-`het`, `pi`, `tajima-d`, and `ld` currently operate on called diploid biallelic
-genotypes. `fst` reports a site-level Hudson Fst estimator for two population
-files; exact Weir-Cockerham parity with VCFtools is tracked as a remaining
-validation item. These commands are not yet benchmarked as VCFtools speed
-claims.
+The optional `make vcftools-parity` harness checks `freq`, `missingness`,
+`hardy`, `het`, `pi`, `tajima-d`, `ld`, and Weir-Cockerham `fst` against
+VCFtools on the regression fixture when VCFtools is installed. `hardy`, `het`,
+`pi`, `tajima-d`, `ld`, and Weir-Cockerham `fst` currently operate on called
+diploid biallelic genotypes, so the cautious claim is limited to matching
+VCFtools on supported diploid biallelic rows.
 
 When VCFtools is installed, run `make vcftools-parity` to generate side-by-side
 VariantFlow and VCFtools artifacts under `tests/output/vcftools-parity` and
-check normalized parity for the supported VCFtools rows.
+check normalized parity for the supported VCFtools rows. Run
+`make bench-vcftools-popgen` to write
+`benchmark/reports/vcftools-popgen-parity-benchmark.md`; when the cached
+DDBJ CHM13 3715-sample human cohort is available, the harness stages a bounded
+biallelic public cohort and checks normalized VCFtools parity there too. The
+current public row is faster than VCFtools on the measured supported cases, but
+it is still not a broad VCFtools replacement claim.
 
 ## Diff Output
 

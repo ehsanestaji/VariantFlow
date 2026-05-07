@@ -74,6 +74,8 @@ enum Command {
         input: PathBuf,
         #[arg(long = "pop", required = true)]
         populations: Vec<PathBuf>,
+        #[arg(long, value_enum, default_value_t = popgen::FstEstimator::Hudson)]
+        estimator: popgen::FstEstimator,
         #[arg(short, long)]
         output: PathBuf,
     },
@@ -183,8 +185,9 @@ pub fn run_with_name(name: &'static str) -> Result<()> {
         Command::Fst {
             input,
             populations,
+            estimator,
             output,
-        } => popgen::run_fst(&input, &populations, &output),
+        } => popgen::run_fst(&input, &populations, estimator, &output),
         Command::Pi {
             input,
             keep,
