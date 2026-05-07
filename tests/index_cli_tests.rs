@@ -128,6 +128,14 @@ fn index_accepts_bgzf_vcf_input() {
         .success();
 
     let json: Value = serde_json::from_str(&fs::read_to_string(output).unwrap()).unwrap();
+    assert_eq!(json["schema_version"], 2);
+    assert_eq!(json["offset_model"], "bgzf-virtual");
+    assert_eq!(json["virtual_offsets_available"], true);
     assert_eq!(json["record_count"], 2);
+    assert!(json["chunks"][0]["virtual_start"].as_u64().is_some());
+    assert!(
+        json["chunks"][0]["virtual_end"].as_u64().unwrap()
+            > json["chunks"][0]["virtual_start"].as_u64().unwrap()
+    );
     assert_eq!(json["chunks"][0]["format_keys"][0], "AD");
 }
