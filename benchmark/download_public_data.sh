@@ -12,6 +12,8 @@ GIAB_HG002_URL="https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release
 GIAB_HG002_TBI_URL="${GIAB_HG002_URL}.tbi"
 IGSR_CHR22_URL="https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000G_2504_high_coverage/working/20220422_3202_phased_SNV_INDEL_SV/1kGP_high_coverage_Illumina.chr22.filtered.SNV_INDEL_SV_phased_panel.vcf.gz"
 IGSR_CHR22_TBI_URL="${IGSR_CHR22_URL}.tbi"
+IGSR_3202_METADATA_URL="https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000G_2504_high_coverage/20130606_g1k_3202_samples_ped_population.txt"
+IGSR_3202_METADATA_FILE="igsr-1000g-3202-sample-ped-population.txt"
 FORMAT_TRIO_URL="https://sourceforge.net/projects/project123vcf/files/Benchmark_Data/NA12878.trio.hg19_multianno.vcf.gz/download"
 FORMAT_WGS_TRIO_URL="https://zenodo.org/records/3697103/files/trio_NA12878-NA12891-NA12892_hs37d5_dbsnp.vcf.gz?download=1"
 FORMAT_WGS_TRIO_TBI_URL="https://zenodo.org/records/3697103/files/trio_NA12878-NA12891-NA12892_hs37d5_dbsnp.vcf.gz.tbi?download=1"
@@ -45,13 +47,26 @@ download_igsr_chr22() {
 }
 
 download_igsr_true_population() {
-  # True public population evidence requires an official 1000 Genomes / IGSR
-  # VCF plus sample metadata with sample, population, and superpopulation
-  # columns. Large files must remain under tests/output/public-data.
-  # VCF_FAST_V17_TRUE_POP_INPUT="tests/output/public-data/<cached-igsr-vcf>.vcf.gz"
-  # VCF_FAST_V17_TRUE_POP_METADATA="tests/output/public-data/igsr-1000g-sample-metadata.tsv"
-  echo "blocked: choose official IGSR sample metadata URL before true population evidence run" >&2
-  exit 77
+  local metadata_path="$OUT_DIR/$IGSR_3202_METADATA_FILE"
+  local vcf_path="$OUT_DIR/1kGP_high_coverage_Illumina.chr22.filtered.SNV_INDEL_SV_phased_panel.vcf.gz"
+  local manifest="$OUT_DIR/igsr-true-population-manifest.env"
+
+  download_igsr_chr22
+  download_if_missing "$IGSR_3202_METADATA_URL" "$metadata_path"
+
+  cat >"$manifest" <<EOF
+VCF_FAST_V17_TRUE_POP_INPUT="$vcf_path"
+VCF_FAST_V17_TRUE_POP_METADATA="$metadata_path"
+IGSR_CHR22_URL="$IGSR_CHR22_URL"
+IGSR_3202_METADATA_URL="$IGSR_3202_METADATA_URL"
+EOF
+
+  cat <<EOF
+True population evidence inputs cached:
+  VCF_FAST_V17_TRUE_POP_INPUT="$vcf_path"
+  VCF_FAST_V17_TRUE_POP_METADATA="$metadata_path"
+  manifest="$manifest"
+EOF
 }
 
 download_format_trio() {
@@ -134,6 +149,7 @@ cat <<EOF
 Public data cache: $OUT_DIR
 GIAB HG002: $GIAB_HG002_URL
 1000 Genomes chr22: $IGSR_CHR22_URL
+1000 Genomes 3202-sample population metadata: $IGSR_3202_METADATA_URL
 FORMAT-rich NA12878 trio: $FORMAT_TRIO_URL
 Larger FORMAT-rich WGS trio: $FORMAT_WGS_TRIO_URL
 FORMAT-rich 453 sheep cohort: $FORMAT_OVIS453_URL
