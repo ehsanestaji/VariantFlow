@@ -1559,12 +1559,10 @@ fn v17_true_public_population_evidence_harness_is_declared() {
     ));
     assert!(downloader.contains("igsr-1000g-3202-sample-ped-population.txt"));
     assert!(downloader.contains("download_igsr_true_population"));
-    assert!(!downloader.contains(
-        concat!(
-            "blocked: choose official IGSR sample ",
-            "metadata URL before true population evidence run"
-        )
-    ));
+    assert!(!downloader.contains(concat!(
+        "blocked: choose official IGSR sample ",
+        "metadata URL before true population evidence run"
+    )));
 
     for required in [
         "VariantFlow v1.7 True Public Population Evidence",
@@ -1624,7 +1622,7 @@ fn igsr_population_helper_parses_official_whitespace_metadata() {
     .expect("write official-style metadata");
 
     let output = Command::new("python3")
-        .current_dir(&root)
+        .current_dir(root)
         .arg("benchmark/igsr_population_files.py")
         .arg("--vcf")
         .arg(&vcf)
@@ -1680,7 +1678,7 @@ fn igsr_population_helper_rejects_unmatched_vcf_samples_without_override() {
     .expect("write official-style metadata");
 
     let output = Command::new("python3")
-        .current_dir(&root)
+        .current_dir(root)
         .arg("benchmark/igsr_population_files.py")
         .arg("--vcf")
         .arg(&vcf)
