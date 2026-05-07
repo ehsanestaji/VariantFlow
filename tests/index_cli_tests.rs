@@ -21,6 +21,41 @@ fn write_bgzf(path: &Path, text: &str) {
 }
 
 #[test]
+fn plain_vcf_index_records_source_identity_and_record_chunk_offset_model() {
+    let dir = tempdir().unwrap();
+    let input = dir.path().join("format-rich.vcf");
+    let output = dir.path().join("format-rich.vcf.vfi");
+    fs::write(&input, FORMAT_RICH_VCF).unwrap();
+
+    Command::cargo_bin("variantflow")
+        .unwrap()
+        .args([
+            "index",
+            input.to_str().unwrap(),
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let json: Value = serde_json::from_str(&fs::read_to_string(output).unwrap()).unwrap();
+    assert_eq!(json["schema_version"], 2);
+    assert_eq!(json["index_kind"], "variantflow-vfi");
+    assert_eq!(json["offset_model"], "record-chunk");
+    assert_eq!(json["virtual_offsets_available"], false);
+    assert_eq!(
+        json["source"]["size_bytes"],
+        fs::metadata(&input).unwrap().len()
+    );
+    assert!(
+        json["source"]["modified_unix_seconds"]
+            .as_u64()
+            .is_some_and(|seconds| seconds > 0)
+    );
+    assert_eq!(json["record_count"], 2);
+}
+
+#[test]
 fn index_writes_query_aware_metadata_sidecar() {
     let dir = tempdir().unwrap();
     let input = dir.path().join("format-rich.vcf");
@@ -39,10 +74,14 @@ fn index_writes_query_aware_metadata_sidecar() {
         .success();
 
     let json: Value = serde_json::from_str(&fs::read_to_string(output).unwrap()).unwrap();
-    assert_eq!(json["schema_version"], 1);
+    assert_eq!(json["schema_version"], 2);
     assert_eq!(json["index_kind"], "variantflow-vfi");
     assert_eq!(json["offset_model"], "record-chunk");
     assert_eq!(json["virtual_offsets_available"], false);
+    assert_eq!(
+        json["source"]["size_bytes"],
+        fs::metadata(&input).unwrap().len()
+    );
     assert_eq!(json["record_count"], 2);
     assert_eq!(json["chunks"].as_array().unwrap().len(), 1);
 
