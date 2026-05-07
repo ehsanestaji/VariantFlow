@@ -113,8 +113,8 @@ select_default_public_input() {
 prepare_public_biallelic_dataset() {
   local input="$1" output="$2" tier_limit="$3"
   if ! command -v bcftools >/dev/null 2>&1 || ! command -v bgzip >/dev/null 2>&1; then
-    printf "%s" "$input"
-    return 0
+    echo "blocked: public cohort tier staging requires bcftools and bgzip" >&2
+    return 1
   fi
 
   if [[ -f "$output" ]]; then
@@ -156,6 +156,11 @@ public_population_files() {
     --out-prefix "$OUT_DIR/public-cohort-$tier_limit"
 }
 
+append_public_pending_row() {
+  local tier_limit="$1" blocker="$2"
+  printf "| public cohort %s | all population-genetics cases | pending | pending | pending | pending | pending | pending | pending | %s | pending | %s |\n" "$tier_limit" "$VCFTOOLS_VERSION" "$blocker" >>"$ROWS_FILE"
+}
+
 write_blocker_report() {
   cat >"$REPORT" <<EOF
 # VCFtools Population-Genetics Parity Benchmark
@@ -179,7 +184,9 @@ version, correctness result, caveats.
 | fixture | Tajima's D | pending | pending | $(input_size "$INPUT") bytes | $(count_records "$INPUT") | $(count_samples "$INPUT") | pending | pending | unavailable | pending | blocked: VCFtools unavailable |
 | fixture | LD | pending | pending | $(input_size "$INPUT") bytes | $(count_records "$INPUT") | $(count_samples "$INPUT") | pending | pending | unavailable | pending | blocked: VCFtools unavailable |
 | fixture | Weir-Cockerham Fst | pending | pending | $(input_size "$INPUT") bytes | $(count_records "$INPUT") | $(count_samples "$INPUT") | pending | pending | unavailable | pending | blocked: VCFtools unavailable |
-| public cohort pending | all population-genetics cases | pending | pending | pending | pending | pending | pending | pending | pending | pending | set VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_INPUT to a cached public VCF |
+| public cohort 1000 | all population-genetics cases | pending | pending | pending | pending | pending | pending | pending | pending | pending | blocked: VCFtools unavailable; set VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_INPUT to a cached public VCF |
+| public cohort 10000 | all population-genetics cases | pending | pending | pending | pending | pending | pending | pending | pending | pending | blocked: VCFtools unavailable; set VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_INPUT to a cached public VCF |
+| public cohort 50000 | all population-genetics cases | pending | pending | pending | pending | pending | pending | pending | pending | pending | blocked: VCFtools unavailable; set VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_INPUT to a cached public VCF |
 
 Claim decision: no speed claim. Once measured, only rows whose correctness result
 passes may support the cautious claim that VariantFlow matches VCFtools on
@@ -315,7 +322,15 @@ fi
 if [[ -n "$PUBLIC_INPUT" && -f "$PUBLIC_INPUT" ]]; then
   for tier_limit in $PUBLIC_TIERS; do
     tier_name="public cohort $tier_limit"
-    tier_input="$(prepare_public_biallelic_dataset "$PUBLIC_INPUT" "$OUT_DIR/public-cohort.biallelic.${tier_limit}.vcf.gz" "$tier_limit")"
+    tier_staging_error="$OUT_DIR/public-cohort.${tier_limit}.staging.err"
+    if ! tier_input="$(prepare_public_biallelic_dataset "$PUBLIC_INPUT" "$OUT_DIR/public-cohort.biallelic.${tier_limit}.vcf.gz" "$tier_limit" 2>"$tier_staging_error")"; then
+      tier_blocker="$(tr '\n' ' ' <"$tier_staging_error" | sed 's/[[:space:]]*$//')"
+      if [[ -z "$tier_blocker" ]]; then
+        tier_blocker="blocked: failed to stage bounded biallelic public cohort tier"
+      fi
+      append_public_pending_row "$tier_limit" "$tier_blocker; public input found but tier was not measured"
+      continue
+    fi
     public_pop_files="$(public_population_files "$tier_input" "$tier_limit")"
     IFS=$'\t' read -r tier_pop1 tier_pop2 tier_population_metadata tier_population_source <<<"$public_pop_files"
     if [[ -z "$tier_pop1" || -z "$tier_pop2" || -z "$tier_population_source" ]]; then
@@ -331,7 +346,7 @@ if [[ -n "$PUBLIC_INPUT" && -f "$PUBLIC_INPUT" ]]; then
   done
 else
   for tier_limit in $PUBLIC_TIERS; do
-    printf "| public cohort %s pending | all population-genetics cases | pending | pending | pending | pending | pending | pending | pending | %s | pending | set VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_INPUT to a cached public VCF; large artifacts remain ignored |\n" "$tier_limit" "$VCFTOOLS_VERSION" >>"$ROWS_FILE"
+    append_public_pending_row "$tier_limit" "set VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_INPUT to a cached public VCF; large artifacts remain ignored"
   done
 fi
 
