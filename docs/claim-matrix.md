@@ -18,4 +18,5 @@ claims.
 | BCF input and indexed region compatibility | matches | `benchmark/reports/compatibility-benchmark.md` reports correctness/indexability checks | HTSlib/bcftools | htslib-backed paths are not byte-preserving native output |
 | BCF TSV compatibility path | complements | `benchmark/reports/compatibility-benchmark.md` records correctness with slower rows | bcftools query | optimization gap, not a speed claim |
 | GATK SelectVariants / VariantFiltration workflows | not yet proven | no tracked report row yet | GATK | optional v1.7+ baseline |
-| VCFtools filtering/stats workflows | not yet proven | no tracked report row yet | VCFtools | optional legacy baseline |
+| VCFtools frequency and missingness workflows | matches locally supported semantics | `tests/popgen_cli_tests.rs` covers VCFtools-style `.frq`, `.lmiss`, `.imiss`, and `--keep/--remove` sample selection | planned VCFtools command-line baseline | first replacement-layer slice; no speed claim or full VCFtools population-stat parity yet |
+| VCFtools filtering/stats workflows beyond frequency/missingness | not yet proven | no tracked report row yet | VCFtools | Fst, pi, Tajima's D, LD, HWE, heterozygosity, and richer filters remain roadmap items |

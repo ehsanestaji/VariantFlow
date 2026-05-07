@@ -109,6 +109,8 @@ variantflow filter input.vcf.gz --where "QUAL > 30" -o output.vcf.gz
 variantflow filter input.vcf.gz --where 'INFO/AF[1] > 0.2' -o indexed.vcf
 variantflow filter input.vcf.gz --where 'N_PASS(FORMAT/AD[1] > 10) >= 2' -o cohort.vcf
 variantflow stats input.vcf.gz
+variantflow freq input.vcf.gz -o variants.frq
+variantflow missingness input.vcf.gz -o missingness
 variantflow diff a.vcf.gz b.vcf.gz --mode shared --key position -o diff.tsv
 variantflow convert input.vcf.gz --to tsv -o variants.tsv
 variantflow convert input.vcf.gz --to parquet -o variants.parquet
@@ -161,6 +163,8 @@ VCF_FAST_NATIVE_BGZF_THREADS=4 vcf-fast filter input.vcf.gz --where "QUAL > 30" 
 VCF_FAST_NATIVE_FILTER_THREADS=4 vcf-fast filter input.vcf --where "ANY(FORMAT/AD > 80)" -o output.vcf
 cargo run --features htslib-static -- filter tests/data/compat_example.vcf --where "QUAL > 30" --compression bgzf -o tests/output/compat.vcf.gz
 vcf-fast stats tests/data/example.vcf
+vcf-fast freq tests/data/popgen_example.vcf -o tests/output/example.frq
+vcf-fast missingness tests/data/popgen_example.vcf -o tests/output/example
 vcf-fast diff tests/data/diff_a.vcf tests/data/diff_b.vcf -o tests/output/diff.tsv
 vcf-fast convert tests/data/example.vcf --to tsv -o tests/output/variants.tsv
 vcf-fast convert tests/data/example.vcf --to parquet -o tests/output/variants.parquet
@@ -196,6 +200,34 @@ The default build is a line-preserving streaming filter, not the future full col
 - `qual` and `af` count/min/max/mean summaries
 - `missing_filter_values`
 - `transition_transversion_ratio`
+
+## VCFtools-Style Population Summaries
+
+`freq` and `missingness` are the first VCFtools replacement-layer commands.
+They support optional `--keep samples.txt` or `--remove samples.txt` selection
+files, preserve input sample order, and stream native `.vcf`/`.vcf.gz` inputs.
+
+```bash
+variantflow freq input.vcf.gz --keep samples.txt -o output.frq
+variantflow missingness input.vcf.gz --remove excluded.txt -o output_prefix
+```
+
+`freq` writes a VCFtools-style site frequency table:
+
+```text
+CHROM	POS	N_ALLELES	N_CHR	{ALLELE:FREQ}
+1	100	2	4	A:0.75	G:0.25
+```
+
+`missingness` writes two VCFtools-style files from the output prefix:
+
+- `output_prefix.lmiss`: site missingness with `CHR`, `POS`, `N_DATA`,
+  `N_GENOTYPE_FILTERED`, `N_MISS`, and `F_MISS`.
+- `output_prefix.imiss`: individual missingness with `INDV`, `N_DATA`,
+  `N_GENOTYPE_FILTERED`, `N_MISS`, and `F_MISS`.
+
+These commands are correctness-focused initial coverage for common VCFtools
+workflows. They are not yet benchmarked as VCFtools speed claims.
 
 ## Diff Output
 
