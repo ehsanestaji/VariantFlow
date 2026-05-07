@@ -38,13 +38,18 @@ def read_metadata(path: Path) -> dict[str, str]:
             pop_i = header.index("population")
         except ValueError as error:
             raise SystemExit("metadata must contain sample and population columns") from error
-        for line in handle:
+        for row_number, line in enumerate(handle, start=2):
             if not line.strip():
                 continue
             fields = line.rstrip("\n").split("\t")
             if len(fields) <= max(sample_i, pop_i):
-                continue
-            labels[fields[sample_i]] = fields[pop_i]
+                raise SystemExit(
+                    f"{path} row {row_number} is missing sample or population field"
+                )
+            sample = fields[sample_i]
+            if sample in labels:
+                raise SystemExit(f"{path} row {row_number} duplicates sample {sample!r}")
+            labels[sample] = fields[pop_i]
     return labels
 
 
