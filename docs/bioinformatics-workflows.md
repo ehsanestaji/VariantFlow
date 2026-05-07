@@ -69,6 +69,22 @@ Use smoke tiers for local checks:
 VCF_FAST_V12_PUBLIC_TIERS=100 VCF_FAST_V12_STRESS_TIERS=100 make bench-v12
 ```
 
+## True Public Population Evidence
+
+The serious VCFtools-replacement benchmark requires a cached 1000 Genomes / IGSR
+VCF and official sample metadata with `sample`, `population`, and
+`superpopulation` columns. Header-derived fallback groups are validation-only
+and must not support public population-genetics claims.
+
+```bash
+benchmark/download_public_data.sh igsr-true-population
+VCF_FAST_V17_TRUE_POP_INPUT="tests/output/public-data/<cached-igsr-vcf>.vcf.gz" \
+VCF_FAST_V17_TRUE_POP_METADATA="tests/output/public-data/igsr-1000g-sample-metadata.tsv" \
+VCF_FAST_V17_TRUE_POP_TIERS="10000 50000 100000" \
+VCF_FAST_V17_TRUE_POP_GROUPS="AFR:EUR" \
+make bench-vcftools-true-popgen
+```
+
 ## Limitations
 
 - Native filtering preserves passing records byte-for-byte; htslib-backed BCF,
