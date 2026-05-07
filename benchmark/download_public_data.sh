@@ -44,6 +44,16 @@ download_igsr_chr22() {
   download_if_missing "$IGSR_CHR22_TBI_URL" "$OUT_DIR/1kGP_high_coverage_Illumina.chr22.filtered.SNV_INDEL_SV_phased_panel.vcf.gz.tbi"
 }
 
+download_igsr_true_population() {
+  # True public population evidence requires an official 1000 Genomes / IGSR
+  # VCF plus sample metadata with sample, population, and superpopulation
+  # columns. Large files must remain under tests/output/public-data.
+  # VCF_FAST_V17_TRUE_POP_INPUT="tests/output/public-data/<cached-igsr-vcf>.vcf.gz"
+  # VCF_FAST_V17_TRUE_POP_METADATA="tests/output/public-data/igsr-1000g-sample-metadata.tsv"
+  echo "blocked: choose official IGSR sample metadata URL before true population evidence run" >&2
+  exit 77
+}
+
 download_format_trio() {
   download_if_missing "$FORMAT_TRIO_URL" "$OUT_DIR/NA12878.trio.hg19_multianno.vcf.gz"
 }
@@ -96,6 +106,9 @@ case "$MODE" in
   igsr-chr22)
     download_igsr_chr22
     ;;
+  igsr-true-population)
+    download_igsr_true_population
+    ;;
   format-trio)
     download_format_trio
     ;;
@@ -112,7 +125,7 @@ case "$MODE" in
     download_format_human_chm13_chr22
     ;;
   *)
-    echo "usage: $0 [all|giab-hg002|igsr-chr22|format-trio|format-wgs-trio|format-ovis453|format-cattle29|format-human-chm13-chr22]" >&2
+    echo "usage: $0 [all|giab-hg002|igsr-chr22|igsr-true-population|format-trio|format-wgs-trio|format-ovis453|format-cattle29|format-human-chm13-chr22]" >&2
     exit 2
     ;;
 esac

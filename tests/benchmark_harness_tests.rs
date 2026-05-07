@@ -93,6 +93,28 @@ fn public_data_downloader_pins_giab_and_igsr_sources() {
 }
 
 #[test]
+fn true_population_downloader_documents_igsr_metadata_inputs() {
+    let root = repo_root();
+    let downloader = fs::read_to_string(root.join("benchmark/download_public_data.sh"))
+        .expect("read public data downloader");
+    let workflows = fs::read_to_string(root.join("docs/bioinformatics-workflows.md"))
+        .expect("read workflow docs");
+
+    for required in [
+        "igsr-true-population",
+        "1000 Genomes",
+        "IGSR",
+        "sample metadata",
+        "population",
+        "superpopulation",
+        "VCF_FAST_V17_TRUE_POP_INPUT",
+        "VCF_FAST_V17_TRUE_POP_METADATA",
+    ] {
+        assert!(downloader.contains(required) || workflows.contains(required), "missing {required}");
+    }
+}
+
+#[test]
 fn compatibility_report_tracks_required_benchmark_fields() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let report =
