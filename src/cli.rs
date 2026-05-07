@@ -52,6 +52,64 @@ enum Command {
         #[arg(short, long)]
         output: PathBuf,
     },
+    Hardy {
+        input: PathBuf,
+        #[arg(long)]
+        keep: Option<PathBuf>,
+        #[arg(long)]
+        remove: Option<PathBuf>,
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+    Het {
+        input: PathBuf,
+        #[arg(long)]
+        keep: Option<PathBuf>,
+        #[arg(long)]
+        remove: Option<PathBuf>,
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+    Fst {
+        input: PathBuf,
+        #[arg(long = "pop", required = true)]
+        populations: Vec<PathBuf>,
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+    Pi {
+        input: PathBuf,
+        #[arg(long)]
+        keep: Option<PathBuf>,
+        #[arg(long)]
+        remove: Option<PathBuf>,
+        #[arg(long)]
+        window_size: Option<u64>,
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+    TajimaD {
+        input: PathBuf,
+        #[arg(long)]
+        keep: Option<PathBuf>,
+        #[arg(long)]
+        remove: Option<PathBuf>,
+        #[arg(long)]
+        window_size: u64,
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+    Ld {
+        input: PathBuf,
+        #[arg(long)]
+        keep: Option<PathBuf>,
+        #[arg(long)]
+        remove: Option<PathBuf>,
+        #[arg(long)]
+        max_distance: Option<u64>,
+        #[arg(short, long)]
+        output: PathBuf,
+    },
     Diff {
         a: PathBuf,
         b: PathBuf,
@@ -110,6 +168,62 @@ pub fn run_with_name(name: &'static str) -> Result<()> {
             remove,
             output,
         } => popgen::run_missingness(&input, keep.as_deref(), remove.as_deref(), &output),
+        Command::Hardy {
+            input,
+            keep,
+            remove,
+            output,
+        } => popgen::run_hardy(&input, keep.as_deref(), remove.as_deref(), &output),
+        Command::Het {
+            input,
+            keep,
+            remove,
+            output,
+        } => popgen::run_het(&input, keep.as_deref(), remove.as_deref(), &output),
+        Command::Fst {
+            input,
+            populations,
+            output,
+        } => popgen::run_fst(&input, &populations, &output),
+        Command::Pi {
+            input,
+            keep,
+            remove,
+            window_size,
+            output,
+        } => popgen::run_pi(
+            &input,
+            keep.as_deref(),
+            remove.as_deref(),
+            window_size,
+            &output,
+        ),
+        Command::TajimaD {
+            input,
+            keep,
+            remove,
+            window_size,
+            output,
+        } => popgen::run_tajima_d(
+            &input,
+            keep.as_deref(),
+            remove.as_deref(),
+            window_size,
+            &output,
+        ),
+        Command::Ld {
+            input,
+            keep,
+            remove,
+            max_distance,
+            output,
+        } => popgen::run_ld(
+            &input,
+            keep.as_deref(),
+            remove.as_deref(),
+            max_distance,
+            &output,
+        ),
         Command::Diff {
             a,
             b,

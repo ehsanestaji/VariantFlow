@@ -26,6 +26,41 @@ struct SampleMissingness {
     n_missing: u64,
 }
 
+#[derive(Debug, Clone, Default)]
+struct SiteAlleleSummary {
+    chrom: String,
+    pos: u64,
+    allele_counts: Vec<u64>,
+    genotypes: Vec<Option<Vec<usize>>>,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct BiallelicSummary {
+    hom_ref: u64,
+    het: u64,
+    hom_alt: u64,
+    ref_count: u64,
+    alt_count: u64,
+    n_chr: u64,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct HetSampleSummary {
+    observed_hom: u64,
+    expected_hom: f64,
+    n_sites: u64,
+}
+
+#[derive(Debug, Clone, Default)]
+struct WindowSummary {
+    chrom: String,
+    start: u64,
+    end: u64,
+    pi_sum: f64,
+    segregating_sites: u64,
+    max_n_chr: u64,
+}
+
 pub fn run_freq(
     input: &Path,
     keep: Option<&Path>,
@@ -116,6 +151,304 @@ pub fn run_missingness(
     }
     imiss.flush()?;
 
+    Ok(())
+}
+
+pub fn run_hardy(
+    input: &Path,
+    keep: Option<&Path>,
+    remove: Option<&Path>,
+    output: &Path,
+) -> Result<()> {
+    let selection = SampleSelection::from_files(keep, remove)?;
+    let mut writer = BufWriter::new(
+        File::create(output).with_context(|| format!("failed to create {}", output.display()))?,
+    );
+    writeln!(
+        writer,
+        "CHROM\tPOS\tOBS_HOM_REF\tOBS_HET\tOBS_HOM_ALT\tE_HOM_REF\tE_HET\tE_HOM_ALT\tCHISQ_HWE"
+    )?;
+
+    stream_site_summaries(input, &selection, |site| {
+        if let Some(summary) = site.biallelic_summary() {
+            let called = (summary.hom_ref + summary.het + summary.hom_alt) as f64;
+            if called > 0.0 && summary.n_chr > 0 {
+                let p_ref = summary.ref_count as f64 / summary.n_chr as f64;
+                let p_alt = summary.alt_count as f64 / summary.n_chr as f64;
+                let e_hom_ref = called * p_ref * p_ref;
+                let e_het = called * 2.0 * p_ref * p_alt;
+                let e_hom_alt = called * p_alt * p_alt;
+                let chisq = chi_square([
+                    (summary.hom_ref as f64, e_hom_ref),
+                    (summary.het as f64, e_het),
+                    (summary.hom_alt as f64, e_hom_alt),
+                ]);
+                writeln!(
+                    writer,
+                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                    site.chrom,
+                    site.pos,
+                    summary.hom_ref,
+                    summary.het,
+                    summary.hom_alt,
+                    format_ratio(e_hom_ref),
+                    format_ratio(e_het),
+                    format_ratio(e_hom_alt),
+                    format_ratio(chisq)
+                )?;
+            }
+        }
+        Ok(())
+    })?;
+    writer.flush()?;
+    Ok(())
+}
+
+pub fn run_het(
+    input: &Path,
+    keep: Option<&Path>,
+    remove: Option<&Path>,
+    output: &Path,
+) -> Result<()> {
+    let selection = SampleSelection::from_files(keep, remove)?;
+    let mut sample_names = Vec::new();
+    let mut summaries = Vec::new();
+
+    stream_site_summaries_with_samples(input, &selection, |samples, site| {
+        if sample_names.is_empty() {
+            sample_names = samples.iter().map(|sample| sample.name.clone()).collect();
+            summaries = vec![HetSampleSummary::default(); samples.len()];
+        }
+        let Some(biallelic) = site.biallelic_summary() else {
+            return Ok(());
+        };
+        if biallelic.n_chr == 0 {
+            return Ok(());
+        }
+        let p_ref = biallelic.ref_count as f64 / biallelic.n_chr as f64;
+        let p_alt = biallelic.alt_count as f64 / biallelic.n_chr as f64;
+        let expected_hom = p_ref * p_ref + p_alt * p_alt;
+
+        for (genotype, summary) in site.genotypes.iter().zip(&mut summaries) {
+            let Some(genotype) = genotype else {
+                continue;
+            };
+            if genotype.len() != 2 || genotype.iter().any(|allele| *allele > 1) {
+                continue;
+            }
+            summary.n_sites += 1;
+            summary.expected_hom += expected_hom;
+            if genotype[0] == genotype[1] {
+                summary.observed_hom += 1;
+            }
+        }
+        Ok(())
+    })?;
+
+    let mut writer = BufWriter::new(
+        File::create(output).with_context(|| format!("failed to create {}", output.display()))?,
+    );
+    writeln!(writer, "INDV\tO_HOM\tE_HOM\tN_SITES\tF")?;
+    for (sample, summary) in sample_names.iter().zip(summaries) {
+        let denominator = summary.n_sites as f64 - summary.expected_hom;
+        let f = if denominator == 0.0 {
+            ".".to_owned()
+        } else {
+            format_ratio((summary.expected_hom - summary.observed_hom as f64) / denominator)
+        };
+        writeln!(
+            writer,
+            "{}\t{}\t{}\t{}\t{}",
+            sample,
+            summary.observed_hom,
+            format_ratio(summary.expected_hom),
+            summary.n_sites,
+            f
+        )?;
+    }
+    writer.flush()?;
+    Ok(())
+}
+
+pub fn run_fst(input: &Path, populations: &[std::path::PathBuf], output: &Path) -> Result<()> {
+    if populations.len() != 2 {
+        bail!("fst requires exactly two --pop files");
+    }
+    let pop1 = read_sample_set(&populations[0])?;
+    let pop2 = read_sample_set(&populations[1])?;
+    let selection = SampleSelection::default();
+    let mut pop1_indices = Vec::new();
+    let mut pop2_indices = Vec::new();
+    let mut writer = BufWriter::new(
+        File::create(output).with_context(|| format!("failed to create {}", output.display()))?,
+    );
+    writeln!(writer, "CHROM\tPOS\tHUDSON_FST")?;
+
+    stream_site_summaries_with_samples(input, &selection, |samples, site| {
+        if pop1_indices.is_empty() && pop2_indices.is_empty() {
+            pop1_indices = population_indices(samples, &pop1)?;
+            pop2_indices = population_indices(samples, &pop2)?;
+        }
+        if let Some(fst) = hudson_fst(site, &pop1_indices, &pop2_indices) {
+            writeln!(
+                writer,
+                "{}\t{}\t{}",
+                site.chrom,
+                site.pos,
+                format_ratio(fst)
+            )?;
+        }
+        Ok(())
+    })?;
+    writer.flush()?;
+    Ok(())
+}
+
+pub fn run_pi(
+    input: &Path,
+    keep: Option<&Path>,
+    remove: Option<&Path>,
+    window_size: Option<u64>,
+    output: &Path,
+) -> Result<()> {
+    let selection = SampleSelection::from_files(keep, remove)?;
+    let mut writer = BufWriter::new(
+        File::create(output).with_context(|| format!("failed to create {}", output.display()))?,
+    );
+    if let Some(window_size) = window_size {
+        let mut windows = Vec::new();
+        stream_site_summaries(input, &selection, |site| {
+            if let Some(pi) = site_pi(site) {
+                add_window_pi(&mut windows, site, pi, window_size);
+            }
+            Ok(())
+        })?;
+        writeln!(
+            writer,
+            "CHROM\tBIN_START\tBIN_END\tN_VARIANTS\tPI_SUM\tPI_PER_VARIANT"
+        )?;
+        for window in windows {
+            writeln!(
+                writer,
+                "{}\t{}\t{}\t{}\t{}\t{}",
+                window.chrom,
+                window.start,
+                window.end,
+                window.segregating_sites,
+                format_ratio(window.pi_sum),
+                format_fraction_f64(window.pi_sum, window.segregating_sites)
+            )?;
+        }
+    } else {
+        writeln!(writer, "CHROM\tPOS\tN_CHR\tPI")?;
+        stream_site_summaries(input, &selection, |site| {
+            if let Some(pi) = site_pi(site) {
+                let n_chr = site.allele_counts.iter().sum::<u64>();
+                writeln!(
+                    writer,
+                    "{}\t{}\t{}\t{}",
+                    site.chrom,
+                    site.pos,
+                    n_chr,
+                    format_ratio(pi)
+                )?;
+            }
+            Ok(())
+        })?;
+    }
+    writer.flush()?;
+    Ok(())
+}
+
+pub fn run_tajima_d(
+    input: &Path,
+    keep: Option<&Path>,
+    remove: Option<&Path>,
+    window_size: u64,
+    output: &Path,
+) -> Result<()> {
+    if window_size == 0 {
+        bail!("--window-size must be positive");
+    }
+    let selection = SampleSelection::from_files(keep, remove)?;
+    let mut windows = Vec::new();
+    stream_site_summaries(input, &selection, |site| {
+        if let Some(pi) = site_pi(site) {
+            add_window_pi(&mut windows, site, pi, window_size);
+            if let Some(window) = windows.last_mut() {
+                window.max_n_chr = window.max_n_chr.max(site.allele_counts.iter().sum());
+            }
+        }
+        Ok(())
+    })?;
+
+    let mut writer = BufWriter::new(
+        File::create(output).with_context(|| format!("failed to create {}", output.display()))?,
+    );
+    writeln!(writer, "CHROM\tBIN_START\tN_SNPS\tN_CHR\tPI_SUM\tTAJIMA_D")?;
+    for window in windows {
+        if let Some(tajima_d) = tajima_d(window.pi_sum, window.segregating_sites, window.max_n_chr)
+        {
+            writeln!(
+                writer,
+                "{}\t{}\t{}\t{}\t{}\t{}",
+                window.chrom,
+                window.start,
+                window.segregating_sites,
+                window.max_n_chr,
+                format_ratio(window.pi_sum),
+                format_ratio(tajima_d)
+            )?;
+        }
+    }
+    writer.flush()?;
+    Ok(())
+}
+
+pub fn run_ld(
+    input: &Path,
+    keep: Option<&Path>,
+    remove: Option<&Path>,
+    max_distance: Option<u64>,
+    output: &Path,
+) -> Result<()> {
+    let selection = SampleSelection::from_files(keep, remove)?;
+    let mut sites = Vec::new();
+    stream_site_summaries(input, &selection, |site| {
+        if site.biallelic_summary().is_some() {
+            sites.push(site.clone());
+        }
+        Ok(())
+    })?;
+
+    let mut writer = BufWriter::new(
+        File::create(output).with_context(|| format!("failed to create {}", output.display()))?,
+    );
+    writeln!(writer, "CHROM\tPOS1\tPOS2\tN_INDV\tR2")?;
+    for left_index in 0..sites.len() {
+        for right_index in left_index + 1..sites.len() {
+            let left = &sites[left_index];
+            let right = &sites[right_index];
+            if left.chrom != right.chrom {
+                continue;
+            }
+            if max_distance.is_some_and(|distance| right.pos.saturating_sub(left.pos) > distance) {
+                continue;
+            }
+            if let Some((n, r2)) = genotype_dosage_r2(left, right) {
+                writeln!(
+                    writer,
+                    "{}\t{}\t{}\t{}\t{}",
+                    left.chrom,
+                    left.pos,
+                    right.pos,
+                    n,
+                    format_ratio(r2)
+                )?;
+            }
+        }
+    }
+    writer.flush()?;
     Ok(())
 }
 
@@ -224,6 +557,297 @@ fn write_site_missingness_row(
         format_fraction(missing, n_data)
     )?;
     Ok(())
+}
+
+impl SiteAlleleSummary {
+    fn biallelic_summary(&self) -> Option<BiallelicSummary> {
+        if self.allele_counts.len() != 2 {
+            return None;
+        }
+        let mut summary = BiallelicSummary {
+            ref_count: self.allele_counts[0],
+            alt_count: self.allele_counts[1],
+            n_chr: self.allele_counts.iter().sum(),
+            ..BiallelicSummary::default()
+        };
+
+        for genotype in self.genotypes.iter().flatten() {
+            if genotype.len() != 2 || genotype.iter().any(|allele| *allele > 1) {
+                continue;
+            }
+            match (genotype[0], genotype[1]) {
+                (0, 0) => summary.hom_ref += 1,
+                (1, 1) => summary.hom_alt += 1,
+                _ => summary.het += 1,
+            }
+        }
+
+        Some(summary)
+    }
+}
+
+fn stream_site_summaries(
+    input: &Path,
+    selection: &SampleSelection,
+    mut visit: impl FnMut(&SiteAlleleSummary) -> Result<()>,
+) -> Result<()> {
+    stream_site_summaries_with_samples(input, selection, |_samples, site| visit(site))
+}
+
+fn stream_site_summaries_with_samples(
+    input: &Path,
+    selection: &SampleSelection,
+    mut visit: impl FnMut(&[SampleColumn], &SiteAlleleSummary) -> Result<()>,
+) -> Result<()> {
+    let mut reader = open_reader(input)?;
+    let mut line = Vec::new();
+    let mut samples: Option<Vec<SampleColumn>> = None;
+
+    while reader.read_until(b'\n', &mut line)? != 0 {
+        if line.starts_with(b"#CHROM") {
+            samples = Some(selection.resolve(&line)?);
+        } else if !line.starts_with(b"#") {
+            let samples = samples
+                .as_ref()
+                .context("VCF header is missing #CHROM sample line")?;
+            let record = RecordView::parse(&line)?;
+            let site = site_allele_summary(&record, samples)?;
+            visit(samples, &site)?;
+        }
+        line.clear();
+    }
+
+    if samples.is_none() {
+        bail!("VCF header is missing #CHROM sample line");
+    }
+    Ok(())
+}
+
+fn site_allele_summary(
+    record: &RecordView<'_>,
+    samples: &[SampleColumn],
+) -> Result<SiteAlleleSummary> {
+    let alleles = allele_labels(record.reference(), record.alternate())?;
+    let mut allele_counts = vec![0_u64; alleles.len()];
+    let gt_index = record
+        .column(8)
+        .and_then(|format| format_key_index(format, b"GT"));
+    let mut genotypes = Vec::with_capacity(samples.len());
+
+    for sample in samples {
+        let genotype = gt_index
+            .and_then(|index| {
+                record
+                    .column(sample.column)
+                    .and_then(|value| sample_format_value_at(value, index))
+            })
+            .and_then(parse_called_genotype);
+        if let Some(genotype) = &genotype {
+            for allele in genotype {
+                if let Some(count) = allele_counts.get_mut(*allele) {
+                    *count += 1;
+                }
+            }
+        }
+        genotypes.push(genotype);
+    }
+
+    Ok(SiteAlleleSummary {
+        chrom: bytes_text(record.chrom())?.to_owned(),
+        pos: record.pos_u64()?,
+        allele_counts,
+        genotypes,
+    })
+}
+
+fn parse_called_genotype(gt: &[u8]) -> Option<Vec<usize>> {
+    if genotype_is_missing(gt) {
+        return None;
+    }
+
+    let mut alleles = Vec::new();
+    for_each_called_allele(gt, |allele| alleles.push(allele));
+    (!alleles.is_empty()).then_some(alleles)
+}
+
+fn chi_square(values: [(f64, f64); 3]) -> f64 {
+    values
+        .into_iter()
+        .filter(|(_observed, expected)| *expected > 0.0)
+        .map(|(observed, expected)| {
+            let delta = observed - expected;
+            delta * delta / expected
+        })
+        .sum()
+}
+
+fn population_indices(
+    samples: &[SampleColumn],
+    population: &HashSet<String>,
+) -> Result<Vec<usize>> {
+    let mut indices = Vec::new();
+    let seen: HashSet<_> = samples.iter().map(|sample| sample.name.as_str()).collect();
+    let missing: Vec<_> = population
+        .iter()
+        .filter(|sample| !seen.contains(sample.as_str()))
+        .cloned()
+        .collect();
+    if !missing.is_empty() {
+        bail!("sample(s) not found in VCF header: {}", missing.join(","));
+    }
+
+    for (index, sample) in samples.iter().enumerate() {
+        if population.contains(&sample.name) {
+            indices.push(index);
+        }
+    }
+    Ok(indices)
+}
+
+fn hudson_fst(site: &SiteAlleleSummary, pop1: &[usize], pop2: &[usize]) -> Option<f64> {
+    let (alt1, n1) = population_alt_counts(site, pop1)?;
+    let (alt2, n2) = population_alt_counts(site, pop2)?;
+    if n1 < 2 || n2 < 2 {
+        return None;
+    }
+    let p1 = alt1 as f64 / n1 as f64;
+    let p2 = alt2 as f64 / n2 as f64;
+    let numerator = (p1 - p2).powi(2)
+        - p1 * (1.0 - p1) / (n1 as f64 - 1.0)
+        - p2 * (1.0 - p2) / (n2 as f64 - 1.0);
+    let denominator = p1 * (1.0 - p2) + p2 * (1.0 - p1);
+    (denominator != 0.0).then_some(numerator / denominator)
+}
+
+fn population_alt_counts(site: &SiteAlleleSummary, indices: &[usize]) -> Option<(u64, u64)> {
+    let mut alt = 0_u64;
+    let mut n = 0_u64;
+    for index in indices {
+        let Some(genotype) = site.genotypes.get(*index).and_then(Option::as_ref) else {
+            continue;
+        };
+        if genotype.iter().any(|allele| *allele > 1) {
+            continue;
+        }
+        for allele in genotype {
+            n += 1;
+            if *allele == 1 {
+                alt += 1;
+            }
+        }
+    }
+    (n > 0).then_some((alt, n))
+}
+
+fn site_pi(site: &SiteAlleleSummary) -> Option<f64> {
+    let n_chr = site.allele_counts.iter().sum::<u64>();
+    if n_chr < 2 {
+        return None;
+    }
+    let homozygosity = site
+        .allele_counts
+        .iter()
+        .map(|count| {
+            let frequency = *count as f64 / n_chr as f64;
+            frequency * frequency
+        })
+        .sum::<f64>();
+    Some(n_chr as f64 / (n_chr as f64 - 1.0) * (1.0 - homozygosity))
+}
+
+fn add_window_pi(
+    windows: &mut Vec<WindowSummary>,
+    site: &SiteAlleleSummary,
+    pi: f64,
+    window_size: u64,
+) {
+    let start = ((site.pos - 1) / window_size) * window_size + 1;
+    let end = start + window_size - 1;
+    if let Some(window) = windows
+        .last_mut()
+        .filter(|window| window.chrom == site.chrom && window.start == start)
+    {
+        window.pi_sum += pi;
+        window.segregating_sites += 1;
+        window.max_n_chr = window.max_n_chr.max(site.allele_counts.iter().sum());
+        return;
+    }
+
+    windows.push(WindowSummary {
+        chrom: site.chrom.clone(),
+        start,
+        end,
+        pi_sum: pi,
+        segregating_sites: 1,
+        max_n_chr: site.allele_counts.iter().sum(),
+    });
+}
+
+fn format_fraction_f64(numerator: f64, denominator: u64) -> String {
+    if denominator == 0 {
+        ".".to_owned()
+    } else {
+        format_ratio(numerator / denominator as f64)
+    }
+}
+
+fn tajima_d(pi_sum: f64, segregating_sites: u64, n_chr: u64) -> Option<f64> {
+    let n = n_chr as usize;
+    let s = segregating_sites as f64;
+    if n < 2 || segregating_sites < 1 {
+        return None;
+    }
+
+    let a1 = (1..n).map(|i| 1.0 / i as f64).sum::<f64>();
+    let a2 = (1..n).map(|i| 1.0 / (i * i) as f64).sum::<f64>();
+    let n = n as f64;
+    let b1 = (n + 1.0) / (3.0 * (n - 1.0));
+    let b2 = 2.0 * (n * n + n + 3.0) / (9.0 * n * (n - 1.0));
+    let c1 = b1 - 1.0 / a1;
+    let c2 = b2 - (n + 2.0) / (a1 * n) + a2 / (a1 * a1);
+    let e1 = c1 / a1;
+    let e2 = c2 / (a1 * a1 + a2);
+    let denominator = (e1 * s + e2 * s * (s - 1.0)).sqrt();
+    (denominator > 0.0).then_some((pi_sum - s / a1) / denominator)
+}
+
+fn genotype_dosage_r2(left: &SiteAlleleSummary, right: &SiteAlleleSummary) -> Option<(u64, f64)> {
+    let mut pairs = Vec::new();
+    for (left_gt, right_gt) in left.genotypes.iter().zip(&right.genotypes) {
+        if let (Some(left_dosage), Some(right_dosage)) = (
+            left_gt.as_deref().and_then(alt_dosage),
+            right_gt.as_deref().and_then(alt_dosage),
+        ) {
+            pairs.push((left_dosage, right_dosage));
+        }
+    }
+
+    if pairs.len() < 2 {
+        return None;
+    }
+
+    let n = pairs.len() as f64;
+    let mean_left = pairs.iter().map(|(left, _right)| left).sum::<f64>() / n;
+    let mean_right = pairs.iter().map(|(_left, right)| right).sum::<f64>() / n;
+    let mut covariance = 0.0;
+    let mut left_ss = 0.0;
+    let mut right_ss = 0.0;
+    for (left, right) in &pairs {
+        let left_delta = left - mean_left;
+        let right_delta = right - mean_right;
+        covariance += left_delta * right_delta;
+        left_ss += left_delta * left_delta;
+        right_ss += right_delta * right_delta;
+    }
+    let denominator = left_ss * right_ss;
+    (denominator > 0.0).then_some((pairs.len() as u64, covariance * covariance / denominator))
+}
+
+fn alt_dosage(genotype: &[usize]) -> Option<f64> {
+    if genotype.iter().any(|allele| *allele > 1) {
+        return None;
+    }
+    Some(genotype.iter().filter(|allele| **allele == 1).count() as f64)
 }
 
 impl SampleSelection {
