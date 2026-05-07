@@ -66,6 +66,8 @@ def read_metadata(path: Path) -> dict[str, tuple[str, str]]:
             sample = fields[sample_i]
             population = fields[pop_i]
             superpopulation = fields[super_i]
+            if not sample or not population or not superpopulation:
+                raise SystemExit(f"{path} row {row_number} is missing required metadata fields")
             if sample in labels:
                 raise SystemExit(f"{path} row {row_number} duplicates sample {sample!r}")
             labels[sample] = (population, superpopulation)
