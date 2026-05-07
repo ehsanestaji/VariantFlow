@@ -313,14 +313,20 @@ pub fn run_fst(
             FstEstimator::Hudson => hudson_fst(site, &pop1_indices, &pop2_indices),
             FstEstimator::WeirCockerham => weir_cockerham_fst(site, &pop1_indices, &pop2_indices)?,
         };
-        if let Some(fst) = fst {
-            writeln!(
-                writer,
-                "{}\t{}\t{}",
-                site.chrom,
-                site.pos,
-                format_ratio(fst)
-            )?;
+        match (estimator, fst) {
+            (_, Some(fst)) => {
+                writeln!(
+                    writer,
+                    "{}\t{}\t{}",
+                    site.chrom,
+                    site.pos,
+                    format_ratio(fst)
+                )?;
+            }
+            (FstEstimator::WeirCockerham, None) => {
+                writeln!(writer, "{}\t{}\tnan", site.chrom, site.pos)?;
+            }
+            (FstEstimator::Hudson, None) => {}
         }
         Ok(())
     })?;
@@ -399,9 +405,8 @@ pub fn run_tajima_d(
         if n_chr == 0 {
             n_chr = samples.len() as u64 * 2;
         }
-        if let Some(pi) = tajima_site_pi_component(site, n_chr)? {
-            add_tajima_window(&mut windows, site, pi, window_size);
-        }
+        let pi = tajima_site_pi_component(site, n_chr)?;
+        add_tajima_window(&mut windows, site, pi, window_size);
         Ok(())
     })?;
 
@@ -410,16 +415,14 @@ pub fn run_tajima_d(
     );
     writeln!(writer, "CHROM\tBIN_START\tN_SNPS\tTajimaD")?;
     for window in windows {
-        if let Some(tajima_d) = tajima_d(window.pi_sum, window.segregating_sites, n_chr) {
-            writeln!(
-                writer,
-                "{}\t{}\t{}\t{}",
-                window.chrom,
-                window.start,
-                window.segregating_sites,
-                format_ratio(tajima_d)
-            )?;
-        }
+        let value = tajima_d(window.pi_sum, window.segregating_sites, n_chr)
+            .map(format_ratio)
+            .unwrap_or_else(|| "nan".to_string());
+        writeln!(
+            writer,
+            "{}\t{}\t{}\t{}",
+            window.chrom, window.start, window.segregating_sites, value
+        )?;
     }
     writer.flush()?;
     Ok(())
@@ -967,7 +970,7 @@ fn add_window_pi(
 fn add_tajima_window(
     windows: &mut Vec<WindowSummary>,
     site: &SiteAlleleSummary,
-    pi: f64,
+    pi: Option<f64>,
     window_size: u64,
 ) {
     let start = (site.pos / window_size) * window_size;
@@ -976,17 +979,35 @@ fn add_tajima_window(
         .last_mut()
         .filter(|window| window.chrom == site.chrom && window.start == start)
     {
-        window.pi_sum += pi;
-        window.segregating_sites += 1;
+        if let Some(pi) = pi {
+            window.pi_sum += pi;
+            window.segregating_sites += 1;
+        }
         return;
+    }
+
+    if let Some(last) = windows.last().filter(|window| window.chrom == site.chrom) {
+        let mut gap_start = last.start + window_size;
+        while gap_start < start {
+            windows.push(WindowSummary {
+                chrom: site.chrom.clone(),
+                start: gap_start,
+                end: gap_start + window_size - 1,
+                pi_sum: 0.0,
+                segregating_sites: 0,
+                site_pairs: 0,
+                mismatches: 0,
+            });
+            gap_start += window_size;
+        }
     }
 
     windows.push(WindowSummary {
         chrom: site.chrom.clone(),
         start,
         end,
-        pi_sum: pi,
-        segregating_sites: 1,
+        pi_sum: pi.unwrap_or(0.0),
+        segregating_sites: u64::from(pi.is_some()),
         site_pairs: 0,
         mismatches: 0,
     });

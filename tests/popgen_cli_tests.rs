@@ -255,6 +255,49 @@ fn fst_reports_weir_cockerham_estimates_when_requested() {
 }
 
 #[test]
+fn weir_cockerham_fst_reports_nan_for_undefined_sites() {
+    let dir = tempdir().unwrap();
+    let input = dir.path().join("undefined_fst.vcf");
+    let pop1 = dir.path().join("pop1.txt");
+    let pop2 = dir.path().join("pop2.txt");
+    let output = dir.path().join("out.weir.fst");
+    fs::write(
+        &input,
+        "##fileformat=VCFv4.2\n\
+##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n\
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\tS2\tS3\tS4\n\
+1\t100\t.\tA\tG\t50\tPASS\t.\tGT\t0/0\t0/1\t1/1\t0/1\n\
+1\t400\t.\tC\tT\t50\tPASS\t.\tGT\t0/0\t0/0\t0/0\t0/0\n",
+    )
+    .unwrap();
+    fs::write(&pop1, "S1\nS2\n").unwrap();
+    fs::write(&pop2, "S3\nS4\n").unwrap();
+
+    Command::cargo_bin("variantflow")
+        .unwrap()
+        .args([
+            "fst",
+            input.to_str().unwrap(),
+            "--pop",
+            pop1.to_str().unwrap(),
+            "--pop",
+            pop2.to_str().unwrap(),
+            "--estimator",
+            "weir-cockerham",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    assert!(
+        fs::read_to_string(output)
+            .unwrap()
+            .contains("1\t400\tnan\n")
+    );
+}
+
+#[test]
 fn weir_cockerham_fst_rejects_multiallelic_sites() {
     let dir = tempdir().unwrap();
     let pop1 = dir.path().join("pop1.txt");
@@ -371,6 +414,41 @@ fn tajima_d_reports_windowed_summary() {
         "CHROM\tBIN_START\tN_SNPS\tTajimaD\n\
 1\t0\t1\t1.444161\n\
 1\t200\t2\t0.395054\n"
+    );
+}
+
+#[test]
+fn tajima_d_reports_nan_for_empty_windows_between_observed_sites() {
+    let dir = tempdir().unwrap();
+    let input = dir.path().join("gapped_tajima.vcf");
+    let output = dir.path().join("out.Tajima.D");
+    fs::write(
+        &input,
+        "##fileformat=VCFv4.2\n\
+##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n\
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\tS2\tS3\tS4\n\
+1\t100\t.\tA\tG\t50\tPASS\t.\tGT\t0/0\t0/1\t1/1\t0/1\n\
+1\t500\t.\tC\tT\t50\tPASS\t.\tGT\t0/0\t0/1\t1/1\t0/1\n",
+    )
+    .unwrap();
+
+    Command::cargo_bin("variantflow")
+        .unwrap()
+        .args([
+            "tajima-d",
+            input.to_str().unwrap(),
+            "--window-size",
+            "200",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    assert!(
+        fs::read_to_string(output)
+            .unwrap()
+            .contains("1\t200\t0\tnan\n")
     );
 }
 
