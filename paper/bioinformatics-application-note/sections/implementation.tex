@@ -1,8 +1,15 @@
-\section{Implementation}
+\section{Algorithm and implementation}
 
-VariantFlow is implemented in Rust. The native engine uses borrowed byte-slice
-views over VCF records, typed expression evaluation, and shared INFO/FORMAT
-scanners to avoid per-record column materialization where it is not required.
+VariantFlow is implemented in Rust. The native engine treats each VCF record as
+a borrowed byte-slice view. Site fields, selected INFO values, FORMAT keys, and
+sample values are located by byte scanning rather than by materializing all
+columns as strings. Expression parsing produces a typed predicate tree, and the
+evaluator asks the record view only for fields required by that predicate. This
+keeps the hot path close to the work requested by the user.
+
+For FORMAT-heavy cohort filters, VariantFlow scans the FORMAT schema once per
+record, caches the requested key index, and reads sample values by index. This
+avoids repeatedly scanning \texttt{GT:DP:GQ:AD}-like schemas for every sample.
 Native filtering writes passing records in input order and preserves their
 original text in the line-preserving path.
 
@@ -19,3 +26,11 @@ stable selected projection, while Parquet export stores typed POS, nullable
 QUAL, nullable INFO/DP, and lossless string INFO/AF columns for repeated
 analysis with engines such as DuckDB \citep{duckdb,apache_arrow,parquet}.
 
+The command-line interface follows the small-tool style common in genomics
+software:
+\begin{quote}
+\small
+\texttt{variantflow filter input.vcf.gz --where "QUAL > 30" -o out.vcf.gz}\\
+\texttt{variantflow filter cohort.vcf.gz --where "ANY(FORMAT/DP > 20)" -o out.vcf}\\
+\texttt{variantflow convert input.vcf.gz --to parquet -o variants.parquet}
+\end{quote}

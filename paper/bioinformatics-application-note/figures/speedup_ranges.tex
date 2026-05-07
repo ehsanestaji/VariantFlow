@@ -1,0 +1,32 @@
+\begin{figure}[ht]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\newcommand{\vfrangebar}[4]{%
+  #1 & #2 &
+  \makebox[0.46\linewidth][l]{%
+    \textcolor{vfblue}{\rule{#3}{6pt}}%
+    \hspace{2pt}\textcolor{vfteal}{\rule{#4}{6pt}}%
+  }\\[-1pt]
+}
+\caption{Correctness-matched speedup ranges from tracked benchmark reports.
+Bars summarize the minimum-to-maximum measured speedup for selected workflows;
+longer bars indicate larger speedups over the stated baseline.}
+\label{fig:speedup-ranges}
+\begin{tabularx}{\linewidth}{p{0.28\linewidth}p{0.15\linewidth}X}
+\toprule
+Workflow & Range & Visual range \\
+\midrule
+\vfrangebar{Human CHM13 FORMAT filters}{4.74--17.78x}{1.0cm}{2.7cm}
+\vfrangebar{Sheep FORMAT breadth}{3.22--8.77x}{0.7cm}{1.2cm}
+\vfrangebar{Cattle FORMAT cohort}{1.46--26.66x}{0.3cm}{4.1cm}
+\vfrangebar{IGSR BGZF filtering}{13.44--13.47x}{2.4cm}{0.1cm}
+\vfrangebar{DuckDB amortized workflow}{3.18--25.67x}{0.7cm}{3.8cm}
+\vfrangebar{Stress FORMAT aggregate}{4.33--5.27x}{0.9cm}{0.2cm}
+\bottomrule
+\end{tabularx}
+\vspace{3pt}
+\footnotesize\textit{Baselines are \texttt{bcftools filter} for filtering
+rows and repeated \texttt{bcftools} scans for the DuckDB workflow. Source
+reports: v12, v14, v18, v19, and v20 benchmark reports in the repository.}
+\end{figure}
