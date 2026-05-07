@@ -9,7 +9,7 @@ use memchr::memchr;
 use crate::io::open_reader;
 use crate::vcf::{InfoView, RecordView};
 
-mod schema;
+pub(crate) mod schema;
 
 use schema::{IndexChunk, OffsetModel, VariantFlowIndex, source_identity};
 
