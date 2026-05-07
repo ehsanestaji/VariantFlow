@@ -17,3 +17,10 @@ The harness uses no header-fallback population files.
 
 Claim decision: no broad VCFtools replacement claim. Only correctness-matched
 measured rows may support scoped performance claims.
+
+## LD Memory Gate
+
+LD rows are not only speed rows. VariantFlow must report peak RSS beside
+VCFtools, because earlier staged evidence showed VariantFlow LD could be faster
+while using substantially more memory. If larger public rows preserve the speed
+win but show higher RSS, the claim matrix must keep that caveat visible.

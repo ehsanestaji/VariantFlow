@@ -333,7 +333,7 @@ run_tier() {
   benchmark_pair "$tier" "LD" "$dataset" "$population_source" \
     "$vf_base ld $(shell_quote "$dataset") --max-distance $(shell_quote "$LD_WINDOW_BP") -o $(shell_quote "$prefix/variantflow.geno.ld")" \
     "$vcftools_base $input_flag $(shell_quote "$dataset") --geno-r2 --ld-window-bp $(shell_quote "$LD_WINDOW_BP") --out $(shell_quote "$prefix/vcftools-ld")" \
-    "matches VCFtools on supported diploid biallelic parity fixtures; genotype dosage R2; $scope_caveat"
+    "matches VCFtools on supported diploid biallelic parity fixtures; genotype dosage R2; LD memory is a monitored optimization target; VariantFlow RSS must be compared with VCFtools before expanding LD claims; $scope_caveat"
   benchmark_pair "$tier" "Weir-Cockerham Fst" "$dataset" "$population_source" \
     "$vf_base fst $(shell_quote "$dataset") --pop $(shell_quote "$pop1") --pop $(shell_quote "$pop2") --estimator weir-cockerham -o $(shell_quote "$prefix/variantflow.weir.fst")" \
     "$vcftools_base $input_flag $(shell_quote "$dataset") --weir-fst-pop $(shell_quote "$pop1") --weir-fst-pop $(shell_quote "$pop2") --out $(shell_quote "$prefix/vcftools-weir-fst")" \
