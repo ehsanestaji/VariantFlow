@@ -24,13 +24,19 @@ def main() -> int:
     parser.add_argument("--json-out", required=True, type=Path)
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
-    if not args.command:
+    command = args.command[1:] if args.command and args.command[0] == "--" else args.command
+    if not command:
         raise SystemExit("command_resource_metrics.py requires a command after --")
-    command = args.command[1:] if args.command[0] == "--" else args.command
 
     before = resource.getrusage(resource.RUSAGE_CHILDREN)
     started = time.perf_counter()
-    completed = subprocess.run(command, check=False)
+    returncode = 127
+    error = None
+    try:
+        completed = subprocess.run(command, check=False)
+        returncode = completed.returncode
+    except OSError as exc:
+        error = str(exc)
     elapsed = time.perf_counter() - started
     after = resource.getrusage(resource.RUSAGE_CHILDREN)
 
@@ -39,7 +45,7 @@ def main() -> int:
     cpu_seconds = user_seconds + system_seconds
     metrics = {
         "command": command,
-        "exit_code": completed.returncode,
+        "exit_code": returncode,
         "wall_seconds": elapsed,
         "user_seconds": user_seconds,
         "system_seconds": system_seconds,
@@ -49,9 +55,11 @@ def main() -> int:
         "platform": sys.platform,
         "pid": os.getpid(),
     }
+    if error is not None:
+        metrics["error"] = error
     args.json_out.parent.mkdir(parents=True, exist_ok=True)
     args.json_out.write_text(json.dumps(metrics, indent=2, sort_keys=True) + "\n")
-    return completed.returncode
+    return returncode
 
 
 if __name__ == "__main__":
