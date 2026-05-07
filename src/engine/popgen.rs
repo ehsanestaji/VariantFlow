@@ -355,9 +355,7 @@ pub fn run_pi(
             if n_chr == 0 {
                 n_chr = samples.len() as u64 * 2;
             }
-            if let Some(counts) = window_pi_counts(site) {
-                add_window_pi(&mut windows, site, counts, window_size);
-            }
+            add_window_pi(&mut windows, site, window_pi_counts(site), window_size);
             Ok(())
         })?;
         writeln!(writer, "CHROM\tBIN_START\tBIN_END\tN_VARIANTS\tPI")?;
@@ -563,10 +561,10 @@ fn write_site_missingness_row(
         let genotype = gt_index.and_then(|index| sample_format_value_at(value, index));
         let allele_slots = genotype.map_or(2, genotype_allele_slots);
         n_data += allele_slots;
-        let is_missing = genotype.is_none_or(genotype_is_missing);
-        if is_missing {
+        let missing_alleles = genotype.map_or(allele_slots, genotype_missing_allele_slots);
+        if missing_alleles > 0 {
             counts.n_missing += 1;
-            missing += allele_slots;
+            missing += missing_alleles;
         }
     });
 
@@ -806,7 +804,9 @@ fn weir_cockerham_fst(
     pop2: &[usize],
 ) -> Result<Option<f64>> {
     if site.allele_counts.len() != 2 {
-        bail!("weir-cockerham fst supports only biallelic sites");
+        bail!(
+            "weir-cockerham fst supports only biallelic sites; multiallelic sites are not supported"
+        );
     }
 
     let pop1 = population_weir_summary(site, pop1)?;
@@ -941,7 +941,7 @@ fn tajima_site_pi_component(site: &SiteAlleleSummary, n_chr: u64) -> Result<Opti
 fn add_window_pi(
     windows: &mut Vec<WindowSummary>,
     site: &SiteAlleleSummary,
-    counts: WindowPiCounts,
+    counts: Option<WindowPiCounts>,
     window_size: u64,
 ) {
     let start = ((site.pos - 1) / window_size) * window_size + 1;
@@ -950,20 +950,25 @@ fn add_window_pi(
         .last_mut()
         .filter(|window| window.chrom == site.chrom && window.start == start)
     {
-        window.segregating_sites += 1;
-        window.site_pairs += counts.site_pairs;
-        window.mismatches += counts.mismatches;
+        if let Some(counts) = counts {
+            window.segregating_sites += 1;
+            window.site_pairs += counts.site_pairs;
+            window.mismatches += counts.mismatches;
+        }
         return;
     }
 
+    let (segregating_sites, site_pairs, mismatches) = counts
+        .map(|counts| (1, counts.site_pairs, counts.mismatches))
+        .unwrap_or((0, 0, 0));
     windows.push(WindowSummary {
         chrom: site.chrom.clone(),
         start,
         end,
         pi_sum: 0.0,
-        segregating_sites: 1,
-        site_pairs: counts.site_pairs,
-        mismatches: counts.mismatches,
+        segregating_sites,
+        site_pairs,
+        mismatches,
     });
 }
 
@@ -1074,10 +1079,6 @@ fn alt_dosage(genotype: &[usize]) -> Option<f64> {
 
 impl SampleSelection {
     fn from_files(keep: Option<&Path>, remove: Option<&Path>) -> Result<Self> {
-        if keep.is_some() && remove.is_some() {
-            bail!("--keep and --remove cannot be used together");
-        }
-
         Ok(Self {
             keep: keep.map(read_sample_set).transpose()?,
             remove: remove.map(read_sample_set).transpose()?.unwrap_or_default(),
@@ -1191,6 +1192,30 @@ fn parse_allele_index(value: &[u8]) -> Result<usize> {
 
 fn genotype_is_missing(gt: &[u8]) -> bool {
     gt.is_empty() || gt == b"." || gt.contains(&b'.')
+}
+
+fn genotype_missing_allele_slots(gt: &[u8]) -> u64 {
+    if gt.is_empty() {
+        return 1;
+    }
+
+    let mut missing = 0;
+    let mut start = 0;
+    while start <= gt.len() {
+        let end = gt[start..]
+            .iter()
+            .position(|byte| *byte == b'/' || *byte == b'|')
+            .map_or(gt.len(), |offset| start + offset);
+        let allele = &gt[start..end];
+        if allele.is_empty() || allele == b"." {
+            missing += 1;
+        }
+        if end == gt.len() {
+            break;
+        }
+        start = end + 1;
+    }
+    missing
 }
 
 fn format_optional_frequency(count: u64, total: u64) -> String {

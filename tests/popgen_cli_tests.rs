@@ -500,3 +500,115 @@ fn ld_reports_genotype_dosage_r2_between_biallelic_sites() {
 1\t200\t300\t3\t0.25\n"
     );
 }
+
+#[test]
+fn popgen_edge_missing_genotypes_are_counted_consistently() {
+    let dir = tempdir().unwrap();
+    let prefix = dir.path().join("edge-missingness");
+
+    Command::cargo_bin("variantflow")
+        .unwrap()
+        .args([
+            "missingness",
+            fixture("tests/data/popgen_edge_semantics.vcf")
+                .to_str()
+                .unwrap(),
+            "-o",
+            prefix.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let lmiss = fs::read_to_string(prefix.with_extension("lmiss")).unwrap();
+    assert!(lmiss.contains("1\t100\t8\t0\t2\t0.25\n"));
+    assert!(lmiss.contains("1\t200\t8\t0\t1\t0.125\n"));
+}
+
+#[test]
+fn popgen_edge_keep_and_remove_are_applied_before_frequency() {
+    let dir = tempdir().unwrap();
+    let keep = dir.path().join("keep.txt");
+    let remove = dir.path().join("remove.txt");
+    let output = dir.path().join("edge.frq");
+    fs::write(&keep, "S1\nS2\nS3\n").unwrap();
+    fs::write(&remove, "S3\n").unwrap();
+
+    Command::cargo_bin("variantflow")
+        .unwrap()
+        .args([
+            "freq",
+            fixture("tests/data/popgen_edge_semantics.vcf")
+                .to_str()
+                .unwrap(),
+            "--keep",
+            keep.to_str().unwrap(),
+            "--remove",
+            remove.to_str().unwrap(),
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    assert!(
+        fs::read_to_string(output)
+            .unwrap()
+            .contains("1\t100\t2\t4\tA:0.75\tG:0.25\n")
+    );
+}
+
+#[test]
+fn popgen_edge_window_boundaries_match_half_open_tier_policy() {
+    let dir = tempdir().unwrap();
+    let output = dir.path().join("edge.windowed.pi");
+
+    Command::cargo_bin("variantflow")
+        .unwrap()
+        .args([
+            "pi",
+            fixture("tests/data/popgen_edge_semantics.vcf")
+                .to_str()
+                .unwrap(),
+            "--window-size",
+            "300",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let text = fs::read_to_string(output).unwrap();
+    assert!(text.contains("1\t1\t300\t"));
+    assert!(text.contains("1\t301\t600\t"));
+    assert!(text.contains("1\t601\t900\t"));
+}
+
+#[test]
+fn popgen_edge_weir_cockerham_rejects_multiallelic_sites_with_clear_error() {
+    let dir = tempdir().unwrap();
+    let pop1 = dir.path().join("pop1.txt");
+    let pop2 = dir.path().join("pop2.txt");
+    let output = dir.path().join("edge.weir.fst");
+    fs::write(&pop1, "S1\nS2\n").unwrap();
+    fs::write(&pop2, "S3\nS4\n").unwrap();
+
+    Command::cargo_bin("variantflow")
+        .unwrap()
+        .args([
+            "fst",
+            fixture("tests/data/popgen_edge_semantics.vcf")
+                .to_str()
+                .unwrap(),
+            "--pop",
+            pop1.to_str().unwrap(),
+            "--pop",
+            pop2.to_str().unwrap(),
+            "--estimator",
+            "weir-cockerham",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("multiallelic"));
+}
