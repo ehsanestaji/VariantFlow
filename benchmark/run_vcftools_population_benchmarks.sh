@@ -18,9 +18,8 @@ RESOURCE_RUNNER="${VCF_FAST_RESOURCE_RUNNER:-python3 benchmark/command_resource_
 POPULATION_METADATA_HELPER="${VCF_FAST_POPULATION_METADATA_HELPER:-python3 benchmark/vcftools_population_metadata.py}"
 # Default tier labels: public cohort 1000, public cohort 10000,
 # public cohort 50000. Population sources include real population files when
-# provided through VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_POP1/2.
-# Task 5 will integrate $RESOURCE_RUNNER into measured rows for peak RSS,
-# CPU seconds, and CPU-hour estimate fields.
+# provided through VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_POP1/2. Measured rows capture
+# peak RSS, CPU seconds, and CPU-hour estimate fields with $RESOURCE_RUNNER.
 WINDOW_SIZE="${VCF_FAST_VCFTOOLS_POPGEN_WINDOW_SIZE:-200}"
 LD_WINDOW_BP="${VCF_FAST_VCFTOOLS_POPGEN_LD_WINDOW_BP:-500}"
 RUNS="${VCF_FAST_VCFTOOLS_POPGEN_RUNS:-3}"
@@ -75,6 +74,28 @@ count_samples() {
 
 input_size() {
   wc -c <"$1" | tr -d ' '
+}
+
+json_field() {
+  python3 - "$1" "$2" <<'PY'
+import json
+import sys
+
+path, field = sys.argv[1], sys.argv[2]
+with open(path, encoding="utf-8") as handle:
+    data = json.load(handle)
+value = data[field]
+if isinstance(value, float):
+    precision = 9 if field == "cpu_hours" else 6
+    print(f"{value:.{precision}f}")
+else:
+    print(value)
+PY
+}
+
+run_resource_metrics() {
+  local command="$1" json_out="$2"
+  $RESOURCE_RUNNER --json-out "$json_out" -- bash -lc "$command"
 }
 
 detect_vcftools() {
@@ -162,7 +183,7 @@ public_population_files() {
 
 append_public_pending_row() {
   local tier_limit="$1" blocker="$2"
-  printf "| public cohort %s | all population-genetics cases | pending | pending | pending | pending | pending | pending | pending | %s | pending | %s |\n" "$tier_limit" "$VCFTOOLS_VERSION" "$blocker" >>"$ROWS_FILE"
+  printf "| public cohort %s | all population-genetics cases | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | %s | pending | %s |\n" "$tier_limit" "$VCFTOOLS_VERSION" "$blocker" >>"$ROWS_FILE"
 }
 
 write_blocker_report() {
@@ -173,24 +194,25 @@ Status: blocked. No local \`vcftools\` binary was found, and the default Docker
 image \`$VCFTOOLS_DOCKER_IMAGE\` was not cached. Install VCFtools or cache/set
 \`VCF_FAST_VCFTOOLS_DOCKER_IMAGE\`, then run \`make bench-vcftools-popgen\`.
 
-Required fields for measured rows: runtime, speedup, input size, record count,
-sample count, exact VariantFlow command, exact VCFtools command, VCFtools
-version, correctness result, caveats.
+Required fields for measured rows: runtime mean, speedup, input size, record
+count, sample count, peak RSS KB, CPU seconds, CPU-hour estimate, exact
+VariantFlow command, exact VCFtools command, VCFtools version, correctness
+result, caveats.
 
-| tier | case | runtime | speedup | input size | record count | sample count | exact VariantFlow command | exact VCFtools command | VCFtools version | correctness result | caveats |
-|---|---|---:|---:|---:|---:|---:|---|---|---|---|---|
-| fixture | frequency | pending | pending | $(input_size "$INPUT") bytes | $(count_records "$INPUT") | $(count_samples "$INPUT") | pending | pending | unavailable | pending | blocked: VCFtools unavailable |
-| fixture | missingness | pending | pending | $(input_size "$INPUT") bytes | $(count_records "$INPUT") | $(count_samples "$INPUT") | pending | pending | unavailable | pending | blocked: VCFtools unavailable |
-| fixture | HWE | pending | pending | $(input_size "$INPUT") bytes | $(count_records "$INPUT") | $(count_samples "$INPUT") | pending | pending | unavailable | pending | blocked: VCFtools unavailable |
-| fixture | heterozygosity | pending | pending | $(input_size "$INPUT") bytes | $(count_records "$INPUT") | $(count_samples "$INPUT") | pending | pending | unavailable | pending | blocked: VCFtools unavailable |
-| fixture | site pi | pending | pending | $(input_size "$INPUT") bytes | $(count_records "$INPUT") | $(count_samples "$INPUT") | pending | pending | unavailable | pending | blocked: VCFtools unavailable |
-| fixture | window pi | pending | pending | $(input_size "$INPUT") bytes | $(count_records "$INPUT") | $(count_samples "$INPUT") | pending | pending | unavailable | pending | blocked: VCFtools unavailable |
-| fixture | Tajima's D | pending | pending | $(input_size "$INPUT") bytes | $(count_records "$INPUT") | $(count_samples "$INPUT") | pending | pending | unavailable | pending | blocked: VCFtools unavailable |
-| fixture | LD | pending | pending | $(input_size "$INPUT") bytes | $(count_records "$INPUT") | $(count_samples "$INPUT") | pending | pending | unavailable | pending | blocked: VCFtools unavailable |
-| fixture | Weir-Cockerham Fst | pending | pending | $(input_size "$INPUT") bytes | $(count_records "$INPUT") | $(count_samples "$INPUT") | pending | pending | unavailable | pending | blocked: VCFtools unavailable |
-| public cohort 1000 | all population-genetics cases | pending | pending | pending | pending | pending | pending | pending | pending | pending | blocked: VCFtools unavailable; set VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_INPUT to a cached public VCF |
-| public cohort 10000 | all population-genetics cases | pending | pending | pending | pending | pending | pending | pending | pending | pending | blocked: VCFtools unavailable; set VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_INPUT to a cached public VCF |
-| public cohort 50000 | all population-genetics cases | pending | pending | pending | pending | pending | pending | pending | pending | pending | blocked: VCFtools unavailable; set VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_INPUT to a cached public VCF |
+| tier | case | runtime mean | speedup | input size | record count | sample count | VariantFlow peak RSS KB | VCFtools peak RSS KB | VariantFlow CPU seconds | VCFtools CPU seconds | VariantFlow CPU-hour estimate | VCFtools CPU-hour estimate | exact VariantFlow command | exact VCFtools command | VCFtools version | correctness result | caveats |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|---|---|
+| fixture | frequency | pending | pending | $(input_size "$INPUT") bytes | $(count_records "$INPUT") | $(count_samples "$INPUT") | pending | pending | pending | pending | pending | pending | pending | pending | unavailable | pending | blocked: VCFtools unavailable |
+| fixture | missingness | pending | pending | $(input_size "$INPUT") bytes | $(count_records "$INPUT") | $(count_samples "$INPUT") | pending | pending | pending | pending | pending | pending | pending | pending | unavailable | pending | blocked: VCFtools unavailable |
+| fixture | HWE | pending | pending | $(input_size "$INPUT") bytes | $(count_records "$INPUT") | $(count_samples "$INPUT") | pending | pending | pending | pending | pending | pending | pending | pending | unavailable | pending | blocked: VCFtools unavailable |
+| fixture | heterozygosity | pending | pending | $(input_size "$INPUT") bytes | $(count_records "$INPUT") | $(count_samples "$INPUT") | pending | pending | pending | pending | pending | pending | pending | pending | unavailable | pending | blocked: VCFtools unavailable |
+| fixture | site pi | pending | pending | $(input_size "$INPUT") bytes | $(count_records "$INPUT") | $(count_samples "$INPUT") | pending | pending | pending | pending | pending | pending | pending | pending | unavailable | pending | blocked: VCFtools unavailable |
+| fixture | window pi | pending | pending | $(input_size "$INPUT") bytes | $(count_records "$INPUT") | $(count_samples "$INPUT") | pending | pending | pending | pending | pending | pending | pending | pending | unavailable | pending | blocked: VCFtools unavailable |
+| fixture | Tajima's D | pending | pending | $(input_size "$INPUT") bytes | $(count_records "$INPUT") | $(count_samples "$INPUT") | pending | pending | pending | pending | pending | pending | pending | pending | unavailable | pending | blocked: VCFtools unavailable |
+| fixture | LD | pending | pending | $(input_size "$INPUT") bytes | $(count_records "$INPUT") | $(count_samples "$INPUT") | pending | pending | pending | pending | pending | pending | pending | pending | unavailable | pending | blocked: VCFtools unavailable |
+| fixture | Weir-Cockerham Fst | pending | pending | $(input_size "$INPUT") bytes | $(count_records "$INPUT") | $(count_samples "$INPUT") | pending | pending | pending | pending | pending | pending | pending | pending | unavailable | pending | blocked: VCFtools unavailable |
+| public cohort 1000 | all population-genetics cases | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | blocked: VCFtools unavailable; set VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_INPUT to a cached public VCF |
+| public cohort 10000 | all population-genetics cases | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | blocked: VCFtools unavailable; set VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_INPUT to a cached public VCF |
+| public cohort 50000 | all population-genetics cases | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | pending | blocked: VCFtools unavailable; set VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_INPUT to a cached public VCF |
 
 Claim decision: no speed claim. Once measured, only rows whose correctness result
 passes may support the cautious claim that VariantFlow matches VCFtools on
@@ -230,7 +252,10 @@ benchmark_pair() {
   )"
   local vf_time="$OUT_DIR/${safe_case}.variantflow.time"
   local vcftools_time="$OUT_DIR/${safe_case}.vcftools.time"
+  local vf_metrics="$OUT_DIR/${safe_case}.variantflow.resources.json"
+  local vcftools_metrics="$OUT_DIR/${safe_case}.vcftools.resources.json"
   local records samples bytes vf_runtime vcftools_runtime speedup
+  local vf_peak_rss_kb vcftools_peak_rss_kb vf_cpu_seconds vcftools_cpu_seconds vf_cpu_hours vcftools_cpu_hours
   records="$(count_records "$dataset")"
   samples="$(count_samples "$dataset")"
   bytes="$(input_size "$dataset")"
@@ -248,6 +273,14 @@ open(sys.argv[3], "w", encoding="utf-8").write(f"{vcf:.6f}s")
 PY
   vf_runtime="$(cat "$vf_time")"
   vcftools_runtime="$(cat "$vcftools_time")"
+  run_resource_metrics "$vf_command" "$vf_metrics"
+  run_resource_metrics "$vcftools_command" "$vcftools_metrics"
+  vf_peak_rss_kb="$(json_field "$vf_metrics" peak_rss_kb)"
+  vcftools_peak_rss_kb="$(json_field "$vcftools_metrics" peak_rss_kb)"
+  vf_cpu_seconds="$(json_field "$vf_metrics" cpu_seconds)"
+  vcftools_cpu_seconds="$(json_field "$vcftools_metrics" cpu_seconds)"
+  vf_cpu_hours="$(json_field "$vf_metrics" cpu_hours)"
+  vcftools_cpu_hours="$(json_field "$vcftools_metrics" cpu_hours)"
   speedup="$(python3 - "$vf_runtime" "$vcftools_runtime" <<'PY'
 import sys
 vf = float(sys.argv[1].removesuffix("s"))
@@ -255,8 +288,9 @@ vcf = float(sys.argv[2].removesuffix("s"))
 print(f"{vcf / vf:.2f}x" if vf else "n/a")
 PY
 )"
-  printf "| %s | %s | VariantFlow %s; VCFtools %s | %s | %s bytes | %s | %s | \`%s\` | \`%s\` | %s | %s | %s |\n" \
+  printf "| %s | %s | VariantFlow %s; VCFtools %s | %s | %s bytes | %s | %s | %s | %s | %s | %s | %s | %s | \`%s\` | \`%s\` | %s | %s | %s |\n" \
     "$tier" "$case_name" "$vf_runtime" "$vcftools_runtime" "$speedup" "$bytes" "$records" "$samples" \
+    "$vf_peak_rss_kb" "$vcftools_peak_rss_kb" "$vf_cpu_seconds" "$vcftools_cpu_seconds" "$vf_cpu_hours" "$vcftools_cpu_hours" \
     "$vf_command" "$vcftools_command" "$VCFTOOLS_VERSION" "$CORRECTNESS_RESULT" "$caveats" >>"$ROWS_FILE"
 }
 
@@ -373,16 +407,17 @@ Runs: \`$RUNS\`; warmup: \`$WARMUP\`; public tiers:
 Correctness gate: \`make vcftools-parity\` plus
 \`benchmark/check_vcftools_parity.py\` on each measured tier output directory.
 
-Resource metrics integration is reserved for Task 5. The planned runner is
-\`$RESOURCE_RUNNER\`; future measured rows must add peak RSS, CPU seconds, and
-CPU-hour estimate fields. Until then, measured rows below report runtime mean
-only through hyperfine timing and do not claim RSS or CPU-hour
-measurements.
+Measured rows report hyperfine runtime mean and resource metrics captured by
+\`$RESOURCE_RUNNER\` from \`python3 benchmark/command_resource_metrics.py\`.
+The resource helper runs each exact VariantFlow and VCFtools command once with
+\`--json-out <metrics.json> -- bash -lc "\$command"\` and records peak RSS KB,
+CPU seconds, and CPU-hour estimate fields. A resource helper failure fails the
+measured row.
 
 The population source is recorded in public-tier caveats for each non-fixture row.
 
-| tier | case | runtime | speedup | input size | record count | sample count | exact VariantFlow command | exact VCFtools command | VCFtools version | correctness result | caveats |
-|---|---|---:|---:|---:|---:|---:|---|---|---|---|---|
+| tier | case | runtime mean | speedup | input size | record count | sample count | VariantFlow peak RSS KB | VCFtools peak RSS KB | VariantFlow CPU seconds | VCFtools CPU seconds | VariantFlow CPU-hour estimate | VCFtools CPU-hour estimate | exact VariantFlow command | exact VCFtools command | VCFtools version | correctness result | caveats |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|---|---|
 $(cat "$ROWS_FILE")
 
 Claim decision: correctness-matched fixture rows support only the cautious

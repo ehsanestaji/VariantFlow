@@ -1355,10 +1355,19 @@ fn vcftools_popgen_benchmark_scaffold_tracks_required_fields() {
         "LD",
         "Weir-Cockerham Fst",
         "vcftools --version",
+        "json_field",
+        "$RESOURCE_RUNNER --json-out",
+        "-- bash -lc",
+        "peak_rss_kb",
+        "cpu_seconds",
+        "cpu_hours",
         "record count",
         "sample count",
         "runtime",
         "speedup",
+        "peak RSS KB",
+        "CPU seconds",
+        "CPU-hour estimate",
         "exact VariantFlow command",
         "exact VCFtools command",
         "correctness result",
@@ -1375,6 +1384,9 @@ fn vcftools_popgen_benchmark_scaffold_tracks_required_fields() {
         "input size",
         "record count",
         "sample count",
+        "peak RSS KB",
+        "CPU seconds",
+        "CPU-hour estimate",
         "exact VariantFlow command",
         "exact VCFtools command",
         "VCFtools version",
@@ -1416,6 +1428,12 @@ fn v16_vcftools_public_evidence_tracks_tiers_real_populations_and_resources() {
     assert!(script.contains("peak RSS"));
     assert!(script.contains("CPU seconds"));
     assert!(script.contains("CPU-hour estimate"));
+    assert!(script.contains("$RESOURCE_RUNNER --json-out"));
+    assert!(script.contains("-- bash -lc"));
+    assert!(script.contains("json_field"));
+    assert!(script.contains("peak_rss_kb"));
+    assert!(script.contains("cpu_seconds"));
+    assert!(script.contains("cpu_hours"));
     assert!(script.contains("real population files"));
     assert!(script.contains("public cohort 1000"));
     assert!(script.contains("public cohort 10000"));
@@ -1427,8 +1445,10 @@ fn v16_vcftools_public_evidence_tracks_tiers_real_populations_and_resources() {
     for required in [
         "runtime mean",
         "peak RSS",
+        "peak RSS KB",
         "CPU seconds",
         "CPU-hour estimate",
+        "command_resource_metrics.py",
         "population source",
         "tier",
         "correctness result",
