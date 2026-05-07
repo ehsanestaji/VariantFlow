@@ -111,6 +111,12 @@ variantflow filter input.vcf.gz --where 'N_PASS(FORMAT/AD[1] > 10) >= 2' -o coho
 variantflow stats input.vcf.gz
 variantflow freq input.vcf.gz -o variants.frq
 variantflow missingness input.vcf.gz -o missingness
+variantflow hardy input.vcf.gz -o variants.hwe
+variantflow het input.vcf.gz -o samples.het
+variantflow fst input.vcf.gz --pop pop1.txt --pop pop2.txt -o pairwise.fst
+variantflow pi input.vcf.gz --window-size 100000 -o windowed.pi
+variantflow tajima-d input.vcf.gz --window-size 100000 -o tajima.tsv
+variantflow ld input.vcf.gz --max-distance 50000 -o geno.ld
 variantflow diff a.vcf.gz b.vcf.gz --mode shared --key position -o diff.tsv
 variantflow convert input.vcf.gz --to tsv -o variants.tsv
 variantflow convert input.vcf.gz --to parquet -o variants.parquet
@@ -140,6 +146,7 @@ make bench-v11-parallel
 make bench-v12
 make bench-v14
 make bench-v17
+make vcftools-parity
 make benchmark-table
 make bench-v06-smoke
 ```
@@ -203,13 +210,21 @@ The default build is a line-preserving streaming filter, not the future full col
 
 ## VCFtools-Style Population Summaries
 
-`freq` and `missingness` are the first VCFtools replacement-layer commands.
-They support optional `--keep samples.txt` or `--remove samples.txt` selection
-files, preserve input sample order, and stream native `.vcf`/`.vcf.gz` inputs.
+`freq`, `missingness`, `hardy`, `het`, `fst`, `pi`, `tajima-d`, and `ld` are
+the first VCFtools replacement-layer commands. They support optional
+`--keep samples.txt` or `--remove samples.txt` selection files where applicable,
+preserve input sample order, and stream native `.vcf`/`.vcf.gz` inputs.
 
 ```bash
 variantflow freq input.vcf.gz --keep samples.txt -o output.frq
 variantflow missingness input.vcf.gz --remove excluded.txt -o output_prefix
+variantflow hardy input.vcf.gz -o output.hwe
+variantflow het input.vcf.gz -o output.het
+variantflow fst input.vcf.gz --pop pop1.txt --pop pop2.txt -o output.fst
+variantflow pi input.vcf.gz -o output.sites.pi
+variantflow pi input.vcf.gz --window-size 100000 -o output.windowed.pi
+variantflow tajima-d input.vcf.gz --window-size 100000 -o output.Tajima.D
+variantflow ld input.vcf.gz --max-distance 50000 -o output.geno.ld
 ```
 
 `freq` writes a VCFtools-style site frequency table:
@@ -227,7 +242,14 @@ CHROM	POS	N_ALLELES	N_CHR	{ALLELE:FREQ}
   `N_GENOTYPE_FILTERED`, `N_MISS`, and `F_MISS`.
 
 These commands are correctness-focused initial coverage for common VCFtools
-workflows. They are not yet benchmarked as VCFtools speed claims.
+workflows. `hardy`, `het`, `pi`, `tajima-d`, and `ld` currently operate on
+called diploid biallelic genotypes. `fst` reports a site-level Hudson Fst
+estimator for two population files; exact Weir-Cockerham parity with VCFtools is
+tracked as a remaining validation item. These commands are not yet benchmarked
+as VCFtools speed claims.
+
+When VCFtools is installed, run `make vcftools-parity` to generate side-by-side
+VariantFlow and VCFtools artifacts under `tests/output/vcftools-parity`.
 
 ## Diff Output
 
