@@ -117,12 +117,9 @@ prepare_public_biallelic_dataset() {
     return 1
   fi
 
-  if [[ -f "$output" ]]; then
-    printf "%s" "$output"
-    return 0
-  fi
-
   mkdir -p "$(dirname "$output")"
+  local tmp_output
+  tmp_output="$(mktemp "${output}.tmp.XXXXXX")"
   set +o pipefail
   bcftools view -m2 -M2 -v snps "$input" \
     | awk -v limit="$tier_limit" '
@@ -130,15 +127,22 @@ prepare_public_biallelic_dataset() {
       seen < limit { print; seen++ }
       seen >= limit { exit }
     ' \
-    | bgzip -c >"$output"
+    | bgzip -c >"$tmp_output"
   local statuses=("${PIPESTATUS[@]}")
   set -o pipefail
   if [[ "${statuses[0]}" -ne 0 && "${statuses[0]}" -ne 141 ]]; then
     echo "bcftools view -m2 -M2 failed while staging public biallelic dataset" >&2
+    rm -f "$tmp_output" "$output"
     return 1
   fi
   if [[ "${statuses[1]}" -ne 0 || "${statuses[2]}" -ne 0 ]]; then
     echo "failed to write staged public biallelic dataset" >&2
+    rm -f "$tmp_output" "$output"
+    return 1
+  fi
+  if ! mv -f "$tmp_output" "$output"; then
+    echo "failed to publish staged public biallelic dataset" >&2
+    rm -f "$tmp_output" "$output"
     return 1
   fi
   printf "%s" "$output"
@@ -371,8 +375,8 @@ Correctness gate: \`make vcftools-parity\` plus
 
 Resource metrics integration is reserved for Task 5. The planned runner is
 \`$RESOURCE_RUNNER\`; future measured rows must add peak RSS, CPU seconds, and
-CPU-hour estimate fields. Until then, measured rows below report runtime
-mean/stddev only through hyperfine timing and do not claim RSS or CPU-hour
+CPU-hour estimate fields. Until then, measured rows below report runtime mean
+only through hyperfine timing and do not claim RSS or CPU-hour
 measurements.
 
 The population source is recorded in public-tier caveats for each non-fixture row.

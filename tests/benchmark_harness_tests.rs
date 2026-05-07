@@ -1331,12 +1331,16 @@ fn vcftools_popgen_benchmark_scaffold_tracks_required_fields() {
         "VCF_FAST_VCFTOOLS_POPGEN_REPORT",
         "VCF_FAST_VCFTOOLS_POPGEN_RUNS",
         "VCF_FAST_VCFTOOLS_POPGEN_WARMUP",
+        "VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_TIERS",
+        "1000 10000 50000",
         "vcftools_input_flag",
         "--gzvcf",
-        "derive_population_files",
+        "public_population_files",
+        "POPULATION_METADATA_HELPER",
         "prepare_public_biallelic_dataset",
         "bcftools view -m2 -M2",
-        "VCF_FAST_VCFTOOLS_POPGEN_PUBLIC_RECORD_LIMIT",
+        "mktemp",
+        "mv -f",
         "human-format-cohort-1000.vcf.gz",
         "tests/data/popgen_stats.vcf",
         "make vcftools-parity",
@@ -1421,7 +1425,7 @@ fn v16_vcftools_public_evidence_tracks_tiers_real_populations_and_resources() {
     assert!(!script.contains(".plain.tmp.vcf"));
 
     for required in [
-        "runtime mean/stddev",
+        "runtime mean",
         "peak RSS",
         "CPU seconds",
         "CPU-hour estimate",
