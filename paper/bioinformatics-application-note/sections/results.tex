@@ -4,21 +4,38 @@ All reported measurements are tied to tracked benchmark reports containing
 exact commands, competitor versions, correctness checks, caveats, and
 reproducibility commands. VariantFlow compares primarily against bcftools
 because it is the trusted performance and correctness baseline for many
-VCF/BCF workflows. Rows in Table~\ref{tab:benchmark-summary} are copied from
-the public release benchmark table and source reports; no smoke-test row is
-used as a performance claim.
+VCF/BCF workflows. Rows in Table~\ref{tab:benchmark-summary} and
+Figure~\ref{fig:speedup-ranges} are copied from the public release benchmark
+table and source reports; no smoke-test row is used as a performance claim.
 
 \input{tables/benchmark_summary}
+\input{figures/speedup_ranges}
 
-The strongest current evidence is for selective native streaming over
-compressed public data. On bounded IGSR chr22 public-heavy BGZF inputs,
-VariantFlow's default native BGZF path matched bcftools core records and was
-13.44--13.47 times faster than \texttt{bcftools filter}. This is an I/O-heavy
-case where avoiding unnecessary reconstruction and using threaded BGZF input
-matters more than parallel predicate evaluation. Conversely, on deterministic
-FORMAT-heavy stress data, opt-in predicate parallelism matched bcftools core
-records and was 4.33--5.27 times faster than \texttt{bcftools filter}; this
-case exercises the CPU side of selective FORMAT scanning.
+\noindent\fcolorbox{vfblue}{vflight}{%
+\begin{minipage}{0.94\linewidth}
+\textbf{Evidence-first claim policy.} VariantFlow reports a speedup only when
+the benchmark row records exact commands, competitor version, a correctness
+comparison, runtime, throughput, memory where available, and caveats. Rows that
+match correctness but trail a competitor remain optimization targets rather
+than wins.
+\end{minipage}}
+\vspace{0.8em}
+
+The strongest user-facing evidence is now public FORMAT-rich filtering. On the
+DDBJ CHM13 human chr22 cohort with 3715 samples, bounded 1k/10k/50k rows for
+DP, GQ, AD, selected-sample DP, and mixed QUAL+FORMAT predicates matched
+bcftools core records and measured 4.74--17.78 times faster than
+\texttt{bcftools filter}. These rows directly test the selective FORMAT
+scanning design on a many-sample human VCF, while still avoiding a default full
+27 GB remote cache.
+
+Compressed public-data filtering provides a complementary I/O-heavy result. On
+bounded IGSR chr22 public-heavy BGZF inputs, VariantFlow's default native BGZF
+path matched bcftools core records and was 13.44--13.47 times faster than
+\texttt{bcftools filter}. Conversely, on deterministic FORMAT-heavy stress
+data, opt-in predicate parallelism matched bcftools core records and was
+4.33--5.27 times faster than \texttt{bcftools filter}; this case exercises the
+CPU side of selective FORMAT scanning.
 
 The columnar evidence supports a separate workflow claim. For repeated
 analytical queries, VariantFlow exports selected columns to Parquet and then
