@@ -7,7 +7,7 @@ cd "$ROOT_DIR"
 OUT_DIR="${VCF_FAST_V17_TRUE_POP_OUT_DIR:-tests/output/v17-true-population-evidence}"
 REPORT="${VCF_FAST_V17_TRUE_POP_REPORT:-benchmark/reports/v17-true-public-population-evidence.md}"
 PUBLIC_INPUT="${VCF_FAST_V17_TRUE_POP_INPUT:-}"
-PUBLIC_METADATA="${VCF_FAST_V17_TRUE_POP_METADATA:-tests/output/public-data/igsr-1000g-sample-metadata.tsv}"
+PUBLIC_METADATA="${VCF_FAST_V17_TRUE_POP_METADATA:-tests/output/public-data/igsr-1000g-3202-sample-ped-population.txt}"
 PUBLIC_TIERS="${VCF_FAST_V17_TRUE_POP_TIERS:-10000 50000 100000}"
 PUBLIC_GROUPS="${VCF_FAST_V17_TRUE_POP_GROUPS:-AFR:EUR}"
 PUBLIC_GROUP_LEVEL="${VCF_FAST_V17_TRUE_POP_GROUP_LEVEL:-superpopulation}"
@@ -121,7 +121,8 @@ Status: blocked. $reason
 
 Set \`VCF_FAST_V17_TRUE_POP_INPUT\` to a cached 1000 Genomes / IGSR VCF/BCF and
 \`VCF_FAST_V17_TRUE_POP_METADATA\` to official population metadata with sample,
-population, and superpopulation columns.
+population, and superpopulation columns. The default metadata cache path is
+\`tests/output/public-data/igsr-1000g-3202-sample-ped-population.txt\`.
 
 This report requires official population metadata, actual record count, sample
 count, runtime mean, speedup, VariantFlow/VCFtools peak RSS KB, CPU seconds,
@@ -147,6 +148,18 @@ fi
 
 if ! command -v bcftools >/dev/null 2>&1 || ! command -v bgzip >/dev/null 2>&1; then
   write_blocked_report "True public cohort staging requires local bcftools and bgzip before benchmark rows can be generated."
+  echo "True public population evidence blocked; report written to $REPORT"
+  exit 77
+fi
+
+if ! command -v hyperfine >/dev/null 2>&1; then
+  write_blocked_report "True public cohort timings require hyperfine before benchmark rows can be generated."
+  echo "True public population evidence blocked; report written to $REPORT"
+  exit 77
+fi
+
+if ! $RESOURCE_RUNNER --help >/dev/null 2>&1; then
+  write_blocked_report "True public cohort resource metrics require $RESOURCE_RUNNER before benchmark rows can be generated."
   echo "True public population evidence blocked; report written to $REPORT"
   exit 77
 fi
