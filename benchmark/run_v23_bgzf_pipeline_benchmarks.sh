@@ -30,6 +30,11 @@ case "$MODE" in
     ;;
 esac
 
+if ! [[ "$RUNS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "VCF_FAST_V23_RUNS must be a positive integer" >&2
+  exit 2
+fi
+
 require_tool() {
   local tool="$1"
   if ! command -v "$tool" >/dev/null 2>&1; then
@@ -228,30 +233,13 @@ main() {
   for records in $SIZES; do
     local dataset
     local label
-    local forced
-    local bgzf_only
-    local predicate_only
-    local combined
-    local bcftools_output
     local forced_env
     local bgzf_only_env
     local predicate_only_env
     local combined_env
-    local forced_metrics
-    local bgzf_only_metrics
-    local predicate_only_metrics
-    local combined_metrics
-    local bcftools_metrics
-    local correctness
 
     dataset="$(prepare_bgzf_dataset "$records")"
     label="stress-format-${records}"
-    forced="$OUT_DIR/${label}-forced-single.vcf"
-    bgzf_only="$OUT_DIR/${label}-bgzf-only.vcf"
-    predicate_only="$OUT_DIR/${label}-predicate-only.vcf"
-    combined="$OUT_DIR/${label}-combined-pipeline.vcf"
-    bcftools_output="$OUT_DIR/${label}-bcftools.vcf"
-
     forced_env=(
       VCF_FAST_NATIVE_BGZF_THREADS=1
       VCF_FAST_NATIVE_FILTER_THREADS=1
@@ -277,23 +265,40 @@ main() {
       VCF_FAST_NATIVE_FILTER_QUEUE_BATCHES="$QUEUE_BATCHES"
     )
 
-    forced_metrics="$(run_variantflow_mode "$label" "forced-single" "$dataset" "$forced" "${forced_env[@]}")"
-    bgzf_only_metrics="$(run_variantflow_mode "$label" "bgzf-only" "$dataset" "$bgzf_only" "${bgzf_only_env[@]}")"
-    predicate_only_metrics="$(run_variantflow_mode "$label" "predicate-only" "$dataset" "$predicate_only" "${predicate_only_env[@]}")"
-    combined_metrics="$(run_variantflow_mode "$label" "combined-pipeline" "$dataset" "$combined" "${combined_env[@]}")"
-    bcftools_metrics="$(run_bcftools_mode "$label" "$dataset" "$bcftools_output")"
+    local run_number
+    for ((run_number = 1; run_number <= RUNS; run_number++)); do
+      local run_label="${label}-run-${run_number}"
+      local forced="$OUT_DIR/${run_label}-forced-single.vcf"
+      local bgzf_only="$OUT_DIR/${run_label}-bgzf-only.vcf"
+      local predicate_only="$OUT_DIR/${run_label}-predicate-only.vcf"
+      local combined="$OUT_DIR/${run_label}-combined-pipeline.vcf"
+      local bcftools_output="$OUT_DIR/${run_label}-bcftools.vcf"
+      local forced_metrics
+      local bgzf_only_metrics
+      local predicate_only_metrics
+      local combined_metrics
+      local bcftools_metrics
+      local correctness
+      local run_suffix="run ${run_number}/${RUNS}"
 
-    check_correctness "$forced" "$bgzf_only" "$predicate_only" "$combined" "$bcftools_output" "$OUT_DIR/${label}"
-    correctness="VariantFlow modes match byte-for-byte; forced-single matches bcftools filter core records"
-    append_row "$label" "forced-single" "$(variantflow_command "$dataset" "$forced" "${forced_env[@]}")" "$forced_metrics" "$correctness" "single BGZF and single predicate worker baseline"
-    append_row "$label" "bgzf-only" "$(variantflow_command "$dataset" "$bgzf_only" "${bgzf_only_env[@]}")" "$bgzf_only_metrics" "$correctness" "parallel BGZF with single predicate worker"
-    append_row "$label" "predicate-only" "$(variantflow_command "$dataset" "$predicate_only" "${predicate_only_env[@]}")" "$predicate_only_metrics" "$correctness" "single BGZF with parallel predicate workers"
-    append_row "$label" "combined-pipeline" "$(variantflow_command "$dataset" "$combined" "${combined_env[@]}")" "$combined_metrics" "$correctness" "parallel BGZF and predicate workers"
-    append_row "$label" "bcftools filter" "$(bcftools_command "$dataset" "$bcftools_output")" "$bcftools_metrics" "$correctness" "competitor baseline"
-    {
-      echo
-      echo "- ${label} correctness result: ${correctness}."
-    } >>"$REPORT"
+      forced_metrics="$(run_variantflow_mode "$run_label" "forced-single" "$dataset" "$forced" "${forced_env[@]}")"
+      bgzf_only_metrics="$(run_variantflow_mode "$run_label" "bgzf-only" "$dataset" "$bgzf_only" "${bgzf_only_env[@]}")"
+      predicate_only_metrics="$(run_variantflow_mode "$run_label" "predicate-only" "$dataset" "$predicate_only" "${predicate_only_env[@]}")"
+      combined_metrics="$(run_variantflow_mode "$run_label" "combined-pipeline" "$dataset" "$combined" "${combined_env[@]}")"
+      bcftools_metrics="$(run_bcftools_mode "$run_label" "$dataset" "$bcftools_output")"
+
+      check_correctness "$forced" "$bgzf_only" "$predicate_only" "$combined" "$bcftools_output" "$OUT_DIR/${run_label}"
+      correctness="VariantFlow modes match byte-for-byte; forced-single matches bcftools filter core records"
+      append_row "$label" "forced-single ${run_suffix}" "$(variantflow_command "$dataset" "$forced" "${forced_env[@]}")" "$forced_metrics" "$correctness" "single BGZF and single predicate worker baseline"
+      append_row "$label" "bgzf-only ${run_suffix}" "$(variantflow_command "$dataset" "$bgzf_only" "${bgzf_only_env[@]}")" "$bgzf_only_metrics" "$correctness" "parallel BGZF with single predicate worker"
+      append_row "$label" "predicate-only ${run_suffix}" "$(variantflow_command "$dataset" "$predicate_only" "${predicate_only_env[@]}")" "$predicate_only_metrics" "$correctness" "single BGZF with parallel predicate workers"
+      append_row "$label" "combined-pipeline ${run_suffix}" "$(variantflow_command "$dataset" "$combined" "${combined_env[@]}")" "$combined_metrics" "$correctness" "parallel BGZF and predicate workers"
+      append_row "$label" "bcftools filter ${run_suffix}" "$(bcftools_command "$dataset" "$bcftools_output")" "$bcftools_metrics" "$correctness" "competitor baseline"
+      {
+        echo
+        echo "- ${label} ${run_suffix} correctness result: ${correctness}."
+      } >>"$REPORT"
+    done
   done
 }
 
