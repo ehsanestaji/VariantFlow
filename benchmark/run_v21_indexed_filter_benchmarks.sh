@@ -289,9 +289,9 @@ for records in $SIZES; do
     echo "### Commands for ${records}"
     echo
     echo "- index: \`variantflow index ${dataset} -o ${index_path}\`"
-    echo "- default: \`${BIN} filter ${dataset} --where '${EXPR}' -o /dev/null\`"
-    echo "- indexed: \`VCF_FAST_INDEX_REPORT=${index_report} ${BIN} filter ${dataset} --where '${EXPR}' -o /dev/null\`"
-    echo "- bcftools: \`bcftools filter -Ov -i '${BCFTOOLS_EXPR}' ${dataset} -o /dev/null\`"
+    echo "- default: \`${default_cmd}\`"
+    echo "- indexed: \`${indexed_cmd}\`"
+    echo "- bcftools: \`${bcftools_cmd}\`"
   } >>"$REPORT"
 done
 

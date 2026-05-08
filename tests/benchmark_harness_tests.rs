@@ -290,10 +290,8 @@ fn v21_indexed_filter_harness_tracks_skip_rate_and_correctness() {
     let makefile = fs::read_to_string(root.join("Makefile")).expect("read Makefile");
     let script_path = "benchmark/run_v21_indexed_filter_benchmarks.sh";
     let script = fs::read_to_string(root.join(script_path)).expect("read v21 benchmark harness");
-    let report = fs::read_to_string(
-        root.join("benchmark/reports/v21-indexed-filter-benchmark.md"),
-    )
-    .expect("read v21 benchmark report");
+    let report = fs::read_to_string(root.join("benchmark/reports/v21-indexed-filter-benchmark.md"))
+        .expect("read v21 benchmark report");
 
     assert!(makefile.contains("bench-v21-index:"));
     assert!(makefile.contains(script_path));
@@ -317,6 +315,8 @@ fn v21_indexed_filter_harness_tracks_skip_rate_and_correctness() {
         "speedup",
         "hyperfine",
         "claim decision",
+        "default_cmd",
+        "bench-disabled",
     ] {
         assert!(script.contains(required), "script missing {required}");
     }
@@ -328,6 +328,7 @@ fn v21_indexed_filter_harness_tracks_skip_rate_and_correctness() {
         "skip rate",
         "bcftools",
         "not yet measured",
+        "Exact Commands",
         "caveat",
     ] {
         assert!(report.contains(required), "report missing {required}");
