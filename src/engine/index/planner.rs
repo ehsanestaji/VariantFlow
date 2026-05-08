@@ -62,9 +62,7 @@ fn plan_comparison(comparison: &Comparison, chunk: &IndexChunk) -> SkipDecision 
             )
         }
         (Field::Info { key, index: None }, Literal::Number(value)) if key == b"AF" => {
-            if !chunk.has_info_af {
-                SkipDecision::CanSkip
-            } else if !chunk.info_af_complete {
+            if !chunk.info_af_complete {
                 SkipDecision::MustScan
             } else {
                 numeric_decision(
@@ -85,7 +83,7 @@ fn plan_comparison(comparison: &Comparison, chunk: &IndexChunk) -> SkipDecision 
 
 fn numeric_decision(min: Option<f64>, max: Option<f64>, op: Operator, value: f64) -> SkipDecision {
     let (Some(min), Some(max)) = (min, max) else {
-        return SkipDecision::CanSkip;
+        return SkipDecision::MustScan;
     };
 
     if numeric_comparison_cannot_match(min, max, op, value) {
@@ -156,9 +154,31 @@ mod tests {
         assert_eq!(plan_chunk(&expression, &chunk()), expected);
     }
 
+    fn assert_plan_with_chunk(expression: &str, chunk: IndexChunk, expected: SkipDecision) {
+        let expression = parse_expression(expression).unwrap();
+
+        assert_eq!(plan_chunk(&expression, &chunk), expected);
+    }
+
     #[test]
     fn skips_chunk_when_qual_threshold_exceeds_chunk_max() {
         assert_plan("QUAL > 30", SkipDecision::CanSkip);
+    }
+
+    #[test]
+    fn scans_chunk_when_qual_min_is_missing() {
+        let mut chunk = chunk();
+        chunk.qual_min = None;
+
+        assert_plan_with_chunk("QUAL > 30", chunk, SkipDecision::MustScan);
+    }
+
+    #[test]
+    fn scans_chunk_when_qual_max_is_missing() {
+        let mut chunk = chunk();
+        chunk.qual_max = None;
+
+        assert_plan_with_chunk("QUAL > 30", chunk, SkipDecision::MustScan);
     }
 
     #[test]
@@ -179,5 +199,16 @@ mod tests {
     #[test]
     fn rejects_format_aggregate_for_index_planning() {
         assert_plan("ANY(FORMAT/AD > 80)", SkipDecision::UnsupportedForIndex);
+    }
+
+    #[test]
+    fn scans_chunk_when_info_af_metadata_is_incomplete_and_bounds_are_absent() {
+        let mut chunk = chunk();
+        chunk.has_info_af = false;
+        chunk.info_af_complete = false;
+        chunk.info_af_min = None;
+        chunk.info_af_max = None;
+
+        assert_plan_with_chunk("INFO/AF > 0.2", chunk, SkipDecision::MustScan);
     }
 }
