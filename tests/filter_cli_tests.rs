@@ -160,6 +160,101 @@ fn combined_bgzf_and_predicate_threads_preserve_native_output_order() {
 }
 
 #[test]
+fn indexed_bgzf_filter_matches_default_output_byte_for_byte() {
+    let dir = tempdir().unwrap();
+    let input = dir.path().join("stress.vcf.gz");
+    let index = PathBuf::from(format!("{}.vfi", input.display()));
+    let default_output = dir.path().join("default.vcf");
+    let indexed_output = dir.path().join("indexed.vcf");
+    bgzf_fixture(&fixture("tests/data/stress_small.vcf"), &input);
+
+    Command::cargo_bin("variantflow")
+        .unwrap()
+        .args([
+            "index",
+            input.to_str().unwrap(),
+            "-o",
+            index.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            input.to_str().unwrap(),
+            "--where",
+            "QUAL > 30",
+            "-o",
+            default_output.to_str().unwrap(),
+        ])
+        .env("VCF_FAST_DISABLE_VFI", "1")
+        .assert()
+        .success();
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            input.to_str().unwrap(),
+            "--where",
+            "QUAL > 30",
+            "-o",
+            indexed_output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    assert_eq!(
+        fs::read(default_output).unwrap(),
+        fs::read(indexed_output).unwrap()
+    );
+}
+
+#[test]
+fn stale_index_falls_back_to_default_streaming_output() {
+    let dir = tempdir().unwrap();
+    let input = dir.path().join("stress.vcf.gz");
+    let index = PathBuf::from(format!("{}.vfi", input.display()));
+    let output = dir.path().join("filtered.vcf");
+    bgzf_fixture(&fixture("tests/data/stress_small.vcf"), &input);
+    fs::write(
+        &index,
+        r#"{
+  "schema_version": 2,
+  "index_kind": "variantflow-vfi",
+  "offset_model": "bgzf-virtual",
+  "virtual_offsets_available": true,
+  "source": {
+    "path": "different.vcf.gz",
+    "size_bytes": 0,
+    "modified_unix_seconds": 0
+  },
+  "chunk_record_target": 8192,
+  "record_count": 0,
+  "chunks": []
+}"#,
+    )
+    .unwrap();
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            input.to_str().unwrap(),
+            "--where",
+            "QUAL > 30",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    assert!(fs::read_to_string(output).unwrap().contains("#CHROM"));
+}
+
+#[test]
 fn filter_supports_parenthesized_or_expressions() {
     let dir = tempdir().unwrap();
     let output = dir.path().join("or.vcf");
