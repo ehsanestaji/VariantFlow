@@ -1,9 +1,9 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::Result;
 use memchr::memchr;
 
-use crate::engine::index::schema::IndexChunk;
+use crate::engine::index::schema::{IndexChunk, NumericBounds};
 use crate::vcf::RecordView;
 
 #[derive(Debug)]
@@ -19,13 +19,22 @@ pub(crate) struct ChunkMetadataBuilder {
     qual_min: Option<f64>,
     qual_max: Option<f64>,
     filters: BTreeSet<String>,
+    filter_values: BTreeSet<String>,
     info_dp_min: Option<i64>,
     info_dp_max: Option<i64>,
     info_af_min: Option<f64>,
     info_af_max: Option<f64>,
     info_af_seen: bool,
     info_af_complete: bool,
+    info_numeric: BTreeMap<String, NumericAccumulator>,
     format_keys: BTreeSet<String>,
+}
+
+#[derive(Debug, Clone)]
+struct NumericAccumulator {
+    min: Option<f64>,
+    max: Option<f64>,
+    complete: bool,
 }
 
 impl ChunkMetadataBuilder {
@@ -42,12 +51,14 @@ impl ChunkMetadataBuilder {
             qual_min: None,
             qual_max: None,
             filters: BTreeSet::new(),
+            filter_values: BTreeSet::new(),
             info_dp_min: None,
             info_dp_max: None,
             info_af_min: None,
             info_af_max: None,
             info_af_seen: false,
             info_af_complete: true,
+            info_numeric: BTreeMap::new(),
             format_keys: BTreeSet::new(),
         }
     }
@@ -67,7 +78,7 @@ impl ChunkMetadataBuilder {
             update_f64_minmax(&mut self.qual_min, &mut self.qual_max, qual);
         }
 
-        observe_filters(record.filter(), &mut self.filters);
+        observe_filters(record.filter(), &mut self.filters, &mut self.filter_values);
         observe_info(record.info(), self);
 
         if let Some(format) = record.column(8) {
@@ -94,12 +105,27 @@ impl ChunkMetadataBuilder {
             qual_min: self.qual_min,
             qual_max: self.qual_max,
             filters: self.filters.into_iter().collect(),
+            filter_values: self.filter_values.into_iter().collect(),
             info_dp_min: self.info_dp_min,
             info_dp_max: self.info_dp_max,
             has_info_af: self.info_af_seen,
             info_af_min: self.info_af_min,
             info_af_max: self.info_af_max,
             info_af_complete: self.info_af_seen && self.info_af_complete,
+            info_numeric: self
+                .info_numeric
+                .into_iter()
+                .map(|(key, value)| {
+                    (
+                        key,
+                        NumericBounds {
+                            min: value.min,
+                            max: value.max,
+                            complete: value.complete,
+                        },
+                    )
+                })
+                .collect(),
             format_keys: self.format_keys.into_iter().collect(),
             virtual_start: self.virtual_start,
             virtual_end,
@@ -126,14 +152,50 @@ fn observe_info(info: &[u8], builder: &mut ChunkMetadataBuilder) {
                 for_each_comma_i64(value, |number| {
                     update_i64_minmax(&mut builder.info_dp_min, &mut builder.info_dp_max, number);
                 });
+                observe_numeric_info_value(key, value, builder);
             }
             b"AF" => {
                 builder.info_af_seen = true;
                 observe_af_values(value, builder);
+                observe_numeric_info_value(key, value, builder);
             }
-            _ => {}
+            _ => {
+                observe_numeric_info_value(key, value, builder);
+            }
         }
     });
+}
+
+fn observe_numeric_info_value(key: &[u8], value: &[u8], builder: &mut ChunkMetadataBuilder) {
+    let key = String::from_utf8_lossy(key).into_owned();
+    let accumulator = builder
+        .info_numeric
+        .entry(key)
+        .or_insert_with(|| NumericAccumulator {
+            min: None,
+            max: None,
+            complete: true,
+        });
+
+    let mut saw_part = false;
+    for_each_delimited(value, b',', |part| {
+        saw_part = true;
+        if part.is_empty() || part == b"." {
+            accumulator.complete = false;
+            return;
+        }
+        match parse_f64(part) {
+            Some(number) if number.is_finite() => {
+                update_f64_minmax(&mut accumulator.min, &mut accumulator.max, number);
+            }
+            _ => {
+                accumulator.complete = false;
+            }
+        }
+    });
+    if !saw_part {
+        accumulator.complete = false;
+    }
 }
 
 fn observe_af_values(value: &[u8], builder: &mut ChunkMetadataBuilder) {
@@ -158,8 +220,18 @@ fn observe_af_values(value: &[u8], builder: &mut ChunkMetadataBuilder) {
     }
 }
 
-fn observe_filters(filter: &[u8], filters: &mut BTreeSet<String>) {
-    if filter.is_empty() || filter == b"." {
+fn observe_filters(
+    filter: &[u8],
+    filters: &mut BTreeSet<String>,
+    filter_values: &mut BTreeSet<String>,
+) {
+    if filter.is_empty() {
+        return;
+    }
+
+    filter_values.insert(String::from_utf8_lossy(filter).into_owned());
+
+    if filter == b"." {
         return;
     }
 
@@ -254,7 +326,14 @@ mod tests {
         assert_eq!(chunk.info_af_min, Some(0.2));
         assert_eq!(chunk.info_af_max, Some(0.3));
         assert!(chunk.info_af_complete);
+        assert_eq!(chunk.info_numeric["DP"].min, Some(12.0));
+        assert_eq!(chunk.info_numeric["DP"].max, Some(12.0));
+        assert!(chunk.info_numeric["DP"].complete);
+        assert_eq!(chunk.info_numeric["AF"].min, Some(0.2));
+        assert_eq!(chunk.info_numeric["AF"].max, Some(0.3));
+        assert!(chunk.info_numeric["AF"].complete);
         assert_eq!(chunk.filters, vec!["PASS"]);
+        assert_eq!(chunk.filter_values, vec!["PASS"]);
         assert_eq!(chunk.format_keys, vec!["AD", "DP", "GT"]);
         assert_eq!(chunk.virtual_start, None);
         assert_eq!(chunk.virtual_end, Some(65_536));

@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -48,15 +49,26 @@ pub(crate) struct IndexChunk {
     pub(crate) qual_min: Option<f64>,
     pub(crate) qual_max: Option<f64>,
     pub(crate) filters: Vec<String>,
+    #[serde(default)]
+    pub(crate) filter_values: Vec<String>,
     pub(crate) info_dp_min: Option<i64>,
     pub(crate) info_dp_max: Option<i64>,
     pub(crate) has_info_af: bool,
     pub(crate) info_af_min: Option<f64>,
     pub(crate) info_af_max: Option<f64>,
     pub(crate) info_af_complete: bool,
+    #[serde(default)]
+    pub(crate) info_numeric: BTreeMap<String, NumericBounds>,
     pub(crate) format_keys: Vec<String>,
     pub(crate) virtual_start: Option<u64>,
     pub(crate) virtual_end: Option<u64>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub(crate) struct NumericBounds {
+    pub(crate) min: Option<f64>,
+    pub(crate) max: Option<f64>,
+    pub(crate) complete: bool,
 }
 
 pub(crate) fn read_index(path: &Path) -> Result<VariantFlowIndex> {

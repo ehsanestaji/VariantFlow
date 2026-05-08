@@ -353,6 +353,59 @@ fn v21_indexed_filter_harness_tracks_skip_rate_and_correctness() {
 }
 
 #[test]
+fn v22_scheduler_harness_tracks_auto_bgzf_predicate_and_resource_evidence() {
+    let script = std::fs::read_to_string("benchmark/run_v22_scheduler_benchmarks.sh")
+        .expect("read v2.2 scheduler script");
+    let makefile = std::fs::read_to_string("Makefile").expect("read Makefile");
+    let report = std::fs::read_to_string("benchmark/reports/v22-scheduler-benchmark.md")
+        .expect("read v2.2 scheduler report");
+
+    assert!(makefile.contains("bench-v22-scheduler:"));
+    assert!(makefile.contains("bash -n benchmark/run_v22_scheduler_benchmarks.sh"));
+
+    for required in [
+        "VCF_FAST_V22_STRESS_TIERS",
+        "VCF_FAST_V22_PUBLIC_TIERS",
+        "VCF_FAST_NATIVE_BGZF_THREADS_BENCH",
+        "VCF_FAST_NATIVE_FILTER_THREADS_BENCH",
+        "VCF_FAST_NATIVE_FILTER_BATCH_RECORDS_BENCH",
+        "forced single-thread",
+        "default auto",
+        "BGZF-only",
+        "predicate-only",
+        "combined BGZF+predicate",
+        "ANY(FORMAT/AD > 80)",
+        "N_PASS(FMT/AD[*:*]>80)>0",
+        "bcftools filter",
+        "hyperfine",
+        "peak RSS KB",
+        "CPU seconds",
+        "correctness result",
+        "byte-for-byte",
+        "claim decision",
+        "public human FORMAT aggregate",
+        "deterministic stress BGZF",
+    ] {
+        assert!(script.contains(required), "script missing {required}");
+    }
+
+    for required in [
+        "v2.2 Scheduler Benchmark",
+        "forced single-thread",
+        "default auto",
+        "BGZF-only",
+        "predicate-only",
+        "combined",
+        "runtime mean",
+        "peak RSS KB",
+        "CPU seconds",
+        "not yet measured",
+    ] {
+        assert!(report.contains(required), "report missing {required}");
+    }
+}
+
+#[test]
 fn v09_expression_parity_report_tracks_required_fields() {
     let report = std::fs::read_to_string("benchmark/reports/v09-expression-parity-benchmark.md")
         .expect("read v0.9 report");
@@ -1834,6 +1887,14 @@ fn ld_bounded_distance_uses_rolling_window_not_full_site_storage() {
     assert!(
         run_ld.contains("LdSite"),
         "LD should store compact dosage sites instead of full SiteAlleleSummary rows"
+    );
+    assert!(
+        source.contains("struct PackedDosages"),
+        "LD should use packed dosage storage for lower per-site memory"
+    );
+    assert!(
+        run_ld.contains("PackedDosages::new_missing"),
+        "LD should initialize packed dosage rows rather than one byte per sample"
     );
     assert!(
         !run_ld.contains("sites.push(site.clone())"),
