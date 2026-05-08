@@ -667,29 +667,21 @@ impl NativeParallelFilterConfig {
 }
 
 #[allow(dead_code)]
-fn native_pipeline_config_from_env() -> crate::engine::pipeline::PipelineConfig {
+fn native_pipeline_config_from_env() -> Result<crate::engine::pipeline::PipelineConfig> {
     let available = thread::available_parallelism().map_or(1, NonZeroUsize::get);
     let default_required = RequiredFields::default();
     let filter_config = NativeParallelFilterConfig::from_env_with_available_parallelism(
         &default_required,
         available,
-    )
-    .unwrap_or(NativeParallelFilterConfig {
-        threads: NonZeroUsize::new(1).unwrap(),
-        batch_records: NonZeroUsize::new(DEFAULT_PARALLEL_BATCH_RECORDS).unwrap(),
-        queue_batches: NonZeroUsize::new(DEFAULT_PARALLEL_QUEUE_BATCHES).unwrap(),
-    });
-    let bgzf_threads = crate::io::native_bgzf_threads_from_env()
-        .ok()
-        .flatten()
-        .map_or(1, NonZeroUsize::get);
+    )?;
+    let bgzf_threads = crate::io::native_bgzf_threads_from_env()?.map_or(1, NonZeroUsize::get);
 
-    crate::engine::pipeline::PipelineConfig {
+    Ok(crate::engine::pipeline::PipelineConfig {
         bgzf_threads,
         filter_threads: filter_config.threads.get(),
         batch_records: filter_config.batch_records.get(),
         queue_batches: filter_config.queue_batches.get(),
-    }
+    })
 }
 
 fn parse_filter_threads_env(
