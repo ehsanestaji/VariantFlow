@@ -110,9 +110,6 @@ fn filter_decision(chunk: &IndexChunk, op: Operator, value: &str) -> SkipDecisio
             SkipDecision::CanSkip
         }
         Operator::Eq => SkipDecision::MustScan,
-        Operator::Ne if chunk.filters.len() == 1 && chunk.filters[0] == value => {
-            SkipDecision::CanSkip
-        }
         Operator::Ne => SkipDecision::MustScan,
         _ => SkipDecision::UnsupportedForIndex,
     }
@@ -184,6 +181,11 @@ mod tests {
     #[test]
     fn scans_chunk_when_filter_value_is_present() {
         assert_plan("FILTER == \"q10\"", SkipDecision::MustScan);
+    }
+
+    #[test]
+    fn scans_chunk_when_filter_not_equal_matches_missing_filter_values() {
+        assert_plan("FILTER != \"q10\"", SkipDecision::MustScan);
     }
 
     #[test]
