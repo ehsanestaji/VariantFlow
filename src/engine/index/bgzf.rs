@@ -5,6 +5,8 @@ use std::path::Path;
 use anyhow::{Context, Result, anyhow, bail, ensure};
 use flate2::read::DeflateDecoder;
 
+const MAX_BGZF_UNCOMPRESSED_BLOCK_SIZE: usize = 65_536;
+
 #[derive(Debug)]
 pub(crate) struct BgzfBlock {
     pub(crate) compressed_start: u64,
@@ -22,14 +24,16 @@ impl BgzfBlock {
     }
 }
 
-pub(crate) fn read_bgzf_blocks(path: &Path) -> Result<Vec<BgzfBlock>> {
+pub(crate) fn for_each_bgzf_block(
+    path: &Path,
+    mut visit: impl FnMut(BgzfBlock) -> Result<()>,
+) -> Result<()> {
     let mut file =
         File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
     let file_len = file
         .metadata()
         .with_context(|| format!("failed to stat {}", path.display()))?
         .len();
-    let mut blocks = Vec::new();
 
     loop {
         let compressed_start = file
@@ -40,9 +44,19 @@ pub(crate) fn read_bgzf_blocks(path: &Path) -> Result<Vec<BgzfBlock>> {
         }
 
         let block = read_block(path, &mut file, compressed_start)?;
-        blocks.push(block);
+        visit(block)?;
     }
 
+    Ok(())
+}
+
+#[cfg(test)]
+pub(crate) fn read_bgzf_blocks(path: &Path) -> Result<Vec<BgzfBlock>> {
+    let mut blocks = Vec::new();
+    for_each_bgzf_block(path, |block| {
+        blocks.push(block);
+        Ok(())
+    })?;
     Ok(blocks)
 }
 
@@ -81,12 +95,33 @@ fn read_block(path: &Path, file: &mut File, compressed_start: u64) -> Result<Bgz
         .len()
         .checked_sub(8)
         .ok_or_else(|| anyhow!("invalid BGZF block at compressed offset {compressed_start}"))?;
+    let footer = &remaining[payload_end..];
+    let expected_crc32 = u32::from_le_bytes([footer[0], footer[1], footer[2], footer[3]]);
+    let expected_isize = u32::from_le_bytes([footer[4], footer[5], footer[6], footer[7]]);
+    ensure!(
+        expected_isize as usize <= MAX_BGZF_UNCOMPRESSED_BLOCK_SIZE,
+        "BGZF block at compressed offset {compressed_start} exceeds BGZF maximum uncompressed block size"
+    );
 
     let mut decoder = DeflateDecoder::new(&remaining[..payload_end]);
     let mut uncompressed = Vec::new();
     decoder.read_to_end(&mut uncompressed).with_context(|| {
         format!("failed to inflate BGZF block at compressed offset {compressed_start}")
     })?;
+    ensure!(
+        uncompressed.len() <= MAX_BGZF_UNCOMPRESSED_BLOCK_SIZE,
+        "BGZF block at compressed offset {compressed_start} exceeds BGZF maximum uncompressed block size"
+    );
+    ensure!(
+        uncompressed.len() as u32 == expected_isize,
+        "BGZF ISIZE mismatch at compressed offset {compressed_start}: expected {expected_isize}, decoded {}",
+        uncompressed.len()
+    );
+    let actual_crc32 = crc32fast::hash(&uncompressed);
+    ensure!(
+        actual_crc32 == expected_crc32,
+        "BGZF CRC32 mismatch at compressed offset {compressed_start}: expected {expected_crc32:#010x}, decoded {actual_crc32:#010x}"
+    );
 
     Ok(BgzfBlock {
         compressed_start,
@@ -138,14 +173,18 @@ mod tests {
 #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n\
 chr1\t1\t.\tA\tG\t1\tPASS\tDP=1\n";
 
+    fn write_bgzf(path: &Path) {
+        let file = std::fs::File::create(path).unwrap();
+        let mut writer = noodles_bgzf::io::Writer::new(file);
+        writer.write_all(TINY_VCF).unwrap();
+        writer.finish().unwrap();
+    }
+
     #[test]
     fn bgzf_block_reader_reports_block_boundary_virtual_offsets() {
         let dir = tempdir().unwrap();
         let input = dir.path().join("tiny.vcf.gz");
-        let file = std::fs::File::create(&input).unwrap();
-        let mut writer = noodles_bgzf::io::Writer::new(file);
-        writer.write_all(TINY_VCF).unwrap();
-        writer.finish().unwrap();
+        write_bgzf(&input);
 
         let blocks = read_bgzf_blocks(&input).unwrap();
         let first_non_empty = blocks
@@ -155,6 +194,75 @@ chr1\t1\t.\tA\tG\t1\tPASS\tDP=1\n";
 
         assert_eq!(first_non_empty.virtual_start(), 0);
         assert!(first_non_empty.virtual_end() > first_non_empty.virtual_start());
+    }
+
+    #[test]
+    fn bgzf_streaming_walker_visits_blocks_without_collecting() {
+        let dir = tempdir().unwrap();
+        let input = dir.path().join("tiny.vcf.gz");
+        write_bgzf(&input);
+
+        let mut block_count = 0;
+        let mut non_empty_count = 0;
+        for_each_bgzf_block(&input, |block| {
+            block_count += 1;
+            if !block.uncompressed.is_empty() {
+                non_empty_count += 1;
+            }
+            Ok(())
+        })
+        .unwrap();
+
+        assert!(block_count >= 1);
+        assert!(non_empty_count >= 1);
+    }
+
+    #[test]
+    fn bgzf_reader_rejects_crc32_mismatch() {
+        let dir = tempdir().unwrap();
+        let input = dir.path().join("tiny.vcf.gz");
+        write_bgzf(&input);
+        let first_block_end = read_bgzf_blocks(&input)
+            .unwrap()
+            .into_iter()
+            .find(|block| !block.uncompressed.is_empty())
+            .unwrap()
+            .compressed_end as usize;
+
+        let mut bytes = std::fs::read(&input).unwrap();
+        bytes[first_block_end - 8] ^= 0xff;
+        std::fs::write(&input, bytes).unwrap();
+
+        let error = read_bgzf_blocks(&input).unwrap_err();
+        assert!(
+            error.to_string().contains("CRC32"),
+            "unexpected error: {error:#}"
+        );
+    }
+
+    #[test]
+    fn bgzf_reader_rejects_oversized_isize() {
+        let dir = tempdir().unwrap();
+        let input = dir.path().join("tiny.vcf.gz");
+        write_bgzf(&input);
+        let first_block_end = read_bgzf_blocks(&input)
+            .unwrap()
+            .into_iter()
+            .find(|block| !block.uncompressed.is_empty())
+            .unwrap()
+            .compressed_end as usize;
+
+        let mut bytes = std::fs::read(&input).unwrap();
+        bytes[first_block_end - 4..first_block_end].copy_from_slice(&65_537_u32.to_le_bytes());
+        std::fs::write(&input, bytes).unwrap();
+
+        let error = read_bgzf_blocks(&input).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("exceeds BGZF maximum uncompressed block size"),
+            "unexpected error: {error:#}"
+        );
     }
 
     #[test]

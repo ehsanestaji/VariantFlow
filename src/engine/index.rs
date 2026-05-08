@@ -11,7 +11,7 @@ mod bgzf;
 mod metadata;
 pub(crate) mod schema;
 
-use bgzf::read_bgzf_blocks;
+use bgzf::for_each_bgzf_block;
 use metadata::ChunkMetadataBuilder;
 use schema::{OffsetModel, VariantFlowIndex, source_identity};
 
@@ -79,35 +79,35 @@ fn write_index(input: &Path, output: &Path, chunk_record_target: u64) -> Result<
 }
 
 fn write_bgzf_index(input: &Path, output: &Path, chunk_record_target: u64) -> Result<()> {
-    let blocks = read_bgzf_blocks(input)?;
     let mut record_count = 0_u64;
     let mut chunks = Vec::new();
     let mut current = None;
     let mut line = Vec::new();
     let mut line_virtual_start = None;
-    let mut last_virtual_end = None;
+    let mut line_virtual_end = None;
+    let mut current_virtual_end = None;
 
-    for block in blocks {
-        let block_virtual_start = block.virtual_start();
-        let block_virtual_end = block.virtual_end();
-        last_virtual_end = Some(block_virtual_end);
-
-        for byte in block.uncompressed {
+    for_each_bgzf_block(input, |block| {
+        for (offset, byte) in block.uncompressed.iter().copied().enumerate() {
             if line.is_empty() && line_virtual_start.is_none() {
-                line_virtual_start = Some(block_virtual_start);
+                line_virtual_start = Some(virtual_offset_at(&block, offset));
             }
             line.push(byte);
+            line_virtual_end = Some(virtual_offset_after(&block, offset + 1));
 
             if byte == b'\n' {
                 observe_bgzf_line(
                     &line,
-                    line_virtual_start.unwrap_or(block_virtual_start),
+                    line_virtual_start.unwrap_or_else(|| virtual_offset_at(&block, 0)),
+                    line_virtual_end.unwrap_or_else(|| virtual_offset_at(&block, 0)),
                     chunks.len() as u64,
                     &mut record_count,
                     &mut current,
+                    &mut current_virtual_end,
                 )?;
                 line.clear();
                 line_virtual_start = None;
+                line_virtual_end = None;
             }
         }
 
@@ -115,29 +115,30 @@ fn write_bgzf_index(input: &Path, output: &Path, chunk_record_target: u64) -> Re
             .as_ref()
             .is_some_and(|builder| builder.record_count() >= chunk_record_target)
             && line.is_empty()
-        {
-            if let Some(chunk) = current
+            && let Some(chunk) = current
                 .take()
-                .and_then(|builder| builder.finish(Some(block_virtual_end)))
-            {
-                chunks.push(chunk);
-            }
+                .and_then(|builder| builder.finish(current_virtual_end.take()))
+        {
+            chunks.push(chunk);
         }
-    }
+        Ok(())
+    })?;
 
     if !line.is_empty() {
         observe_bgzf_line(
             &line,
             line_virtual_start.unwrap_or(0),
+            line_virtual_end.unwrap_or_else(|| line_virtual_start.unwrap_or(0)),
             chunks.len() as u64,
             &mut record_count,
             &mut current,
+            &mut current_virtual_end,
         )?;
     }
 
     if let Some(chunk) = current
         .take()
-        .and_then(|builder| builder.finish(last_virtual_end))
+        .and_then(|builder| builder.finish(current_virtual_end))
     {
         chunks.push(chunk);
     }
@@ -159,9 +160,11 @@ fn write_bgzf_index(input: &Path, output: &Path, chunk_record_target: u64) -> Re
 fn observe_bgzf_line(
     line: &[u8],
     line_virtual_start: u64,
+    line_virtual_end: u64,
     chunk_ordinal: u64,
     record_count: &mut u64,
     current: &mut Option<ChunkMetadataBuilder>,
+    current_virtual_end: &mut Option<u64>,
 ) -> Result<()> {
     if line.starts_with(b"#") {
         return Ok(());
@@ -181,7 +184,20 @@ fn observe_bgzf_line(
         .expect("chunk builder exists")
         .observe(&record)?;
     *record_count += 1;
+    *current_virtual_end = Some(line_virtual_end);
     Ok(())
+}
+
+fn virtual_offset_at(block: &bgzf::BgzfBlock, uncompressed_offset: usize) -> u64 {
+    block.virtual_start() | uncompressed_offset as u64
+}
+
+fn virtual_offset_after(block: &bgzf::BgzfBlock, uncompressed_offset: usize) -> u64 {
+    if uncompressed_offset == 65_536 {
+        block.virtual_end()
+    } else {
+        virtual_offset_at(block, uncompressed_offset)
+    }
 }
 
 fn write_index_json(output: &Path, index: &VariantFlowIndex) -> Result<()> {

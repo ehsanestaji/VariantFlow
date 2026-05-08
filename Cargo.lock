@@ -1645,6 +1645,7 @@ dependencies = [
  "arrow-schema",
  "assert_cmd",
  "clap",
+ "crc32fast",
  "flate2",
  "memchr",
  "noodles-bgzf",
