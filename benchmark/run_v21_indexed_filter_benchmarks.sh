@@ -5,16 +5,26 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "$REPO_ROOT"
 
+MODE="${VCF_FAST_V21_MODE:-synthetic}"
 SIZES="${VCF_FAST_V21_SIZES:-10000 100000 1000000}"
 RUNS="${VCF_FAST_BENCH_RUNS:-3}"
 WARMUP="${VCF_FAST_BENCH_WARMUP:-1}"
-EXPR="${VCF_FAST_V21_EXPR:-QUAL > 1000}"
-BCFTOOLS_EXPR="${VCF_FAST_V21_BCFTOOLS_EXPR:-QUAL>1000}"
+if [[ "$MODE" = "public-igsr" ]]; then
+  DEFAULT_EXPR="AF > 0.99"
+  DEFAULT_BCFTOOLS_EXPR="INFO/AF>0.99"
+else
+  DEFAULT_EXPR="QUAL > 1000"
+  DEFAULT_BCFTOOLS_EXPR="QUAL>1000"
+fi
+EXPR="${VCF_FAST_V21_EXPR:-$DEFAULT_EXPR}"
+BCFTOOLS_EXPR="${VCF_FAST_V21_BCFTOOLS_EXPR:-$DEFAULT_BCFTOOLS_EXPR}"
 OUT_DIR="${VCF_FAST_V21_OUT_DIR:-${VCF_FAST_BENCH_OUT_DIR:-tests/output/benchmark-results/v21-indexed-filter}}"
 DATA_DIR="${OUT_DIR}/data"
 REPORT="${VCF_FAST_V21_REPORT:-benchmark/reports/v21-indexed-filter-benchmark.md}"
 COMMANDS_REPORT="${OUT_DIR}/v21-indexed-filter-commands.md"
 BIN="${VCF_FAST_BIN:-target/release/variantflow}"
+PUBLIC_INPUT="${VCF_FAST_V21_PUBLIC_INPUT:-tests/output/public-data/1kGP_high_coverage_Illumina.chr22.filtered.SNV_INDEL_SV_phased_panel.vcf.gz}"
+PUBLIC_SOURCE_URL="https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000G_2504_high_coverage/working/20220422_3202_phased_SNV_INDEL_SV/1kGP_high_coverage_Illumina.chr22.filtered.SNV_INDEL_SV_phased_panel.vcf.gz"
 
 require_tool() {
   local tool="$1"
@@ -154,18 +164,68 @@ else:
 PY
 }
 
+claim_decision() {
+  local indexed_seconds="$1"
+  local default_seconds="$2"
+  local bcftools_seconds="$3"
+  python3 - "$indexed_seconds" "$default_seconds" "$bcftools_seconds" <<'PY'
+import sys
+
+indexed = float(sys.argv[1])
+default = float(sys.argv[2])
+bcftools = float(sys.argv[3])
+
+if indexed < default and indexed < bcftools:
+    print("claim decision: correctness passed; indexed speed win vs default native and bcftools for this measured row")
+elif indexed < bcftools:
+    print("claim decision: correctness passed; indexed beats bcftools but is slower than default native on this measured row")
+elif indexed < default:
+    print("claim decision: correctness passed; indexed beats default native but not bcftools on this measured row")
+else:
+    print("claim decision: correctness passed; no indexed speed claim for this measured row")
+PY
+}
+
 write_core_records() {
   awk 'BEGIN { OFS = "\t" } !/^#/ { print $1, $2, $3, $4, $5 }'
 }
 
 prepare_dataset() {
   local records="$1"
+
+  if [[ "$MODE" = "public-igsr" ]]; then
+    prepare_public_igsr_dataset "$records"
+    return
+  fi
+
   local plain="${DATA_DIR}/v21-indexed-filter-stress-${records}.vcf"
   local bgzf="${plain}.gz"
 
   if [[ ! -s "$bgzf" ]]; then
     benchmark/generate_stress_vcf.sh "$plain" "$records"
     bgzip -f "$plain"
+  fi
+
+  echo "$bgzf"
+}
+
+prepare_public_igsr_dataset() {
+  local records="$1"
+  local bgzf="${DATA_DIR}/v21-indexed-filter-public-igsr-${records}.vcf.gz"
+  local tmp="${bgzf}.tmp"
+
+  if [[ ! -s "$PUBLIC_INPUT" ]]; then
+    echo "missing public IGSR input: $PUBLIC_INPUT" >&2
+    echo "run: benchmark/download_public_data.sh igsr-chr22" >&2
+    exit 2
+  fi
+
+  if [[ ! -s "$bgzf" ]]; then
+    {
+      bcftools view -h "$PUBLIC_INPUT"
+      bcftools view -H "$PUBLIC_INPUT" | awk -v limit="$records" 'NR <= limit { print } NR == limit { exit }'
+    } | bgzip -c >"$tmp"
+    mv "$tmp" "$bgzf"
   fi
 
   echo "$bgzf"
@@ -213,17 +273,31 @@ run_bcftools_filter() {
 {
   echo "# v2.1 Indexed Filter Benchmark"
   echo
-  echo "This report measures VariantFlow v2.1 Indexed Filter behavior using BGZF virtual offsets. It compares default native filtering, indexed native filtering, and bcftools filter. The default expression is \`${EXPR}\`, which is designed to skip all deterministic stress chunks because generated QUAL values are 0..99."
+  echo "This report measures VariantFlow v2.1 Indexed Filter behavior using BGZF virtual offsets. It compares default native filtering, indexed native filtering, and bcftools filter."
+  if [[ "$MODE" = "public-igsr" ]]; then
+    echo
+    echo "The public mode stages bounded BGZF tiers from the cached 1000 Genomes / IGSR chr22 VCF without writing a plain VCF intermediate. The default expression is \`${EXPR}\`, which exercises INFO/AF chunk metadata on real public records."
+  else
+    echo
+    echo "The synthetic mode default expression is \`${EXPR}\`, which is designed to skip all deterministic stress chunks because generated QUAL values are 0..99."
+  fi
   echo
   echo "Rows outside the configured tiers are not yet measured; keep that caveat attached to any claim decision."
   echo
   echo "## Environment"
   echo
   echo "- sizes: \`${SIZES}\`"
+  echo "- mode: \`${MODE}\`"
   echo "- runs: \`${RUNS}\`"
   echo "- warmup: \`${WARMUP}\`"
   echo "- expression: \`${EXPR}\`"
   echo "- bcftools expression: \`${BCFTOOLS_EXPR}\`"
+  if [[ "$MODE" = "public-igsr" ]]; then
+    echo "- dataset source: \`${PUBLIC_SOURCE_URL}\`"
+    echo "- cached input: \`${PUBLIC_INPUT}\`"
+  else
+    echo "- dataset source: deterministic stress generator \`benchmark/generate_stress_vcf.sh\`"
+  fi
   echo "- bcftools: \`$(bcftools --version 2>/dev/null | head -1 || echo unavailable)\`"
   if command -v hyperfine >/dev/null 2>&1; then
     echo "- hyperfine: \`$(hyperfine --version 2>/dev/null | head -1 || echo available)\`"
@@ -260,10 +334,10 @@ for records in $SIZES; do
 
   if cmp -s "$default_vcf" "$indexed_vcf" && cmp -s "$indexed_core" "$bcftools_core"; then
     correctness="default and indexed byte-for-byte match; indexed and bcftools core records match"
-    claim="claim decision: correctness passed; speed claim allowed only for this measured row"
+    correctness_ok=1
   else
     correctness="correctness result: mismatch; inspect ${OUT_DIR}/*-${records}.vcf and ${OUT_DIR}/*-core-${records}.tsv"
-    claim="claim decision: no speed claim"
+    correctness_ok=0
   fi
 
   indexed_bench_report="${OUT_DIR}/index-report-${records}-bench.json"
@@ -285,7 +359,16 @@ for records in $SIZES; do
   core_records="$(wc -l <"$indexed_core" | tr -d ' ')"
   speedup="$(speedup_ratio "$indexed_mean" "$default_mean") vs default; $(speedup_ratio "$indexed_mean" "$bcftools_mean") vs bcftools"
   throughput="$(variants_per_second "$records" "$indexed_mean")"
-  caveat="synthetic stress BGZF only; public-data caveat and broader predicates are not covered"
+  if [[ "$correctness_ok" = "1" ]]; then
+    claim="$(claim_decision "$indexed_mean" "$default_mean" "$bcftools_mean")"
+  else
+    claim="claim decision: no speed claim"
+  fi
+  if [[ "$MODE" = "public-igsr" ]]; then
+    caveat="bounded public IGSR chr22 BGZF tiers; AF predicate only; broader predicates and full-chromosome public rows are not covered"
+  else
+    caveat="synthetic stress BGZF only; public-data caveat and broader predicates are not covered"
+  fi
 
   {
     echo "| ${records} | ${chunks_total} | ${chunks_skipped} | ${rate} | ${records_skipped} | ${core_records} | ${correctness} | ${indexed_mean}s +/- ${indexed_stddev}s | ${default_mean}s +/- ${default_stddev}s | ${bcftools_mean}s +/- ${bcftools_stddev}s | ${speedup} | ${throughput} | indexed ${indexed_rss} KB; bcftools ${bcftools_rss} KB | ${claim} | ${caveat} |"

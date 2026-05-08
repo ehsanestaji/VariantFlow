@@ -109,12 +109,26 @@ pub(crate) fn read_virtual_range(
     virtual_start: u64,
     virtual_end: u64,
 ) -> Result<Vec<u8>> {
+    let mut output = Vec::new();
+    for_each_virtual_range_slice(path, virtual_start, virtual_end, |slice| {
+        output.extend_from_slice(slice);
+        Ok(())
+    })?;
+    Ok(output)
+}
+
+pub(crate) fn for_each_virtual_range_slice(
+    path: &Path,
+    virtual_start: u64,
+    virtual_end: u64,
+    mut visit: impl FnMut(&[u8]) -> Result<()>,
+) -> Result<()> {
     ensure!(
         virtual_end >= virtual_start,
         "invalid BGZF virtual range: end {virtual_end} is before start {virtual_start}"
     );
     if virtual_start == virtual_end {
-        return Ok(Vec::new());
+        return Ok(());
     }
 
     let start_compressed = virtual_start >> 16;
@@ -125,7 +139,6 @@ pub(crate) fn read_virtual_range(
     let mut file =
         File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
     let mut compressed_start = start_compressed;
-    let mut output = Vec::new();
 
     loop {
         let block = read_one_bgzf_block(path, &mut file, compressed_start)?;
@@ -164,7 +177,7 @@ pub(crate) fn read_virtual_range(
             block.compressed_start
         );
 
-        output.extend_from_slice(&block.uncompressed[slice_start..slice_end]);
+        visit(&block.uncompressed[slice_start..slice_end])?;
 
         if range_complete {
             break;
@@ -172,7 +185,7 @@ pub(crate) fn read_virtual_range(
         compressed_start = block.compressed_end;
     }
 
-    Ok(output)
+    Ok(())
 }
 
 fn read_one_bgzf_block(path: &Path, file: &mut File, compressed_start: u64) -> Result<BgzfBlock> {
@@ -357,6 +370,27 @@ chr1\t1\t.\tA\tG\t1\tPASS\tDP=1\n";
         let bytes = read_virtual_range(&input, start, end).unwrap();
         let text = String::from_utf8(bytes).unwrap();
 
+        assert!(text.contains("chr1\t1"));
+    }
+
+    #[test]
+    fn bgzf_range_walker_visits_text_without_collecting() {
+        let dir = tempdir().unwrap();
+        let input = dir.path().join("tiny.vcf.gz");
+        write_bgzf(&input);
+
+        let blocks = read_bgzf_blocks(&input).unwrap();
+        let start = blocks.first().unwrap().virtual_start();
+        let end = blocks.last().unwrap().virtual_end();
+        let mut visited = Vec::new();
+
+        for_each_virtual_range_slice(&input, start, end, |slice| {
+            visited.extend_from_slice(slice);
+            Ok(())
+        })
+        .unwrap();
+
+        let text = String::from_utf8(visited).unwrap();
         assert!(text.contains("chr1\t1"));
     }
 

@@ -294,13 +294,21 @@ fn v21_indexed_filter_harness_tracks_skip_rate_and_correctness() {
         .expect("read v21 benchmark report");
 
     assert!(makefile.contains("bench-v21-index:"));
+    assert!(makefile.contains("bench-v21-public-index:"));
+    assert!(makefile.contains("VCF_FAST_V21_PUBLIC_REPORT"));
     assert!(makefile.contains(script_path));
     assert!(makefile.contains("bash -n benchmark/run_v21_indexed_filter_benchmarks.sh"));
 
     for required in [
+        "VCF_FAST_V21_MODE",
         "VCF_FAST_V21_SIZES",
         "10000 100000 1000000",
         "VCF_FAST_V21_EXPR",
+        "VCF_FAST_V21_PUBLIC_INPUT",
+        "public-igsr",
+        "AF > 0.99",
+        "INFO/AF>0.99",
+        "benchmark/download_public_data.sh igsr-chr22",
         "VCF_FAST_V21_OUT_DIR",
         "QUAL > 1000",
         "variantflow index",
@@ -320,6 +328,8 @@ fn v21_indexed_filter_harness_tracks_skip_rate_and_correctness() {
         "default_cmd",
         "index_cmd",
         "bench-disabled",
+        "bcftools view -H",
+        "bgzip -c",
     ] {
         assert!(script.contains(required), "script missing {required}");
     }
