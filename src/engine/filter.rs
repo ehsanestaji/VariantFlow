@@ -272,8 +272,12 @@ fn maybe_write_index_report(report: &IndexFilterReport) -> Result<()> {
     let path = PathBuf::from(path);
     let file = File::create(&path)
         .with_context(|| format!("failed to create index report {}", path.display()))?;
-    serde_json::to_writer_pretty(BufWriter::new(file), report)
+    let mut writer = BufWriter::new(file);
+    serde_json::to_writer_pretty(&mut writer, report)
         .with_context(|| format!("failed to write index report {}", path.display()))?;
+    writer
+        .flush()
+        .with_context(|| format!("failed to flush index report {}", path.display()))?;
     Ok(())
 }
 
