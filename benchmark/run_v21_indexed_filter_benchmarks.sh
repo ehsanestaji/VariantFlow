@@ -13,6 +13,7 @@ BCFTOOLS_EXPR="${VCF_FAST_V21_BCFTOOLS_EXPR:-QUAL>1000}"
 OUT_DIR="${VCF_FAST_V21_OUT_DIR:-${VCF_FAST_BENCH_OUT_DIR:-tests/output/benchmark-results/v21-indexed-filter}}"
 DATA_DIR="${OUT_DIR}/data"
 REPORT="${VCF_FAST_V21_REPORT:-benchmark/reports/v21-indexed-filter-benchmark.md}"
+COMMANDS_REPORT="${OUT_DIR}/v21-indexed-filter-commands.md"
 BIN="${VCF_FAST_BIN:-target/release/variantflow}"
 
 require_tool() {
@@ -27,6 +28,7 @@ require_tool bgzip
 require_tool bcftools
 
 mkdir -p "$OUT_DIR" "$DATA_DIR" "$(dirname "$REPORT")"
+: >"$COMMANDS_REPORT"
 
 if [[ -z "${VCF_FAST_BIN:-}" ]]; then
   cargo build --release
@@ -297,7 +299,13 @@ for records in $SIZES; do
     echo "- default: \`${default_cmd}\`"
     echo "- indexed: \`${indexed_cmd}\`"
     echo "- bcftools: \`${bcftools_cmd}\`"
-  } >>"$REPORT"
+  } >>"$COMMANDS_REPORT"
 done
+
+{
+  echo
+  echo "## Exact Commands"
+  cat "$COMMANDS_REPORT"
+} >>"$REPORT"
 
 echo "wrote ${REPORT}"

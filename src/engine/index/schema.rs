@@ -1,14 +1,16 @@
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct VariantFlowIndex {
     pub(crate) schema_version: u32,
     pub(crate) index_kind: String,
+    #[serde(default)]
+    pub(crate) index_metadata_sha256: String,
     pub(crate) offset_model: OffsetModel,
     pub(crate) virtual_offsets_available: bool,
     pub(crate) source: SourceIdentity,
@@ -17,7 +19,7 @@ pub(crate) struct VariantFlowIndex {
     pub(crate) chunks: Vec<IndexChunk>,
 }
 
-#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum OffsetModel {
     RecordChunk,
@@ -25,15 +27,16 @@ pub(crate) enum OffsetModel {
     BgzfVirtual,
 }
 
-#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub(crate) struct SourceIdentity {
     pub(crate) path: String,
     pub(crate) size_bytes: u64,
     pub(crate) modified_unix_seconds: u64,
-    pub(crate) content_sha256: String,
+    pub(crate) modified_unix_nanoseconds: u128,
+    pub(crate) metadata_changed_unix_nanoseconds: Option<u128>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct IndexChunk {
     pub(crate) ordinal: u64,
     pub(crate) first_record: u64,
@@ -59,7 +62,14 @@ pub(crate) struct IndexChunk {
 pub(crate) fn read_index(path: &Path) -> Result<VariantFlowIndex> {
     let file =
         std::fs::File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
-    serde_json::from_reader(file).with_context(|| format!("failed to parse {}", path.display()))
+    let index: VariantFlowIndex = serde_json::from_reader(file)
+        .with_context(|| format!("failed to parse {}", path.display()))?;
+    ensure!(
+        !index.index_metadata_sha256.is_empty()
+            && index.index_metadata_sha256 == metadata_sha256(&index)?,
+        "VFI index metadata checksum mismatch"
+    );
+    Ok(index)
 }
 
 pub(crate) fn default_index_path(input: &Path) -> PathBuf {
@@ -78,12 +88,17 @@ pub(crate) fn source_identity(path: &Path) -> Result<SourceIdentity> {
         .duration_since(UNIX_EPOCH)
         .with_context(|| format!("mtime for {} is before UNIX epoch", path.display()))?
         .as_secs();
+    let modified_unix_nanoseconds = modified
+        .duration_since(UNIX_EPOCH)
+        .with_context(|| format!("mtime for {} is before UNIX epoch", path.display()))?
+        .as_nanos();
 
     Ok(SourceIdentity {
         path: path.display().to_string(),
         size_bytes: metadata.len(),
         modified_unix_seconds,
-        content_sha256: file_sha256(path)?,
+        modified_unix_nanoseconds,
+        metadata_changed_unix_nanoseconds: metadata_changed_unix_nanoseconds(&metadata),
     })
 }
 
@@ -92,36 +107,36 @@ pub(crate) fn source_matches(index: &VariantFlowIndex, path: &Path) -> Result<bo
     Ok(index.source == source_identity(path)?)
 }
 
-fn file_sha256(path: &Path) -> Result<String> {
-    let mut file = std::fs::File::open(path)
-        .with_context(|| format!("failed to hash source {}", path.display()))?;
+pub(crate) fn set_metadata_sha256(index: &mut VariantFlowIndex) -> Result<()> {
+    index.index_metadata_sha256 = metadata_sha256(index)?;
+    Ok(())
+}
+
+fn metadata_sha256(index: &VariantFlowIndex) -> Result<String> {
+    let payload = serde_json::to_vec(&(
+        index.schema_version,
+        &index.index_kind,
+        &index.offset_model,
+        index.virtual_offsets_available,
+        &index.source,
+        index.chunk_record_target,
+        index.record_count,
+        &index.chunks,
+    ))
+    .context("failed to serialize VFI index metadata for checksum")?;
     let mut hasher = Sha256::new();
-    std::io::copy(&mut file, &mut hasher)
-        .with_context(|| format!("failed reading source hash for {}", path.display()))?;
+    hasher.update(payload);
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::tempdir;
+#[cfg(unix)]
+fn metadata_changed_unix_nanoseconds(metadata: &std::fs::Metadata) -> Option<u128> {
+    use std::os::unix::fs::MetadataExt;
 
-    #[test]
-    fn source_identity_includes_content_hash_for_same_size_files() {
-        let dir = tempdir().unwrap();
-        let first = dir.path().join("first.vcf.gz");
-        let second = dir.path().join("second.vcf.gz");
-        std::fs::write(&first, b"aaaa").unwrap();
-        std::fs::write(&second, b"bbbb").unwrap();
+    Some((metadata.ctime() as u128) * 1_000_000_000 + metadata.ctime_nsec() as u128)
+}
 
-        let first_identity = source_identity(&first).unwrap();
-        let second_identity = source_identity(&second).unwrap();
-
-        assert_eq!(first_identity.size_bytes, second_identity.size_bytes);
-        assert_eq!(first_identity.content_sha256.len(), 64);
-        assert_ne!(
-            first_identity.content_sha256,
-            second_identity.content_sha256
-        );
-    }
+#[cfg(not(unix))]
+fn metadata_changed_unix_nanoseconds(_metadata: &std::fs::Metadata) -> Option<u128> {
+    None
 }
