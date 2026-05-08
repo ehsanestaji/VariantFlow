@@ -14,7 +14,9 @@ pub(crate) mod planner;
 pub(crate) mod schema;
 
 use bgzf::for_each_bgzf_block;
-pub(crate) use bgzf::{first_record_virtual_start, for_each_virtual_range_slice};
+pub(crate) use bgzf::{
+    first_record_virtual_start, for_each_virtual_range_slice, read_decoded_bgzf_blocks,
+};
 use metadata::ChunkMetadataBuilder;
 pub(crate) use planner::{SkipDecision, plan_chunk};
 pub(crate) use schema::{

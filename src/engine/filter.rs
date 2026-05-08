@@ -13,7 +13,11 @@ use rayon::prelude::*;
 use crate::compat::{Backend, CompressionMode, Region, select_backend};
 use crate::engine::index::{
     OffsetModel, SkipDecision, VariantFlowIndex, default_index_path, first_record_virtual_start,
-    for_each_virtual_range_slice, plan_chunk, read_index, source_matches,
+    for_each_virtual_range_slice, plan_chunk, read_decoded_bgzf_blocks, read_index, source_matches,
+};
+use crate::engine::pipeline::{
+    AcceptedBatch, LineCarry, PipelineConfig, RecordBatch, evaluate_batches_ordered,
+    write_ordered_batches,
 };
 use crate::expr::{EvalContext, Expression, RequiredFields, parse_expression};
 use crate::io::{open_reader, open_vcf_writer};
@@ -75,6 +79,7 @@ pub fn run(
         bail!("FORMAT predicates require --sample <name>");
     }
     let parallel_config = NativeParallelFilterConfig::from_env(&required)?;
+    let pipeline_config = native_pipeline_config_from_env(&required)?;
 
     let mut reader = open_reader(input)?;
     let mut headers = Vec::new();
@@ -116,6 +121,20 @@ pub fn run(
             &expr,
             &required,
             sample_column,
+        )?
+    {
+        return Ok(());
+    }
+
+    if pipeline_config.enabled()
+        && try_native_bgzf_pipeline(
+            input,
+            output,
+            compression,
+            &expr,
+            &required,
+            sample_column,
+            pipeline_config,
         )?
     {
         return Ok(());
@@ -462,6 +481,78 @@ fn is_vcf_record_line(line: &[u8]) -> bool {
         && !line.iter().all(|byte| matches!(byte, b'\n' | b'\r'))
 }
 
+fn try_native_bgzf_pipeline(
+    input: &Path,
+    output: &Path,
+    compression: CompressionMode,
+    expr: &Expression,
+    required: &RequiredFields,
+    sample_column: Option<usize>,
+    config: PipelineConfig,
+) -> Result<bool> {
+    if !has_gz_extension(input) {
+        return Ok(false);
+    }
+
+    let decoded_blocks = match read_decoded_bgzf_blocks(input) {
+        Ok(blocks) => blocks,
+        Err(error) if is_not_bgzf_error(&error) => return Ok(false),
+        Err(error) => return Err(error),
+    };
+
+    let mut carry = LineCarry {
+        pending: Vec::new(),
+        next_batch_sequence: 0,
+    };
+    let mut batches = Vec::new();
+    for block in decoded_blocks {
+        batches.extend(carry.push_block(block, config.batch_records));
+    }
+    batches.extend(carry.finish());
+
+    let accepted = evaluate_batches_ordered(batches, config.filter_threads, |batch| {
+        evaluate_original_byte_batch(batch, expr, required, sample_column)
+    })?;
+
+    let mut writer = open_vcf_writer(output, compression)?;
+    write_ordered_batches(&mut *writer, accepted)?;
+    writer.flush()?;
+    Ok(true)
+}
+
+fn is_not_bgzf_error(error: &anyhow::Error) -> bool {
+    error.to_string().contains("not a BGZF file")
+}
+
+fn has_gz_extension(path: &Path) -> bool {
+    path.extension().is_some_and(|extension| extension == "gz")
+}
+
+fn evaluate_original_byte_batch(
+    batch: RecordBatch,
+    expr: &Expression,
+    required: &RequiredFields,
+    sample_column: Option<usize>,
+) -> Result<AcceptedBatch> {
+    let mut accepted = Vec::with_capacity(batch.bytes.len());
+    for line in batch.bytes.split_inclusive(|byte| *byte == b'\n') {
+        if line.starts_with(b"#") {
+            accepted.extend_from_slice(line);
+            continue;
+        }
+
+        let record = ByteEvalRecord::parse(line, required, sample_column)?;
+        if expr.evaluate_context(&record) {
+            accepted.extend_from_slice(line);
+        }
+    }
+
+    Ok(AcceptedBatch {
+        sequence: batch.sequence,
+        bytes: accepted,
+    })
+}
+
 fn run_streaming_filter(
     reader: &mut dyn BufRead,
     writer: &mut dyn Write,
@@ -666,17 +757,13 @@ impl NativeParallelFilterConfig {
     }
 }
 
-#[allow(dead_code)]
-fn native_pipeline_config_from_env() -> Result<crate::engine::pipeline::PipelineConfig> {
+fn native_pipeline_config_from_env(required: &RequiredFields) -> Result<PipelineConfig> {
     let available = thread::available_parallelism().map_or(1, NonZeroUsize::get);
-    let default_required = RequiredFields::default();
-    let filter_config = NativeParallelFilterConfig::from_env_with_available_parallelism(
-        &default_required,
-        available,
-    )?;
+    let filter_config =
+        NativeParallelFilterConfig::from_env_with_available_parallelism(required, available)?;
     let bgzf_threads = crate::io::native_bgzf_threads_from_env()?.map_or(1, NonZeroUsize::get);
 
-    Ok(crate::engine::pipeline::PipelineConfig {
+    Ok(PipelineConfig {
         bgzf_threads,
         filter_threads: filter_config.threads.get(),
         batch_records: filter_config.batch_records.get(),
