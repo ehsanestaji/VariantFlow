@@ -93,6 +93,23 @@ fn public_data_downloader_pins_giab_and_igsr_sources() {
 }
 
 #[test]
+fn v23_pipeline_benchmark_harness_declares_required_modes() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let makefile = fs::read_to_string(root.join("Makefile")).unwrap();
+    assert!(makefile.contains("bench-v23-pipeline"));
+
+    let script = fs::read_to_string(root.join("benchmark/run_v23_bgzf_pipeline_benchmarks.sh"))
+        .unwrap_or_default();
+    assert!(script.contains("forced-single"));
+    assert!(script.contains("bgzf-only"));
+    assert!(script.contains("predicate-only"));
+    assert!(script.contains("combined-pipeline"));
+    assert!(script.contains("bcftools filter"));
+    assert!(script.contains("peak RSS KB"));
+    assert!(script.contains("correctness result"));
+}
+
+#[test]
 fn true_population_downloader_documents_igsr_metadata_inputs() {
     let root = repo_root();
     let downloader = fs::read_to_string(root.join("benchmark/download_public_data.sh"))
