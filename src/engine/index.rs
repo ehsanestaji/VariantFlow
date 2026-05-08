@@ -9,6 +9,8 @@ use crate::vcf::RecordView;
 
 mod bgzf;
 mod metadata;
+#[allow(dead_code)]
+pub(crate) mod planner;
 pub(crate) mod schema;
 
 use bgzf::for_each_bgzf_block;
