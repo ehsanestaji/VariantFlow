@@ -309,6 +309,7 @@ fn v21_indexed_filter_harness_tracks_skip_rate_and_correctness() {
         "records_skipped_estimate",
         "bcftools filter",
         "core records",
+        "byte-for-byte",
         "correctness result",
         "peak RSS",
         "variants/sec",

@@ -184,7 +184,7 @@ run_default_filter() {
   fi
 
   set +e
-  "$BIN" filter "$dataset" --where "$EXPR" -o /dev/stdout | write_core_records >"$output"
+  "$BIN" filter "$dataset" --where "$EXPR" -o "$output"
   status=$?
   set -e
 
@@ -199,8 +199,7 @@ run_indexed_filter() {
   local dataset="$1"
   local output="$2"
   local index_report="$3"
-  VCF_FAST_INDEX_REPORT="$index_report" "$BIN" filter "$dataset" --where "$EXPR" -o /dev/stdout \
-    | write_core_records >"$output"
+  VCF_FAST_INDEX_REPORT="$index_report" "$BIN" filter "$dataset" --where "$EXPR" -o "$output"
 }
 
 run_bcftools_filter() {
@@ -239,6 +238,8 @@ run_bcftools_filter() {
 for records in $SIZES; do
   dataset="$(prepare_dataset "$records")"
   index_path="${dataset}.vfi"
+  default_vcf="${OUT_DIR}/default-output-${records}.vcf"
+  indexed_vcf="${OUT_DIR}/indexed-output-${records}.vcf"
   default_core="${OUT_DIR}/default-core-${records}.tsv"
   indexed_core="${OUT_DIR}/indexed-core-${records}.tsv"
   bcftools_core="${OUT_DIR}/bcftools-core-${records}.tsv"
@@ -247,15 +248,17 @@ for records in $SIZES; do
   # variantflow index creates the .vfi sidecar used for BGZF virtual offsets.
   "$BIN" index "$dataset" -o "$index_path"
 
-  run_default_filter "$dataset" "$default_core"
-  run_indexed_filter "$dataset" "$indexed_core" "$index_report"
+  run_default_filter "$dataset" "$default_vcf"
+  run_indexed_filter "$dataset" "$indexed_vcf" "$index_report"
+  write_core_records <"$default_vcf" >"$default_core"
+  write_core_records <"$indexed_vcf" >"$indexed_core"
   run_bcftools_filter "$dataset" "$bcftools_core"
 
-  if cmp -s "$default_core" "$indexed_core" && cmp -s "$indexed_core" "$bcftools_core"; then
-    correctness="default, indexed, and bcftools core records match"
+  if cmp -s "$default_vcf" "$indexed_vcf" && cmp -s "$indexed_core" "$bcftools_core"; then
+    correctness="default and indexed byte-for-byte match; indexed and bcftools core records match"
     claim="claim decision: correctness passed; speed claim allowed only for this measured row"
   else
-    correctness="correctness result: mismatch; inspect ${OUT_DIR}/*-core-${records}.tsv"
+    correctness="correctness result: mismatch; inspect ${OUT_DIR}/*-${records}.vcf and ${OUT_DIR}/*-core-${records}.tsv"
     claim="claim decision: no speed claim"
   fi
 
