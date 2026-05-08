@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{Read, Seek};
+use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
 use anyhow::{Context, Result, anyhow, bail, ensure};
@@ -43,7 +43,7 @@ pub(crate) fn for_each_bgzf_block(
             break;
         }
 
-        let block = read_block(path, &mut file, compressed_start)?;
+        let block = read_one_bgzf_block(path, &mut file, compressed_start)?;
         visit(block)?;
     }
 
@@ -60,7 +60,82 @@ pub(crate) fn read_bgzf_blocks(path: &Path) -> Result<Vec<BgzfBlock>> {
     Ok(blocks)
 }
 
-fn read_block(path: &Path, file: &mut File, compressed_start: u64) -> Result<BgzfBlock> {
+#[allow(dead_code)]
+pub(crate) fn read_virtual_range(
+    path: &Path,
+    virtual_start: u64,
+    virtual_end: u64,
+) -> Result<Vec<u8>> {
+    ensure!(
+        virtual_end >= virtual_start,
+        "invalid BGZF virtual range: end {virtual_end} is before start {virtual_start}"
+    );
+    if virtual_start == virtual_end {
+        return Ok(Vec::new());
+    }
+
+    let start_compressed = virtual_start >> 16;
+    let start_uncompressed = (virtual_start & 0xffff) as usize;
+    let end_compressed = virtual_end >> 16;
+    let end_uncompressed = (virtual_end & 0xffff) as usize;
+
+    let mut file =
+        File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
+    let mut compressed_start = start_compressed;
+    let mut output = Vec::new();
+
+    loop {
+        let block = read_one_bgzf_block(path, &mut file, compressed_start)?;
+        let slice_start = if block.compressed_start == start_compressed {
+            start_uncompressed
+        } else {
+            0
+        };
+        let (slice_end, range_complete) = if end_compressed == block.compressed_start {
+            (end_uncompressed, true)
+        } else if end_compressed == block.compressed_end && end_uncompressed == 0 {
+            (block.uncompressed.len(), true)
+        } else if end_compressed < block.compressed_end {
+            bail!(
+                "invalid BGZF virtual range: end offset {virtual_end} does not align with a BGZF block"
+            );
+        } else {
+            (block.uncompressed.len(), false)
+        };
+
+        ensure!(
+            slice_start <= block.uncompressed.len(),
+            "invalid BGZF virtual range: start uncompressed offset {slice_start} exceeds block size {} at compressed offset {}",
+            block.uncompressed.len(),
+            block.compressed_start
+        );
+        ensure!(
+            slice_end <= block.uncompressed.len(),
+            "invalid BGZF virtual range: end uncompressed offset {slice_end} exceeds block size {} at compressed offset {}",
+            block.uncompressed.len(),
+            block.compressed_start
+        );
+        ensure!(
+            slice_start <= slice_end,
+            "invalid BGZF virtual range: start uncompressed offset {slice_start} is after end offset {slice_end} in block at compressed offset {}",
+            block.compressed_start
+        );
+
+        output.extend_from_slice(&block.uncompressed[slice_start..slice_end]);
+
+        if range_complete {
+            break;
+        }
+        compressed_start = block.compressed_end;
+    }
+
+    Ok(output)
+}
+
+fn read_one_bgzf_block(path: &Path, file: &mut File, compressed_start: u64) -> Result<BgzfBlock> {
+    file.seek(SeekFrom::Start(compressed_start))
+        .with_context(|| format!("failed to seek {} to {compressed_start}", path.display()))?;
+
     let mut fixed = [0_u8; 10];
     read_exact_bgzf(file, &mut fixed, path, compressed_start)?;
 
@@ -220,6 +295,62 @@ chr1\t1\t.\tA\tG\t1\tPASS\tDP=1\n";
 
         assert_eq!(first_non_empty.virtual_start(), 0);
         assert!(first_non_empty.virtual_end() > first_non_empty.virtual_start());
+    }
+
+    #[test]
+    fn bgzf_range_reader_returns_text_between_block_boundary_offsets() {
+        let dir = tempdir().unwrap();
+        let input = dir.path().join("tiny.vcf.gz");
+        write_bgzf(&input);
+
+        let blocks = read_bgzf_blocks(&input).unwrap();
+        let start = blocks.first().unwrap().virtual_start();
+        let end = blocks.last().unwrap().virtual_end();
+
+        let bytes = read_virtual_range(&input, start, end).unwrap();
+        let text = String::from_utf8(bytes).unwrap();
+
+        assert!(text.contains("chr1\t1"));
+    }
+
+    #[test]
+    fn bgzf_range_reader_respects_intra_block_start_offset() {
+        let dir = tempdir().unwrap();
+        let input = dir.path().join("tiny.vcf.gz");
+        write_bgzf(&input);
+
+        let blocks = read_bgzf_blocks(&input).unwrap();
+        let block = blocks
+            .iter()
+            .find(|block| !block.uncompressed.is_empty())
+            .unwrap();
+        let first_record_offset = block
+            .uncompressed
+            .windows(b"chr1\t1".len())
+            .position(|window| window == b"chr1\t1")
+            .unwrap();
+        let start = block.virtual_start() | first_record_offset as u64;
+        let end = block.virtual_end();
+
+        let bytes = read_virtual_range(&input, start, end).unwrap();
+        let text = String::from_utf8(bytes).unwrap();
+
+        assert!(!text.starts_with('#'));
+        assert!(text.starts_with("chr1\t1"));
+    }
+
+    #[test]
+    fn bgzf_range_reader_rejects_end_before_start() {
+        let dir = tempdir().unwrap();
+        let input = dir.path().join("tiny.vcf.gz");
+        write_bgzf(&input);
+
+        let error = read_virtual_range(&input, 2, 1).unwrap_err();
+
+        assert!(
+            error.to_string().contains("before start"),
+            "unexpected error: {error:#}"
+        );
     }
 
     #[test]
