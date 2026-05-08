@@ -18,6 +18,7 @@ else
 fi
 EXPR="${VCF_FAST_V21_EXPR:-$DEFAULT_EXPR}"
 BCFTOOLS_EXPR="${VCF_FAST_V21_BCFTOOLS_EXPR:-$DEFAULT_BCFTOOLS_EXPR}"
+INDEX_MIN_SKIP_RATE="${VCF_FAST_INDEX_MIN_SKIP_RATE:-0.80}"
 OUT_DIR="${VCF_FAST_V21_OUT_DIR:-${VCF_FAST_BENCH_OUT_DIR:-tests/output/benchmark-results/v21-indexed-filter}}"
 DATA_DIR="${OUT_DIR}/data"
 REPORT="${VCF_FAST_V21_REPORT:-benchmark/reports/v21-indexed-filter-benchmark.md}"
@@ -261,7 +262,7 @@ run_indexed_filter() {
   local dataset="$1"
   local output="$2"
   local index_report="$3"
-  VCF_FAST_INDEX_REPORT="$index_report" "$BIN" filter "$dataset" --where "$EXPR" -o "$output"
+  VCF_FAST_INDEX_REPORT="$index_report" VCF_FAST_INDEX_MIN_SKIP_RATE="$INDEX_MIN_SKIP_RATE" "$BIN" filter "$dataset" --where "$EXPR" -o "$output"
 }
 
 run_bcftools_filter() {
@@ -292,6 +293,7 @@ run_bcftools_filter() {
   echo "- warmup: \`${WARMUP}\`"
   echo "- expression: \`${EXPR}\`"
   echo "- bcftools expression: \`${BCFTOOLS_EXPR}\`"
+  echo "- index minimum skip rate: \`${INDEX_MIN_SKIP_RATE}\`"
   if [[ "$MODE" = "public-igsr" ]]; then
     echo "- dataset source: \`${PUBLIC_SOURCE_URL}\`"
     echo "- cached input: \`${PUBLIC_INPUT}\`"
@@ -307,8 +309,8 @@ run_bcftools_filter() {
   echo
   echo "## Results"
   echo
-  echo "| tier records | chunks_total | chunks_skipped | skip rate | records_skipped_estimate | core records | correctness result | indexed runtime mean +/- stddev | default runtime mean +/- stddev | bcftools runtime mean +/- stddev | speedup | indexed variants/sec | peak RSS | claim decision | caveat |"
-  echo "| ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |"
+  echo "| tier records | index action | chunks_total | chunks_skipped | skip rate | records_skipped_estimate | core records | correctness result | guarded indexed runtime mean +/- stddev | default runtime mean +/- stddev | bcftools runtime mean +/- stddev | speedup | guarded variants/sec | peak RSS | claim decision | caveat |"
+  echo "| ---: | --- | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |"
 } >"$REPORT"
 
 for records in $SIZES; do
@@ -342,25 +344,36 @@ for records in $SIZES; do
 
   indexed_bench_report="${OUT_DIR}/index-report-${records}-bench.json"
   default_cmd="trap 'mv $(printf "%q" "${index_path}.bench-disabled") $(printf "%q" "$index_path") 2>/dev/null || true' EXIT; mv $(printf "%q" "$index_path") $(printf "%q" "${index_path}.bench-disabled"); $(shell_command "$BIN" filter "$dataset" --where "$EXPR" -o /dev/null)"
-  indexed_cmd="VCF_FAST_INDEX_REPORT=$(printf "%q" "$indexed_bench_report") $(shell_command "$BIN" filter "$dataset" --where "$EXPR" -o /dev/null)"
+  indexed_cmd="VCF_FAST_INDEX_REPORT=$(printf "%q" "$indexed_bench_report") VCF_FAST_INDEX_MIN_SKIP_RATE=$(printf "%q" "$INDEX_MIN_SKIP_RATE") $(shell_command "$BIN" filter "$dataset" --where "$EXPR" -o /dev/null)"
   bcftools_cmd="$(shell_command bcftools filter -Ov -i "$BCFTOOLS_EXPR" "$dataset" -o /dev/null)"
 
   read -r default_mean default_stddev <<<"$(runtime_mean_stddev "default-${records}" "$default_cmd")"
   read -r indexed_mean indexed_stddev <<<"$(runtime_mean_stddev "indexed-${records}" "$indexed_cmd")"
   read -r bcftools_mean bcftools_stddev <<<"$(runtime_mean_stddev "bcftools-${records}" "$bcftools_cmd")"
 
-  indexed_rss="$(measure_peak_rss_kb "indexed-${records}-rss" env VCF_FAST_INDEX_REPORT="${OUT_DIR}/index-report-${records}-rss.json" "$BIN" filter "$dataset" --where "$EXPR" -o /dev/null || echo "n/a")"
+  indexed_rss="$(measure_peak_rss_kb "indexed-${records}-rss" env VCF_FAST_INDEX_REPORT="${OUT_DIR}/index-report-${records}-rss.json" VCF_FAST_INDEX_MIN_SKIP_RATE="$INDEX_MIN_SKIP_RATE" "$BIN" filter "$dataset" --where "$EXPR" -o /dev/null || echo "n/a")"
   bcftools_rss="$(measure_peak_rss_kb "bcftools-${records}-rss" bcftools filter -Ov -i "$BCFTOOLS_EXPR" "$dataset" -o /dev/null || echo "n/a")"
 
   chunks_total="$(json_field "$index_report" chunks_total)"
   chunks_skipped="$(json_field "$index_report" chunks_skipped)"
   records_skipped="$(json_field "$index_report" records_skipped_estimate)"
+  indexed_flag="$(json_field "$index_report" indexed)"
+  fallback_reason="$(json_field "$index_report" fallback_reason)"
+  if [[ "$indexed_flag" = "true" ]]; then
+    index_action="used VFI"
+  else
+    index_action="fell back: ${fallback_reason}"
+  fi
   rate="$(skip_rate "$chunks_skipped" "$chunks_total")"
   core_records="$(wc -l <"$indexed_core" | tr -d ' ')"
   speedup="$(speedup_ratio "$indexed_mean" "$default_mean") vs default; $(speedup_ratio "$indexed_mean" "$bcftools_mean") vs bcftools"
   throughput="$(variants_per_second "$records" "$indexed_mean")"
   if [[ "$correctness_ok" = "1" ]]; then
-    claim="$(claim_decision "$indexed_mean" "$default_mean" "$bcftools_mean")"
+    if [[ "$indexed_flag" = "true" ]]; then
+      claim="$(claim_decision "$indexed_mean" "$default_mean" "$bcftools_mean")"
+    else
+      claim="claim decision: correctness passed; VFI planner fell back to default native because skip estimate was below threshold"
+    fi
   else
     claim="claim decision: no speed claim"
   fi
@@ -371,7 +384,7 @@ for records in $SIZES; do
   fi
 
   {
-    echo "| ${records} | ${chunks_total} | ${chunks_skipped} | ${rate} | ${records_skipped} | ${core_records} | ${correctness} | ${indexed_mean}s +/- ${indexed_stddev}s | ${default_mean}s +/- ${default_stddev}s | ${bcftools_mean}s +/- ${bcftools_stddev}s | ${speedup} | ${throughput} | indexed ${indexed_rss} KB; bcftools ${bcftools_rss} KB | ${claim} | ${caveat} |"
+    echo "| ${records} | ${index_action} | ${chunks_total} | ${chunks_skipped} | ${rate} | ${records_skipped} | ${core_records} | ${correctness} | ${indexed_mean}s +/- ${indexed_stddev}s | ${default_mean}s +/- ${default_stddev}s | ${bcftools_mean}s +/- ${bcftools_stddev}s | ${speedup} | ${throughput} | indexed ${indexed_rss} KB; bcftools ${bcftools_rss} KB | ${claim} | ${caveat} |"
   } >>"$REPORT"
 
   {
