@@ -98,15 +98,27 @@ pub(crate) fn read_decoded_bgzf_blocks(
     path: &Path,
 ) -> Result<Vec<crate::engine::pipeline::DecodedBlock>> {
     let mut blocks = Vec::new();
-    for_each_bgzf_block(path, |block| {
-        blocks.push(crate::engine::pipeline::DecodedBlock {
-            block_sequence: blocks.len() as u64,
-            virtual_offset: block.virtual_start(),
-            bytes: block.uncompressed,
-        });
+    for_each_decoded_bgzf_block(path, |block| {
+        blocks.push(block);
         Ok(())
     })?;
     Ok(blocks)
+}
+
+pub(crate) fn for_each_decoded_bgzf_block(
+    path: &Path,
+    mut visit: impl FnMut(crate::engine::pipeline::DecodedBlock) -> Result<()>,
+) -> Result<()> {
+    let mut block_sequence = 0_u64;
+    for_each_bgzf_block(path, |block| {
+        let decoded = crate::engine::pipeline::DecodedBlock {
+            block_sequence,
+            virtual_offset: block.virtual_start(),
+            bytes: block.uncompressed,
+        };
+        block_sequence += 1;
+        visit(decoded)
+    })
 }
 
 #[cfg(test)]
