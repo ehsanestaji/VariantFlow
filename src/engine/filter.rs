@@ -21,6 +21,8 @@ pub const NATIVE_FILTER_THREADS_ENV: &str = "VCF_FAST_NATIVE_FILTER_THREADS";
 pub const NATIVE_FILTER_BATCH_RECORDS_ENV: &str = "VCF_FAST_NATIVE_FILTER_BATCH_RECORDS";
 const DISABLE_VFI_ENV: &str = "VCF_FAST_DISABLE_VFI";
 const INDEX_REPORT_ENV: &str = "VCF_FAST_INDEX_REPORT";
+const INDEX_MIN_SKIP_RATE_ENV: &str = "VCF_FAST_INDEX_MIN_SKIP_RATE";
+const DEFAULT_INDEX_MIN_SKIP_RATE: f64 = 0.80;
 const DEFAULT_PARALLEL_BATCH_RECORDS: usize = 8192;
 
 #[derive(Debug, serde::Serialize)]
@@ -236,6 +238,27 @@ fn try_indexed_filter(
         chunk_plan.push((decision, virtual_start, virtual_end));
     }
 
+    let min_skip_rate = index_min_skip_rate()?;
+    let skip_rate = if index.record_count == 0 {
+        1.0
+    } else {
+        records_skipped_estimate as f64 / index.record_count as f64
+    };
+    if skip_rate < min_skip_rate {
+        maybe_write_index_report(&IndexFilterReport {
+            indexed: false,
+            fallback_reason: Some(format!(
+                "VFI skip estimate {skip_rate:.3} is below required minimum {min_skip_rate:.3}"
+            )),
+            chunks_total: index.chunks.len() as u64,
+            chunks_skipped,
+            chunks_scanned,
+            records_indexed: index.record_count,
+            records_skipped_estimate,
+        })?;
+        return Ok(false);
+    }
+
     let mut writer = open_vcf_writer(output, compression)?;
     for header in headers {
         writer.write_all(header)?;
@@ -288,6 +311,22 @@ fn try_indexed_filter(
         records_skipped_estimate,
     })?;
     Ok(true)
+}
+
+fn index_min_skip_rate() -> Result<f64> {
+    let Some(value) = env::var_os(INDEX_MIN_SKIP_RATE_ENV) else {
+        return Ok(DEFAULT_INDEX_MIN_SKIP_RATE);
+    };
+    let value = value
+        .to_str()
+        .context("VCF_FAST_INDEX_MIN_SKIP_RATE must be valid UTF-8")?;
+    let rate: f64 = value
+        .parse()
+        .context("VCF_FAST_INDEX_MIN_SKIP_RATE must be a number between 0 and 1")?;
+    if !(0.0..=1.0).contains(&rate) {
+        bail!("VCF_FAST_INDEX_MIN_SKIP_RATE must be between 0 and 1");
+    }
+    Ok(rate)
 }
 
 fn maybe_write_index_report(report: &IndexFilterReport) -> Result<()> {
