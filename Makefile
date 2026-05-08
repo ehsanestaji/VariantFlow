@@ -1,4 +1,4 @@
-.PHONY: build test test-htslib fmt clippy verify release-candidate-check bioconda-recipe-check paper-check benchmark-table vcftools-parity bench-vcftools-popgen bench-vcftools-true-popgen bench-smoke bench-stress bench-public bench-public-region bench-heavy bench-compat bench-v09 bench-v10-compressed bench-v10-parquet bench-v10-columnar bench-v11-parallel bench-v12 bench-v14 bench-v17 bench-v18 bench-v19 bench-v20 bench-v06-smoke
+.PHONY: build test test-htslib fmt clippy verify release-candidate-check bioconda-recipe-check paper-check benchmark-table vcftools-parity bench-vcftools-popgen bench-vcftools-true-popgen bench-smoke bench-stress bench-public bench-public-region bench-heavy bench-compat bench-v09 bench-v10-compressed bench-v10-parquet bench-v10-columnar bench-v11-parallel bench-v12 bench-v14 bench-v17 bench-v18 bench-v19 bench-v20 bench-v21-index bench-v06-smoke
 
 build:
 	cargo build
@@ -35,6 +35,7 @@ verify:
 	bash -n benchmark/run_v18_public_format_expression_breadth.sh
 	bash -n benchmark/run_v19_second_public_format_cohort.sh
 	bash -n benchmark/run_v20_human_format_cohort.sh
+	bash -n benchmark/run_v21_indexed_filter_benchmarks.sh
 	bash -n benchmark/run_vcftools_population_benchmarks.sh
 	bash -n benchmark/run_v17_true_population_evidence.sh
 	bash -n benchmark/run_vcftools_parity.sh
@@ -133,6 +134,9 @@ bench-v19:
 
 bench-v20:
 	./benchmark/run_v20_human_format_cohort.sh
+
+bench-v21-index:
+	./benchmark/run_v21_indexed_filter_benchmarks.sh
 
 bench-v06-smoke:
 	VCF_FAST_BENCH_MODE=synthetic VCF_FAST_BENCH_SIZES="$${VCF_FAST_BENCH_SIZES:-100}" VCF_FAST_BENCH_RUNS="$${VCF_FAST_BENCH_RUNS:-1}" VCF_FAST_BENCH_WARMUP="$${VCF_FAST_BENCH_WARMUP:-0}" ./benchmark/run_benchmarks.sh

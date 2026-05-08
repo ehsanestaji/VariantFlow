@@ -285,6 +285,56 @@ fn v08_core_efficiency_report_tracks_required_fields() {
 }
 
 #[test]
+fn v21_indexed_filter_harness_tracks_skip_rate_and_correctness() {
+    let root = repo_root();
+    let makefile = fs::read_to_string(root.join("Makefile")).expect("read Makefile");
+    let script_path = "benchmark/run_v21_indexed_filter_benchmarks.sh";
+    let script = fs::read_to_string(root.join(script_path)).expect("read v21 benchmark harness");
+    let report = fs::read_to_string(
+        root.join("benchmark/reports/v21-indexed-filter-benchmark.md"),
+    )
+    .expect("read v21 benchmark report");
+
+    assert!(makefile.contains("bench-v21-index:"));
+    assert!(makefile.contains(script_path));
+    assert!(makefile.contains("bash -n benchmark/run_v21_indexed_filter_benchmarks.sh"));
+
+    for required in [
+        "VCF_FAST_V21_SIZES",
+        "10000 100000 1000000",
+        "VCF_FAST_V21_EXPR",
+        "QUAL > 1000",
+        "variantflow index",
+        "VCF_FAST_INDEX_REPORT",
+        "chunks_total",
+        "chunks_skipped",
+        "records_skipped_estimate",
+        "bcftools filter",
+        "core records",
+        "correctness result",
+        "peak RSS",
+        "variants/sec",
+        "speedup",
+        "hyperfine",
+        "claim decision",
+    ] {
+        assert!(script.contains(required), "script missing {required}");
+    }
+    assert!(!script.contains(".plain.tmp.vcf"));
+
+    for required in [
+        "v2.1 Indexed Filter",
+        "BGZF virtual offsets",
+        "skip rate",
+        "bcftools",
+        "not yet measured",
+        "caveat",
+    ] {
+        assert!(report.contains(required), "report missing {required}");
+    }
+}
+
+#[test]
 fn v09_expression_parity_report_tracks_required_fields() {
     let report = std::fs::read_to_string("benchmark/reports/v09-expression-parity-benchmark.md")
         .expect("read v0.9 report");
