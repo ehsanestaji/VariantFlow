@@ -14,7 +14,7 @@ use noodles_bgzf::io::MultithreadedReader;
 use crate::compat::CompressionMode;
 
 pub const NATIVE_BGZF_THREADS_ENV: &str = "VCF_FAST_NATIVE_BGZF_THREADS";
-const DEFAULT_AUTO_BGZF_THREAD_CAP: usize = 4;
+const DEFAULT_AUTO_BGZF_THREAD_CAP: usize = 6;
 
 pub fn open_reader(path: &Path) -> Result<Box<dyn std::io::BufRead>> {
     open_reader_with_native_bgzf_threads(path, native_bgzf_threads_from_env()?)
@@ -248,14 +248,14 @@ mod tests {
         );
         assert_eq!(
             resolve_native_bgzf_threads(None, 8).unwrap().unwrap().get(),
-            4
+            6
         );
         assert_eq!(
             resolve_native_bgzf_threads(Some("auto"), 16)
                 .unwrap()
                 .unwrap()
                 .get(),
-            4
+            6
         );
     }
 

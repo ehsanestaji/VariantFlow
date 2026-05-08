@@ -1389,3 +1389,27 @@ fn parallel_native_filter_rejects_invalid_batch_env() {
             "VCF_FAST_NATIVE_FILTER_BATCH_RECORDS must be a positive integer",
         ));
 }
+
+#[test]
+fn parallel_native_filter_rejects_invalid_queue_env() {
+    let dir = tempdir().unwrap();
+    let output = dir.path().join("invalid-queue.vcf");
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .env("VCF_FAST_NATIVE_FILTER_THREADS", "2")
+        .env("VCF_FAST_NATIVE_FILTER_QUEUE_BATCHES", "0")
+        .args([
+            "filter",
+            fixture("tests/data/example.vcf").to_str().unwrap(),
+            "--where",
+            "QUAL > 30",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "VCF_FAST_NATIVE_FILTER_QUEUE_BATCHES must be a positive integer",
+        ));
+}

@@ -356,12 +356,18 @@ fn v21_indexed_filter_harness_tracks_skip_rate_and_correctness() {
 fn v22_scheduler_harness_tracks_auto_bgzf_predicate_and_resource_evidence() {
     let script = std::fs::read_to_string("benchmark/run_v22_scheduler_benchmarks.sh")
         .expect("read v2.2 scheduler script");
+    let matrix_script = std::fs::read_to_string("benchmark/run_v22_scheduler_matrix.sh")
+        .expect("read v2.2 scheduler matrix script");
     let makefile = std::fs::read_to_string("Makefile").expect("read Makefile");
     let report = std::fs::read_to_string("benchmark/reports/v22-scheduler-benchmark.md")
         .expect("read v2.2 scheduler report");
+    let matrix_report = std::fs::read_to_string("benchmark/reports/v22-scheduler-matrix.md")
+        .expect("read v2.2 scheduler matrix report");
 
     assert!(makefile.contains("bench-v22-scheduler:"));
     assert!(makefile.contains("bash -n benchmark/run_v22_scheduler_benchmarks.sh"));
+    assert!(makefile.contains("bench-v22-matrix:"));
+    assert!(makefile.contains("bash -n benchmark/run_v22_scheduler_matrix.sh"));
 
     for required in [
         "VCF_FAST_V22_STRESS_TIERS",
@@ -369,6 +375,7 @@ fn v22_scheduler_harness_tracks_auto_bgzf_predicate_and_resource_evidence() {
         "VCF_FAST_NATIVE_BGZF_THREADS_BENCH",
         "VCF_FAST_NATIVE_FILTER_THREADS_BENCH",
         "VCF_FAST_NATIVE_FILTER_BATCH_RECORDS_BENCH",
+        "VCF_FAST_NATIVE_FILTER_QUEUE_BATCHES_BENCH",
         "forced single-thread",
         "default auto",
         "BGZF-only",
@@ -390,6 +397,27 @@ fn v22_scheduler_harness_tracks_auto_bgzf_predicate_and_resource_evidence() {
     }
 
     for required in [
+        "VCF_FAST_V22_MATRIX_QUEUE_DEPTHS",
+        "VCF_FAST_V22_MATRIX_BATCH_RECORDS",
+        "VCF_FAST_V22_MATRIX_THREAD_PAIRS",
+        "VCF_FAST_NATIVE_FILTER_QUEUE_BATCHES",
+        "VCF_FAST_NATIVE_FILTER_BATCH_RECORDS",
+        "VCF_FAST_NATIVE_BGZF_THREADS",
+        "VCF_FAST_NATIVE_FILTER_THREADS",
+        "peak RSS KB",
+        "CPU seconds",
+        "/dev/null",
+        "matches default byte-for-byte",
+        "public-human-format",
+        "stress-format",
+    ] {
+        assert!(
+            matrix_script.contains(required),
+            "matrix script missing {required}"
+        );
+    }
+
+    for required in [
         "v2.2 Scheduler Benchmark",
         "forced single-thread",
         "default auto",
@@ -404,6 +432,23 @@ fn v22_scheduler_harness_tracks_auto_bgzf_predicate_and_resource_evidence() {
     ] {
         assert!(report.contains(required), "report missing {required}");
     }
+
+    for required in [
+        "Scheduler Queue And Thread Matrix",
+        "queue depth",
+        "batch size",
+        "thread caps",
+        "peak RSS KB",
+        "CPU seconds",
+        "Recommendation From Linux Matrix",
+        "BGZF auto cap",
+        "Queue batches",
+    ] {
+        assert!(
+            matrix_report.contains(required),
+            "matrix report missing {required}"
+        );
+    }
 }
 
 #[test]
@@ -413,7 +458,8 @@ fn native_parallel_filter_uses_bounded_ordered_pipeline() {
 
     for required in [
         "sync_channel",
-        "PARALLEL_PIPELINE_QUEUE_BATCHES",
+        "DEFAULT_PARALLEL_QUEUE_BATCHES",
+        "VCF_FAST_NATIVE_FILTER_QUEUE_BATCHES",
         "run_parallel_evaluator",
         "send_parallel_work_batch",
         "TrySendError::Full",
