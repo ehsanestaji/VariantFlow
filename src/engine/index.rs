@@ -14,16 +14,13 @@ pub(crate) mod planner;
 pub(crate) mod schema;
 
 use bgzf::for_each_bgzf_block;
-pub(crate) use bgzf::{
-    bgzf_data_virtual_end, first_record_virtual_start, read_virtual_range,
-    virtual_ends_are_record_boundaries,
-};
+pub(crate) use bgzf::{first_record_virtual_start, read_virtual_range};
 use metadata::ChunkMetadataBuilder;
 pub(crate) use planner::{SkipDecision, plan_chunk};
-use schema::source_identity;
 pub(crate) use schema::{
     OffsetModel, VariantFlowIndex, default_index_path, read_index, source_matches,
 };
+use schema::{set_metadata_sha256, source_identity};
 
 const DEFAULT_CHUNK_RECORDS: u64 = 8192;
 
@@ -77,6 +74,7 @@ fn write_index(input: &Path, output: &Path, chunk_record_target: u64) -> Result<
     let index = VariantFlowIndex {
         schema_version: 2,
         index_kind: "variantflow-vfi".to_string(),
+        index_metadata_sha256: String::new(),
         offset_model: OffsetModel::RecordChunk,
         virtual_offsets_available: false,
         source: source_identity(input)?,
@@ -156,6 +154,7 @@ fn write_bgzf_index(input: &Path, output: &Path, chunk_record_target: u64) -> Re
     let index = VariantFlowIndex {
         schema_version: 2,
         index_kind: "variantflow-vfi".to_string(),
+        index_metadata_sha256: String::new(),
         offset_model: OffsetModel::BgzfVirtual,
         virtual_offsets_available: true,
         source: source_identity(input)?,
@@ -211,9 +210,24 @@ fn virtual_offset_after(block: &bgzf::BgzfBlock, uncompressed_offset: usize) -> 
 }
 
 fn write_index_json(output: &Path, index: &VariantFlowIndex) -> Result<()> {
+    let mut index = VariantFlowIndex {
+        schema_version: index.schema_version,
+        index_kind: index.index_kind.clone(),
+        index_metadata_sha256: String::new(),
+        offset_model: match index.offset_model {
+            OffsetModel::RecordChunk => OffsetModel::RecordChunk,
+            OffsetModel::BgzfVirtual => OffsetModel::BgzfVirtual,
+        },
+        virtual_offsets_available: index.virtual_offsets_available,
+        source: index.source.clone(),
+        chunk_record_target: index.chunk_record_target,
+        record_count: index.record_count,
+        chunks: index.chunks.clone(),
+    };
+    set_metadata_sha256(&mut index)?;
     let file = File::create(output)
         .with_context(|| format!("failed to create index {}", output.display()))?;
-    serde_json::to_writer_pretty(BufWriter::new(file), index)
+    serde_json::to_writer_pretty(BufWriter::new(file), &index)
         .with_context(|| format!("failed to write index {}", output.display()))?;
     Ok(())
 }

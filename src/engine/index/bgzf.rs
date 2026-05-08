@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
@@ -22,14 +21,6 @@ impl BgzfBlock {
 
     pub(crate) fn virtual_end(&self) -> u64 {
         self.compressed_end << 16
-    }
-
-    fn data_virtual_end(&self) -> u64 {
-        if self.uncompressed.len() == MAX_BGZF_UNCOMPRESSED_BLOCK_SIZE {
-            self.virtual_end()
-        } else {
-            self.virtual_start() | self.uncompressed.len() as u64
-        }
     }
 }
 
@@ -59,25 +50,28 @@ pub(crate) fn for_each_bgzf_block(
     Ok(())
 }
 
-pub(crate) fn bgzf_data_virtual_end(path: &Path) -> Result<Option<u64>> {
-    let mut data_virtual_end = None;
-    for_each_bgzf_block(path, |block| {
-        if !block.uncompressed.is_empty() {
-            data_virtual_end = Some(block.data_virtual_end());
-        }
-        Ok(())
-    })?;
-    Ok(data_virtual_end)
-}
-
 pub(crate) fn first_record_virtual_start(path: &Path) -> Result<Option<u64>> {
+    let mut file =
+        File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
+    let file_len = file
+        .metadata()
+        .with_context(|| format!("failed to stat {}", path.display()))?
+        .len();
     let mut first_record_start = None;
     let mut line_start = None;
 
-    for_each_bgzf_block(path, |block| {
+    loop {
         if first_record_start.is_some() {
-            return Ok(());
+            break;
         }
+        let compressed_start = file
+            .stream_position()
+            .with_context(|| format!("failed to seek {}", path.display()))?;
+        if compressed_start == file_len {
+            break;
+        }
+
+        let block = read_one_bgzf_block(path, &mut file, compressed_start)?;
 
         for (offset, byte) in block.uncompressed.iter().copied().enumerate() {
             if line_start.is_none() {
@@ -94,37 +88,9 @@ pub(crate) fn first_record_virtual_start(path: &Path) -> Result<Option<u64>> {
                 line_start = None;
             }
         }
-
-        Ok(())
-    })?;
+    }
 
     Ok(first_record_start)
-}
-
-pub(crate) fn virtual_ends_are_record_boundaries(
-    path: &Path,
-    virtual_ends: &[u64],
-) -> Result<bool> {
-    let mut pending: HashSet<u64> = virtual_ends.iter().copied().collect();
-
-    for_each_bgzf_block(path, |block| {
-        if pending.is_empty() {
-            return Ok(());
-        }
-
-        for (offset, byte) in block.uncompressed.iter().copied().enumerate() {
-            if byte == b'\n' {
-                pending.remove(&virtual_offset_after(&block, offset + 1));
-                if pending.is_empty() {
-                    break;
-                }
-            }
-        }
-
-        Ok(())
-    })?;
-
-    Ok(pending.is_empty())
 }
 
 #[cfg(test)]
@@ -321,14 +287,6 @@ fn find_bgzf_bsize(extra: &[u8]) -> Result<u16> {
 
 fn virtual_offset_at(block: &BgzfBlock, uncompressed_offset: usize) -> u64 {
     block.virtual_start() | uncompressed_offset as u64
-}
-
-fn virtual_offset_after(block: &BgzfBlock, uncompressed_offset: usize) -> u64 {
-    if uncompressed_offset == MAX_BGZF_UNCOMPRESSED_BLOCK_SIZE {
-        block.virtual_end()
-    } else {
-        virtual_offset_at(block, uncompressed_offset)
-    }
 }
 
 #[cfg(test)]

@@ -10,9 +10,8 @@ use rayon::prelude::*;
 
 use crate::compat::{Backend, CompressionMode, Region, select_backend};
 use crate::engine::index::{
-    OffsetModel, SkipDecision, VariantFlowIndex, bgzf_data_virtual_end, default_index_path,
-    first_record_virtual_start, plan_chunk, read_index, read_virtual_range, source_matches,
-    virtual_ends_are_record_boundaries,
+    OffsetModel, SkipDecision, VariantFlowIndex, default_index_path, first_record_virtual_start,
+    plan_chunk, read_index, read_virtual_range, source_matches,
 };
 use crate::expr::{EvalContext, Expression, RequiredFields, parse_expression};
 use crate::io::{open_reader, open_vcf_writer};
@@ -291,7 +290,6 @@ fn is_usable_bgzf_index(index: &VariantFlowIndex, input: &Path) -> Result<bool> 
         return Ok(false);
     }
 
-    let terminal_virtual_end = bgzf_data_virtual_end(input)?;
     let first_record_virtual_start = if index.record_count == 0 || index.chunks.is_empty() {
         let first_record_virtual_start = first_record_virtual_start(input)?;
         if first_record_virtual_start.is_some() {
@@ -307,9 +305,7 @@ fn is_usable_bgzf_index(index: &VariantFlowIndex, input: &Path) -> Result<bool> 
     }
 
     let mut next_first_record = 0_u64;
-    let mut counted_records = 0_u64;
     let mut previous_virtual_end = None;
-    let mut boundary_virtual_ends = Vec::new();
     for (expected_ordinal, chunk) in index.chunks.iter().enumerate() {
         let Some(virtual_start) = chunk.virtual_start else {
             return Ok(false);
@@ -324,26 +320,10 @@ fn is_usable_bgzf_index(index: &VariantFlowIndex, input: &Path) -> Result<bool> 
             || virtual_end <= virtual_start
             || (expected_ordinal == 0 && Some(virtual_start) != first_record_virtual_start)
             || (expected_ordinal > 0
-                && previous_virtual_end.is_some_and(|previous| virtual_start != previous))
+                && previous_virtual_end.is_some_and(|previous| virtual_start < previous))
         {
             return Ok(false);
         }
-
-        if Some(virtual_end) != terminal_virtual_end {
-            boundary_virtual_ends.push(virtual_end);
-        }
-
-        let Ok(bytes) = read_virtual_range(input, virtual_start, virtual_end) else {
-            return Ok(false);
-        };
-        let range_record_count = count_vcf_record_lines(&bytes);
-        if range_record_count != chunk.record_count {
-            return Ok(false);
-        }
-        let Some(counted_next) = counted_records.checked_add(range_record_count) else {
-            return Ok(false);
-        };
-        counted_records = counted_next;
 
         let Some(next) = next_first_record.checked_add(chunk.record_count) else {
             return Ok(false);
@@ -356,19 +336,7 @@ fn is_usable_bgzf_index(index: &VariantFlowIndex, input: &Path) -> Result<bool> 
         return Ok(false);
     }
 
-    if index.record_count != counted_records {
-        return Ok(false);
-    }
-
-    if !virtual_ends_are_record_boundaries(input, &boundary_virtual_ends)? {
-        return Ok(false);
-    }
-
-    if let Some(last_virtual_end) = previous_virtual_end {
-        return Ok(terminal_virtual_end == Some(last_virtual_end));
-    }
-
-    Ok(index.record_count == 0)
+    Ok(previous_virtual_end.is_some() || index.record_count == 0)
 }
 
 fn scan_indexed_chunk_bytes(
@@ -390,13 +358,6 @@ fn scan_indexed_chunk_bytes(
     }
 
     Ok(())
-}
-
-fn count_vcf_record_lines(bytes: &[u8]) -> u64 {
-    bytes
-        .split_inclusive(|byte| *byte == b'\n')
-        .filter(|line| is_vcf_record_line(line))
-        .count() as u64
 }
 
 fn is_vcf_record_line(line: &[u8]) -> bool {
