@@ -213,6 +213,78 @@ fn indexed_bgzf_filter_matches_default_output_byte_for_byte() {
 }
 
 #[test]
+fn indexed_bgzf_filter_equality_matches_default_for_exact_filter_column_values() {
+    for (filter_value, expression) in [
+        (".", "FILTER == \".\""),
+        ("q10;low", "FILTER == \"q10;low\""),
+    ] {
+        let dir = tempdir().unwrap();
+        let vcf = dir.path().join("tiny.vcf");
+        let input = dir.path().join("tiny.vcf.gz");
+        let index = PathBuf::from(format!("{}.vfi", input.display()));
+        let default_output = dir.path().join("default.vcf");
+        let indexed_output = dir.path().join("indexed.vcf");
+
+        fs::write(
+            &vcf,
+            format!(
+                "##fileformat=VCFv4.3\n\
+                 ##FILTER=<ID=q10,Description=\"Low quality\">\n\
+                 ##FILTER=<ID=low,Description=\"Low depth\">\n\
+                 #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n\
+                 chr1\t10\texact\tA\tG\t42\t{filter_value}\tDP=7\n"
+            ),
+        )
+        .unwrap();
+        bgzf_fixture(&vcf, &input);
+
+        Command::cargo_bin("variantflow")
+            .unwrap()
+            .args([
+                "index",
+                input.to_str().unwrap(),
+                "-o",
+                index.to_str().unwrap(),
+            ])
+            .assert()
+            .success();
+
+        Command::cargo_bin("vcf-fast")
+            .unwrap()
+            .args([
+                "filter",
+                input.to_str().unwrap(),
+                "--where",
+                expression,
+                "-o",
+                default_output.to_str().unwrap(),
+            ])
+            .env("VCF_FAST_DISABLE_VFI", "1")
+            .assert()
+            .success();
+
+        Command::cargo_bin("vcf-fast")
+            .unwrap()
+            .args([
+                "filter",
+                input.to_str().unwrap(),
+                "--where",
+                expression,
+                "-o",
+                indexed_output.to_str().unwrap(),
+            ])
+            .assert()
+            .success();
+
+        assert_eq!(
+            fs::read(&default_output).unwrap(),
+            fs::read(&indexed_output).unwrap(),
+            "indexed output should match streaming output for {expression}"
+        );
+    }
+}
+
+#[test]
 fn stale_index_falls_back_to_default_streaming_output() {
     let dir = tempdir().unwrap();
     let input = dir.path().join("stress.vcf.gz");

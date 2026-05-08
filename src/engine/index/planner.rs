@@ -52,7 +52,7 @@ fn plan_comparison(comparison: &Comparison, chunk: &IndexChunk) -> SkipDecision 
         (Field::Qual, Literal::Number(value)) => {
             numeric_decision(chunk.qual_min, chunk.qual_max, comparison.op(), *value)
         }
-        (Field::Filter, Literal::String(value)) => filter_decision(chunk, comparison.op(), value),
+        (Field::Filter, Literal::String(_)) => filter_decision(comparison.op()),
         (Field::Info { key, index: None }, Literal::Number(value)) if key == b"DP" => {
             numeric_decision(
                 chunk.info_dp_min.map(|value| value as f64),
@@ -104,13 +104,9 @@ fn numeric_comparison_cannot_match(min: f64, max: f64, op: Operator, value: f64)
     }
 }
 
-fn filter_decision(chunk: &IndexChunk, op: Operator, value: &str) -> SkipDecision {
+fn filter_decision(op: Operator) -> SkipDecision {
     match op {
-        Operator::Eq if !chunk.filters.iter().any(|filter| filter == value) => {
-            SkipDecision::CanSkip
-        }
-        Operator::Eq => SkipDecision::MustScan,
-        Operator::Ne => SkipDecision::MustScan,
+        Operator::Eq | Operator::Ne => SkipDecision::MustScan,
         _ => SkipDecision::UnsupportedForIndex,
     }
 }
@@ -181,6 +177,12 @@ mod tests {
     #[test]
     fn scans_chunk_when_filter_value_is_present() {
         assert_plan("FILTER == \"q10\"", SkipDecision::MustScan);
+    }
+
+    #[test]
+    fn scans_chunk_for_filter_equality_under_tokenized_metadata() {
+        assert_plan("FILTER == \"PASS\"", SkipDecision::MustScan);
+        assert_plan("FILTER == \"missing\"", SkipDecision::MustScan);
     }
 
     #[test]
