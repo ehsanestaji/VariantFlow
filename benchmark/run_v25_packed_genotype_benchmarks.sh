@@ -9,6 +9,8 @@ RUNS="${VCF_FAST_V25_RUNS:-${VCF_FAST_BENCH_RUNS:-3}}"
 WARMUP="${VCF_FAST_V25_WARMUP:-${VCF_FAST_BENCH_WARMUP:-1}}"
 OUT_DIR="${VCF_FAST_V25_OUT_DIR:-tests/output/benchmark-results/v25-packed-genotype}"
 REPORT="${VCF_FAST_V25_REPORT:-$OUT_DIR/v25-packed-genotype-benchmark.md}"
+PUBLIC_INPUT="${VCF_FAST_V25_INPUT:-tests/output/public-data/1kGP_high_coverage_Illumina.chr22.filtered.SNV_INDEL_SV_phased_panel.vcf.gz}"
+PUBLIC_METADATA="${VCF_FAST_V25_METADATA:-tests/output/public-data/igsr-1000g-3202-sample-ped-population.txt}"
 
 mkdir -p "$OUT_DIR" "$(dirname "$REPORT")"
 
@@ -53,6 +55,8 @@ make vcftools-parity
 VCF_FAST_V17_TRUE_POP_TIERS="$TIERS" \
 VCF_FAST_V17_TRUE_POP_RUNS="$RUNS" \
 VCF_FAST_V17_TRUE_POP_WARMUP="$WARMUP" \
+VCF_FAST_V17_TRUE_POP_INPUT="$PUBLIC_INPUT" \
+VCF_FAST_V17_TRUE_POP_METADATA="$PUBLIC_METADATA" \
 VCF_FAST_V17_TRUE_POP_REPORT="$OUT_DIR/true-popgen-report.md" \
 make bench-vcftools-true-popgen
 

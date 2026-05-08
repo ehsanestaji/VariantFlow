@@ -198,10 +198,10 @@ fn try_indexed_filter(
 
     let index = match read_index(&index_path) {
         Ok(index) => index,
-        Err(_) => {
+        Err(err) => {
             maybe_write_index_report(&IndexFilterReport {
                 indexed: false,
-                fallback_reason: Some("failed to read or parse VFI index".to_string()),
+                fallback_reason: Some(format!("failed to read or parse VFI index: {err:#}")),
                 chunks_total: 0,
                 chunks_skipped: 0,
                 chunks_scanned: 0,
