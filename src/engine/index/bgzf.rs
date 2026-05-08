@@ -98,18 +98,23 @@ fn read_block(path: &Path, file: &mut File, compressed_start: u64) -> Result<Bgz
     let footer = &remaining[payload_end..];
     let expected_crc32 = u32::from_le_bytes([footer[0], footer[1], footer[2], footer[3]]);
     let expected_isize = u32::from_le_bytes([footer[4], footer[5], footer[6], footer[7]]);
-    ensure!(
-        expected_isize as usize <= MAX_BGZF_UNCOMPRESSED_BLOCK_SIZE,
-        "BGZF block at compressed offset {compressed_start} exceeds BGZF maximum uncompressed block size"
-    );
 
     let mut decoder = DeflateDecoder::new(&remaining[..payload_end]);
-    let mut uncompressed = Vec::new();
-    decoder.read_to_end(&mut uncompressed).with_context(|| {
-        format!("failed to inflate BGZF block at compressed offset {compressed_start}")
-    })?;
+    let mut capped_decoder = decoder
+        .by_ref()
+        .take((MAX_BGZF_UNCOMPRESSED_BLOCK_SIZE + 1) as u64);
+    let mut uncompressed = Vec::with_capacity(MAX_BGZF_UNCOMPRESSED_BLOCK_SIZE);
+    capped_decoder
+        .read_to_end(&mut uncompressed)
+        .with_context(|| {
+            format!("failed to inflate BGZF block at compressed offset {compressed_start}")
+        })?;
     ensure!(
         uncompressed.len() <= MAX_BGZF_UNCOMPRESSED_BLOCK_SIZE,
+        "decoded BGZF block exceeds maximum uncompressed block size at compressed offset {compressed_start}"
+    );
+    ensure!(
+        expected_isize as usize <= MAX_BGZF_UNCOMPRESSED_BLOCK_SIZE,
         "BGZF block at compressed offset {compressed_start} exceeds BGZF maximum uncompressed block size"
     );
     ensure!(
@@ -165,6 +170,7 @@ fn find_bgzf_bsize(extra: &[u8]) -> Result<u16> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use flate2::write::DeflateEncoder;
     use flate2::write::GzEncoder;
     use std::io::Write;
     use tempfile::tempdir;
@@ -178,6 +184,26 @@ chr1\t1\t.\tA\tG\t1\tPASS\tDP=1\n";
         let mut writer = noodles_bgzf::io::Writer::new(file);
         writer.write_all(TINY_VCF).unwrap();
         writer.finish().unwrap();
+    }
+
+    fn write_single_bgzf_block(path: &Path, uncompressed: &[u8]) {
+        let mut encoder = DeflateEncoder::new(Vec::new(), flate2::Compression::best());
+        encoder.write_all(uncompressed).unwrap();
+        let payload = encoder.finish().unwrap();
+
+        let total_size = 18 + payload.len() + 8;
+        let bsize = u16::try_from(total_size - 1).unwrap();
+
+        let mut block = Vec::with_capacity(total_size);
+        block.extend_from_slice(&[0x1f, 0x8b, 8, 4, 0, 0, 0, 0, 0, 255]);
+        block.extend_from_slice(&6_u16.to_le_bytes());
+        block.extend_from_slice(b"BC");
+        block.extend_from_slice(&2_u16.to_le_bytes());
+        block.extend_from_slice(&bsize.to_le_bytes());
+        block.extend_from_slice(&payload);
+        block.extend_from_slice(&crc32fast::hash(uncompressed).to_le_bytes());
+        block.extend_from_slice(&(uncompressed.len() as u32).to_le_bytes());
+        std::fs::write(path, block).unwrap();
     }
 
     #[test]
@@ -261,6 +287,22 @@ chr1\t1\t.\tA\tG\t1\tPASS\tDP=1\n";
             error
                 .to_string()
                 .contains("exceeds BGZF maximum uncompressed block size"),
+            "unexpected error: {error:#}"
+        );
+    }
+
+    #[test]
+    fn bgzf_reader_rejects_oversized_decoded_block_before_isize() {
+        let dir = tempdir().unwrap();
+        let input = dir.path().join("oversized.vcf.gz");
+        let uncompressed = vec![b'A'; MAX_BGZF_UNCOMPRESSED_BLOCK_SIZE + 1];
+        write_single_bgzf_block(&input, &uncompressed);
+
+        let error = read_bgzf_blocks(&input).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("decoded BGZF block exceeds maximum uncompressed block size"),
             "unexpected error: {error:#}"
         );
     }
