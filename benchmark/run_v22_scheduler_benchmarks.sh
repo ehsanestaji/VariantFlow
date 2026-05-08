@@ -19,9 +19,10 @@ else
 fi
 RUNS="${VCF_FAST_V22_RUNS:-${VCF_FAST_BENCH_RUNS:-3}}"
 WARMUP="${VCF_FAST_V22_WARMUP:-${VCF_FAST_BENCH_WARMUP:-1}}"
-BGZF_THREADS="${VCF_FAST_NATIVE_BGZF_THREADS_BENCH:-4}"
+BGZF_THREADS="${VCF_FAST_NATIVE_BGZF_THREADS_BENCH:-6}"
 FILTER_THREADS="${VCF_FAST_NATIVE_FILTER_THREADS_BENCH:-4}"
-BATCH_RECORDS="${VCF_FAST_NATIVE_FILTER_BATCH_RECORDS_BENCH:-4096}"
+BATCH_RECORDS="${VCF_FAST_NATIVE_FILTER_BATCH_RECORDS_BENCH:-2048}"
+QUEUE_BATCHES="${VCF_FAST_NATIVE_FILTER_QUEUE_BATCHES_BENCH:-2}"
 BIN="${VCF_FAST_BIN:-target/release/variantflow}"
 FORMAT_EXPR="${VCF_FAST_V22_EXPR:-ANY(FORMAT/AD > 80)}"
 BCFTOOLS_EXPR="${VCF_FAST_V22_BCFTOOLS_EXPR:-N_PASS(FMT/AD[*:*]>80)>0}"
@@ -207,6 +208,7 @@ write_report_header() {
     echo "- BGZF worker setting: \`$BGZF_THREADS\`"
     echo "- Predicate worker setting: \`$FILTER_THREADS\`"
     echo "- Predicate batch records: \`$BATCH_RECORDS\`"
+    echo "- Predicate queue batches: \`$QUEUE_BATCHES\`"
     echo "- Repeated runs: \`$RUNS\`"
     echo "- Warmup runs: \`$WARMUP\`"
     echo "- hyperfine: $(tool_version hyperfine)"
@@ -237,17 +239,17 @@ run_scheduler_case() {
   local hyperfine_json="$OUT_DIR/${safe_label}.hyperfine.json"
 
   local single_cmd="VCF_FAST_NATIVE_BGZF_THREADS=1 VCF_FAST_NATIVE_FILTER_THREADS=1 $BIN filter $dataset --where '$FORMAT_EXPR' -o $single_out"
-  local default_cmd="env -u VCF_FAST_NATIVE_BGZF_THREADS -u VCF_FAST_NATIVE_FILTER_THREADS -u VCF_FAST_NATIVE_FILTER_BATCH_RECORDS $BIN filter $dataset --where '$FORMAT_EXPR' -o $default_out"
+  local default_cmd="env -u VCF_FAST_NATIVE_BGZF_THREADS -u VCF_FAST_NATIVE_FILTER_THREADS -u VCF_FAST_NATIVE_FILTER_BATCH_RECORDS -u VCF_FAST_NATIVE_FILTER_QUEUE_BATCHES $BIN filter $dataset --where '$FORMAT_EXPR' -o $default_out"
   local bgzf_only_cmd="VCF_FAST_NATIVE_BGZF_THREADS=$BGZF_THREADS VCF_FAST_NATIVE_FILTER_THREADS=1 $BIN filter $dataset --where '$FORMAT_EXPR' -o $bgzf_only_out"
-  local predicate_only_cmd="VCF_FAST_NATIVE_BGZF_THREADS=1 VCF_FAST_NATIVE_FILTER_THREADS=$FILTER_THREADS VCF_FAST_NATIVE_FILTER_BATCH_RECORDS=$BATCH_RECORDS $BIN filter $dataset --where '$FORMAT_EXPR' -o $predicate_only_out"
-  local combined_cmd="VCF_FAST_NATIVE_BGZF_THREADS=$BGZF_THREADS VCF_FAST_NATIVE_FILTER_THREADS=$FILTER_THREADS VCF_FAST_NATIVE_FILTER_BATCH_RECORDS=$BATCH_RECORDS $BIN filter $dataset --where '$FORMAT_EXPR' -o $combined_out"
+  local predicate_only_cmd="VCF_FAST_NATIVE_BGZF_THREADS=1 VCF_FAST_NATIVE_FILTER_THREADS=$FILTER_THREADS VCF_FAST_NATIVE_FILTER_BATCH_RECORDS=$BATCH_RECORDS VCF_FAST_NATIVE_FILTER_QUEUE_BATCHES=$QUEUE_BATCHES $BIN filter $dataset --where '$FORMAT_EXPR' -o $predicate_only_out"
+  local combined_cmd="VCF_FAST_NATIVE_BGZF_THREADS=$BGZF_THREADS VCF_FAST_NATIVE_FILTER_THREADS=$FILTER_THREADS VCF_FAST_NATIVE_FILTER_BATCH_RECORDS=$BATCH_RECORDS VCF_FAST_NATIVE_FILTER_QUEUE_BATCHES=$QUEUE_BATCHES $BIN filter $dataset --where '$FORMAT_EXPR' -o $combined_out"
   local bcftools_cmd="bcftools filter -i '$BCFTOOLS_EXPR' $dataset -o $bcftools_out"
 
   VCF_FAST_NATIVE_BGZF_THREADS=1 VCF_FAST_NATIVE_FILTER_THREADS=1 "$BIN" filter "$dataset" --where "$FORMAT_EXPR" -o "$single_out"
-  env -u VCF_FAST_NATIVE_BGZF_THREADS -u VCF_FAST_NATIVE_FILTER_THREADS -u VCF_FAST_NATIVE_FILTER_BATCH_RECORDS "$BIN" filter "$dataset" --where "$FORMAT_EXPR" -o "$default_out"
+  env -u VCF_FAST_NATIVE_BGZF_THREADS -u VCF_FAST_NATIVE_FILTER_THREADS -u VCF_FAST_NATIVE_FILTER_BATCH_RECORDS -u VCF_FAST_NATIVE_FILTER_QUEUE_BATCHES "$BIN" filter "$dataset" --where "$FORMAT_EXPR" -o "$default_out"
   VCF_FAST_NATIVE_BGZF_THREADS="$BGZF_THREADS" VCF_FAST_NATIVE_FILTER_THREADS=1 "$BIN" filter "$dataset" --where "$FORMAT_EXPR" -o "$bgzf_only_out"
-  VCF_FAST_NATIVE_BGZF_THREADS=1 VCF_FAST_NATIVE_FILTER_THREADS="$FILTER_THREADS" VCF_FAST_NATIVE_FILTER_BATCH_RECORDS="$BATCH_RECORDS" "$BIN" filter "$dataset" --where "$FORMAT_EXPR" -o "$predicate_only_out"
-  VCF_FAST_NATIVE_BGZF_THREADS="$BGZF_THREADS" VCF_FAST_NATIVE_FILTER_THREADS="$FILTER_THREADS" VCF_FAST_NATIVE_FILTER_BATCH_RECORDS="$BATCH_RECORDS" "$BIN" filter "$dataset" --where "$FORMAT_EXPR" -o "$combined_out"
+  VCF_FAST_NATIVE_BGZF_THREADS=1 VCF_FAST_NATIVE_FILTER_THREADS="$FILTER_THREADS" VCF_FAST_NATIVE_FILTER_BATCH_RECORDS="$BATCH_RECORDS" VCF_FAST_NATIVE_FILTER_QUEUE_BATCHES="$QUEUE_BATCHES" "$BIN" filter "$dataset" --where "$FORMAT_EXPR" -o "$predicate_only_out"
+  VCF_FAST_NATIVE_BGZF_THREADS="$BGZF_THREADS" VCF_FAST_NATIVE_FILTER_THREADS="$FILTER_THREADS" VCF_FAST_NATIVE_FILTER_BATCH_RECORDS="$BATCH_RECORDS" VCF_FAST_NATIVE_FILTER_QUEUE_BATCHES="$QUEUE_BATCHES" "$BIN" filter "$dataset" --where "$FORMAT_EXPR" -o "$combined_out"
   bcftools filter -i "$BCFTOOLS_EXPR" "$dataset" -o "$bcftools_out"
 
   diff -u "$single_out" "$default_out" >"$OUT_DIR/${safe_label}-single-default.diff"
@@ -263,18 +265,18 @@ run_scheduler_case() {
     --runs "$RUNS" \
     --export-json "$hyperfine_json" \
     "VCF_FAST_NATIVE_BGZF_THREADS=1 VCF_FAST_NATIVE_FILTER_THREADS=1 $BIN filter $dataset --where '$FORMAT_EXPR' -o $OUT_DIR/${safe_label}-single.timed.vcf" \
-    "env -u VCF_FAST_NATIVE_BGZF_THREADS -u VCF_FAST_NATIVE_FILTER_THREADS -u VCF_FAST_NATIVE_FILTER_BATCH_RECORDS $BIN filter $dataset --where '$FORMAT_EXPR' -o $OUT_DIR/${safe_label}-default.timed.vcf" \
+    "env -u VCF_FAST_NATIVE_BGZF_THREADS -u VCF_FAST_NATIVE_FILTER_THREADS -u VCF_FAST_NATIVE_FILTER_BATCH_RECORDS -u VCF_FAST_NATIVE_FILTER_QUEUE_BATCHES $BIN filter $dataset --where '$FORMAT_EXPR' -o $OUT_DIR/${safe_label}-default.timed.vcf" \
     "VCF_FAST_NATIVE_BGZF_THREADS=$BGZF_THREADS VCF_FAST_NATIVE_FILTER_THREADS=1 $BIN filter $dataset --where '$FORMAT_EXPR' -o $OUT_DIR/${safe_label}-bgzf-only.timed.vcf" \
-    "VCF_FAST_NATIVE_BGZF_THREADS=1 VCF_FAST_NATIVE_FILTER_THREADS=$FILTER_THREADS VCF_FAST_NATIVE_FILTER_BATCH_RECORDS=$BATCH_RECORDS $BIN filter $dataset --where '$FORMAT_EXPR' -o $OUT_DIR/${safe_label}-predicate-only.timed.vcf" \
-    "VCF_FAST_NATIVE_BGZF_THREADS=$BGZF_THREADS VCF_FAST_NATIVE_FILTER_THREADS=$FILTER_THREADS VCF_FAST_NATIVE_FILTER_BATCH_RECORDS=$BATCH_RECORDS $BIN filter $dataset --where '$FORMAT_EXPR' -o $OUT_DIR/${safe_label}-combined.timed.vcf" \
+    "VCF_FAST_NATIVE_BGZF_THREADS=1 VCF_FAST_NATIVE_FILTER_THREADS=$FILTER_THREADS VCF_FAST_NATIVE_FILTER_BATCH_RECORDS=$BATCH_RECORDS VCF_FAST_NATIVE_FILTER_QUEUE_BATCHES=$QUEUE_BATCHES $BIN filter $dataset --where '$FORMAT_EXPR' -o $OUT_DIR/${safe_label}-predicate-only.timed.vcf" \
+    "VCF_FAST_NATIVE_BGZF_THREADS=$BGZF_THREADS VCF_FAST_NATIVE_FILTER_THREADS=$FILTER_THREADS VCF_FAST_NATIVE_FILTER_BATCH_RECORDS=$BATCH_RECORDS VCF_FAST_NATIVE_FILTER_QUEUE_BATCHES=$QUEUE_BATCHES $BIN filter $dataset --where '$FORMAT_EXPR' -o $OUT_DIR/${safe_label}-combined.timed.vcf" \
     "bcftools filter -i '$BCFTOOLS_EXPR' $dataset -o $OUT_DIR/${safe_label}-bcftools.timed.vcf"
 
   read -r single_mean single_std default_mean default_std bgzf_mean bgzf_std predicate_mean predicate_std combined_mean combined_std bcftools_mean bcftools_std < <(runtime_summary "$hyperfine_json")
   read -r single_rss single_cpu < <(measure_resource_pair "${safe_label}-single-rss" env VCF_FAST_NATIVE_BGZF_THREADS=1 VCF_FAST_NATIVE_FILTER_THREADS=1 "$BIN" filter "$dataset" --where "$FORMAT_EXPR" -o "$OUT_DIR/${safe_label}-single.rss.vcf")
-  read -r default_rss default_cpu < <(measure_resource_pair "${safe_label}-default-rss" env -u VCF_FAST_NATIVE_BGZF_THREADS -u VCF_FAST_NATIVE_FILTER_THREADS -u VCF_FAST_NATIVE_FILTER_BATCH_RECORDS "$BIN" filter "$dataset" --where "$FORMAT_EXPR" -o "$OUT_DIR/${safe_label}-default.rss.vcf")
+  read -r default_rss default_cpu < <(measure_resource_pair "${safe_label}-default-rss" env -u VCF_FAST_NATIVE_BGZF_THREADS -u VCF_FAST_NATIVE_FILTER_THREADS -u VCF_FAST_NATIVE_FILTER_BATCH_RECORDS -u VCF_FAST_NATIVE_FILTER_QUEUE_BATCHES "$BIN" filter "$dataset" --where "$FORMAT_EXPR" -o "$OUT_DIR/${safe_label}-default.rss.vcf")
   read -r bgzf_rss bgzf_cpu < <(measure_resource_pair "${safe_label}-bgzf-rss" env VCF_FAST_NATIVE_BGZF_THREADS="$BGZF_THREADS" VCF_FAST_NATIVE_FILTER_THREADS=1 "$BIN" filter "$dataset" --where "$FORMAT_EXPR" -o "$OUT_DIR/${safe_label}-bgzf-only.rss.vcf")
-  read -r predicate_rss predicate_cpu < <(measure_resource_pair "${safe_label}-predicate-rss" env VCF_FAST_NATIVE_BGZF_THREADS=1 VCF_FAST_NATIVE_FILTER_THREADS="$FILTER_THREADS" VCF_FAST_NATIVE_FILTER_BATCH_RECORDS="$BATCH_RECORDS" "$BIN" filter "$dataset" --where "$FORMAT_EXPR" -o "$OUT_DIR/${safe_label}-predicate-only.rss.vcf")
-  read -r combined_rss combined_cpu < <(measure_resource_pair "${safe_label}-combined-rss" env VCF_FAST_NATIVE_BGZF_THREADS="$BGZF_THREADS" VCF_FAST_NATIVE_FILTER_THREADS="$FILTER_THREADS" VCF_FAST_NATIVE_FILTER_BATCH_RECORDS="$BATCH_RECORDS" "$BIN" filter "$dataset" --where "$FORMAT_EXPR" -o "$OUT_DIR/${safe_label}-combined.rss.vcf")
+  read -r predicate_rss predicate_cpu < <(measure_resource_pair "${safe_label}-predicate-rss" env VCF_FAST_NATIVE_BGZF_THREADS=1 VCF_FAST_NATIVE_FILTER_THREADS="$FILTER_THREADS" VCF_FAST_NATIVE_FILTER_BATCH_RECORDS="$BATCH_RECORDS" VCF_FAST_NATIVE_FILTER_QUEUE_BATCHES="$QUEUE_BATCHES" "$BIN" filter "$dataset" --where "$FORMAT_EXPR" -o "$OUT_DIR/${safe_label}-predicate-only.rss.vcf")
+  read -r combined_rss combined_cpu < <(measure_resource_pair "${safe_label}-combined-rss" env VCF_FAST_NATIVE_BGZF_THREADS="$BGZF_THREADS" VCF_FAST_NATIVE_FILTER_THREADS="$FILTER_THREADS" VCF_FAST_NATIVE_FILTER_BATCH_RECORDS="$BATCH_RECORDS" VCF_FAST_NATIVE_FILTER_QUEUE_BATCHES="$QUEUE_BATCHES" "$BIN" filter "$dataset" --where "$FORMAT_EXPR" -o "$OUT_DIR/${safe_label}-combined.rss.vcf")
   read -r bcftools_rss bcftools_cpu < <(measure_resource_pair "${safe_label}-bcftools-rss" bcftools filter -i "$BCFTOOLS_EXPR" "$dataset" -o "$OUT_DIR/${safe_label}-bcftools.rss.vcf")
 
   local combined_vs_single combined_vs_default combined_vs_bcftools combined_vps claim

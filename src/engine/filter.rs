@@ -21,13 +21,14 @@ use crate::vcf::{self, InfoView, RecordView, column_value, resolve_sample_column
 
 pub const NATIVE_FILTER_THREADS_ENV: &str = "VCF_FAST_NATIVE_FILTER_THREADS";
 pub const NATIVE_FILTER_BATCH_RECORDS_ENV: &str = "VCF_FAST_NATIVE_FILTER_BATCH_RECORDS";
+pub const NATIVE_FILTER_QUEUE_BATCHES_ENV: &str = "VCF_FAST_NATIVE_FILTER_QUEUE_BATCHES";
 const DISABLE_VFI_ENV: &str = "VCF_FAST_DISABLE_VFI";
 const INDEX_REPORT_ENV: &str = "VCF_FAST_INDEX_REPORT";
 const INDEX_MIN_SKIP_RATE_ENV: &str = "VCF_FAST_INDEX_MIN_SKIP_RATE";
 const DEFAULT_INDEX_MIN_SKIP_RATE: f64 = 0.80;
-const DEFAULT_PARALLEL_BATCH_RECORDS: usize = 4096;
+const DEFAULT_PARALLEL_BATCH_RECORDS: usize = 2048;
+const DEFAULT_PARALLEL_QUEUE_BATCHES: usize = 2;
 const DEFAULT_AUTO_FILTER_THREAD_CAP: usize = 4;
-const PARALLEL_PIPELINE_QUEUE_BATCHES: usize = 2;
 
 #[derive(Debug, serde::Serialize)]
 struct IndexFilterReport {
@@ -500,9 +501,8 @@ fn run_parallel_filter(
         .build()
         .context("failed to build native filter thread pool")?;
     let mut batch = Vec::with_capacity(config.batch_records.get());
-    let (work_tx, work_rx) = sync_channel::<Vec<Vec<u8>>>(PARALLEL_PIPELINE_QUEUE_BATCHES);
-    let (result_tx, result_rx) =
-        sync_channel::<ParallelBatchResult>(PARALLEL_PIPELINE_QUEUE_BATCHES);
+    let (work_tx, work_rx) = sync_channel::<Vec<Vec<u8>>>(config.queue_batches.get());
+    let (result_tx, result_rx) = sync_channel::<ParallelBatchResult>(config.queue_batches.get());
 
     thread::scope(|scope| -> Result<()> {
         let evaluator = scope.spawn(move || -> Result<()> {
@@ -635,6 +635,7 @@ fn write_parallel_batch_result(result: ParallelBatchResult, writer: &mut dyn Wri
 struct NativeParallelFilterConfig {
     threads: NonZeroUsize,
     batch_records: NonZeroUsize,
+    queue_batches: NonZeroUsize,
 }
 
 impl NativeParallelFilterConfig {
@@ -652,6 +653,10 @@ impl NativeParallelFilterConfig {
             batch_records: parse_positive_env(
                 NATIVE_FILTER_BATCH_RECORDS_ENV,
                 NonZeroUsize::new(DEFAULT_PARALLEL_BATCH_RECORDS),
+            )?,
+            queue_batches: parse_positive_env(
+                NATIVE_FILTER_QUEUE_BATCHES_ENV,
+                NonZeroUsize::new(DEFAULT_PARALLEL_QUEUE_BATCHES),
             )?,
         })
     }
