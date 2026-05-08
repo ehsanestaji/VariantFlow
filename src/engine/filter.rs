@@ -11,7 +11,7 @@ use rayon::prelude::*;
 use crate::compat::{Backend, CompressionMode, Region, select_backend};
 use crate::engine::index::{
     OffsetModel, SkipDecision, VariantFlowIndex, default_index_path, first_record_virtual_start,
-    plan_chunk, read_index, read_virtual_range, source_matches,
+    for_each_virtual_range_slice, plan_chunk, read_index, source_matches,
 };
 use crate::expr::{EvalContext, Expression, RequiredFields, parse_expression};
 use crate::io::{open_reader, open_vcf_writer};
@@ -241,13 +241,40 @@ fn try_indexed_filter(
         writer.write_all(header)?;
     }
 
+    let mut pending_scan_start = None;
+    let mut pending_scan_end = None;
     for (decision, virtual_start, virtual_end) in chunk_plan {
         if decision == SkipDecision::CanSkip {
+            if let (Some(start), Some(end)) = (pending_scan_start.take(), pending_scan_end.take()) {
+                scan_indexed_virtual_range(
+                    input,
+                    start,
+                    end,
+                    &mut *writer,
+                    expr,
+                    required,
+                    sample_column,
+                )?;
+            }
             continue;
         }
 
-        let bytes = read_virtual_range(input, virtual_start, virtual_end)?;
-        scan_indexed_chunk_bytes(&bytes, &mut *writer, expr, required, sample_column)?;
+        if pending_scan_start.is_none() {
+            pending_scan_start = Some(virtual_start);
+        }
+        pending_scan_end = Some(virtual_end);
+    }
+
+    if let (Some(start), Some(end)) = (pending_scan_start, pending_scan_end) {
+        scan_indexed_virtual_range(
+            input,
+            start,
+            end,
+            &mut *writer,
+            expr,
+            required,
+            sample_column,
+        )?;
     }
 
     writer.flush()?;
@@ -339,24 +366,49 @@ fn is_usable_bgzf_index(index: &VariantFlowIndex, input: &Path) -> Result<bool> 
     Ok(previous_virtual_end.is_some() || index.record_count == 0)
 }
 
-fn scan_indexed_chunk_bytes(
-    bytes: &[u8],
+fn scan_indexed_virtual_range(
+    input: &Path,
+    virtual_start: u64,
+    virtual_end: u64,
     writer: &mut dyn Write,
     expr: &Expression,
     required: &RequiredFields,
     sample_column: Option<usize>,
 ) -> Result<()> {
-    for line in bytes.split_inclusive(|byte| *byte == b'\n') {
-        if !is_vcf_record_line(line) {
-            continue;
+    let mut line = Vec::new();
+    for_each_virtual_range_slice(input, virtual_start, virtual_end, |bytes| {
+        for segment in bytes.split_inclusive(|byte| *byte == b'\n') {
+            line.extend_from_slice(segment);
+            if segment.ends_with(b"\n") {
+                scan_indexed_record_line(&line, writer, expr, required, sample_column)?;
+                line.clear();
+            }
         }
+        Ok(())
+    })?;
 
-        let record = ByteEvalRecord::parse(line, required, sample_column)?;
-        if expr.evaluate_context(&record) {
-            writer.write_all(line)?;
-        }
+    if !line.is_empty() {
+        scan_indexed_record_line(&line, writer, expr, required, sample_column)?;
     }
 
+    Ok(())
+}
+
+fn scan_indexed_record_line(
+    line: &[u8],
+    writer: &mut dyn Write,
+    expr: &Expression,
+    required: &RequiredFields,
+    sample_column: Option<usize>,
+) -> Result<()> {
+    if !is_vcf_record_line(line) {
+        return Ok(());
+    }
+
+    let record = ByteEvalRecord::parse(line, required, sample_column)?;
+    if expr.evaluate_context(&record) {
+        writer.write_all(line)?;
+    }
     Ok(())
 }
 
