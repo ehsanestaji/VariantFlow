@@ -196,16 +196,20 @@ fn is_usable_bgzf_index(index: &VariantFlowIndex, input: &Path) -> Result<bool> 
         return Ok(false);
     }
 
-    if index.chunks.is_empty() {
-        return Ok(index.record_count == 0);
-    }
-
     let terminal_virtual_end = bgzf_data_virtual_end(input)?;
-    let first_record_virtual_start = if index.record_count == 0 {
-        None
+    let first_record_virtual_start = if index.record_count == 0 || index.chunks.is_empty() {
+        let first_record_virtual_start = first_record_virtual_start(input)?;
+        if first_record_virtual_start.is_some() {
+            return Ok(false);
+        }
+        first_record_virtual_start
     } else {
         first_record_virtual_start(input)?
     };
+
+    if index.chunks.is_empty() {
+        return Ok(index.record_count == 0);
+    }
 
     let mut next_first_record = 0_u64;
     let mut previous_virtual_end = None;
