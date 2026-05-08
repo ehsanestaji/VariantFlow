@@ -6,6 +6,7 @@ use assert_cmd::Command;
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use predicates::prelude::*;
+use serde_json::Value;
 use tempfile::tempdir;
 
 fn fixture(path: &str) -> PathBuf {
@@ -209,6 +210,63 @@ fn indexed_bgzf_filter_matches_default_output_byte_for_byte() {
     assert_eq!(
         fs::read(default_output).unwrap(),
         fs::read(indexed_output).unwrap()
+    );
+}
+
+#[test]
+fn stale_or_incomplete_index_falls_back_to_default_streaming_output() {
+    let dir = tempdir().unwrap();
+    let input = dir.path().join("stress.vcf.gz");
+    let index = PathBuf::from(format!("{}.vfi", input.display()));
+    let default_output = dir.path().join("default.vcf");
+    let indexed_enabled_output = dir.path().join("indexed-enabled.vcf");
+    bgzf_fixture(&fixture("tests/data/stress_small.vcf"), &input);
+
+    Command::cargo_bin("variantflow")
+        .unwrap()
+        .args([
+            "index",
+            input.to_str().unwrap(),
+            "-o",
+            index.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let mut json: Value = serde_json::from_str(&fs::read_to_string(&index).unwrap()).unwrap();
+    json["chunks"] = Value::Array(Vec::new());
+    fs::write(&index, serde_json::to_string_pretty(&json).unwrap()).unwrap();
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            input.to_str().unwrap(),
+            "--where",
+            "QUAL > 30",
+            "-o",
+            default_output.to_str().unwrap(),
+        ])
+        .env("VCF_FAST_DISABLE_VFI", "1")
+        .assert()
+        .success();
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            input.to_str().unwrap(),
+            "--where",
+            "QUAL > 30",
+            "-o",
+            indexed_enabled_output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    assert_eq!(
+        fs::read(default_output).unwrap(),
+        fs::read(indexed_enabled_output).unwrap()
     );
 }
 

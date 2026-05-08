@@ -9,8 +9,8 @@ use rayon::prelude::*;
 
 use crate::compat::{Backend, CompressionMode, Region, select_backend};
 use crate::engine::index::{
-    OffsetModel, SkipDecision, default_index_path, plan_chunk, read_index, read_virtual_range,
-    source_matches,
+    OffsetModel, SkipDecision, VariantFlowIndex, default_index_path, plan_chunk, read_index,
+    read_virtual_range, source_matches,
 };
 use crate::expr::{EvalContext, Expression, RequiredFields, parse_expression};
 use crate::io::{open_reader, open_vcf_writer};
@@ -146,10 +146,7 @@ fn try_indexed_filter(
     }
 
     let index = read_index(&index_path)?;
-    if index.offset_model != OffsetModel::BgzfVirtual
-        || !index.virtual_offsets_available
-        || !source_matches(&index, input)?
-    {
+    if !is_usable_bgzf_index(&index, input)? {
         return Ok(false);
     }
 
@@ -183,6 +180,41 @@ fn try_indexed_filter(
 
     writer.flush()?;
     Ok(true)
+}
+
+fn is_usable_bgzf_index(index: &VariantFlowIndex, input: &Path) -> Result<bool> {
+    if index.index_kind != "variantflow-vfi"
+        || index.offset_model != OffsetModel::BgzfVirtual
+        || !index.virtual_offsets_available
+        || !source_matches(index, input)?
+        || (index.record_count > 0 && index.chunks.is_empty())
+    {
+        return Ok(false);
+    }
+
+    let mut next_first_record = 0_u64;
+    for (expected_ordinal, chunk) in index.chunks.iter().enumerate() {
+        let Some(virtual_start) = chunk.virtual_start else {
+            return Ok(false);
+        };
+        let Some(virtual_end) = chunk.virtual_end else {
+            return Ok(false);
+        };
+
+        if chunk.ordinal != expected_ordinal as u64
+            || chunk.first_record != next_first_record
+            || virtual_end <= virtual_start
+        {
+            return Ok(false);
+        }
+
+        let Some(next) = next_first_record.checked_add(chunk.record_count) else {
+            return Ok(false);
+        };
+        next_first_record = next;
+    }
+
+    Ok(index.record_count == next_first_record)
 }
 
 fn scan_indexed_chunk_bytes(

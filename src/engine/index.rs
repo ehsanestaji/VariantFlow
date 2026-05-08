@@ -17,8 +17,10 @@ use bgzf::for_each_bgzf_block;
 pub(crate) use bgzf::read_virtual_range;
 use metadata::ChunkMetadataBuilder;
 pub(crate) use planner::{SkipDecision, plan_chunk};
-pub(crate) use schema::{OffsetModel, default_index_path, read_index, source_matches};
-use schema::{VariantFlowIndex, source_identity};
+use schema::source_identity;
+pub(crate) use schema::{
+    OffsetModel, VariantFlowIndex, default_index_path, read_index, source_matches,
+};
 
 const DEFAULT_CHUNK_RECORDS: u64 = 8192;
 
