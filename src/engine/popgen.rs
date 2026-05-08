@@ -67,7 +67,7 @@ struct WindowSummary {
 struct LdSite {
     chrom: String,
     pos: u64,
-    dosages: Vec<u8>,
+    dosages: PackedDosages,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -493,7 +493,43 @@ pub fn run_ld(
     Ok(())
 }
 
-const MISSING_DOSAGE: u8 = u8::MAX;
+const MISSING_DOSAGE: u8 = 3;
+
+#[derive(Debug, Clone)]
+struct PackedDosages {
+    sample_count: usize,
+    bytes: Vec<u8>,
+}
+
+impl PackedDosages {
+    fn new_missing(sample_count: usize) -> Self {
+        Self {
+            sample_count,
+            bytes: vec![0xff; sample_count.div_ceil(4)],
+        }
+    }
+
+    fn set(&mut self, index: usize, dosage: u8) {
+        debug_assert!(index < self.sample_count);
+        debug_assert!(dosage <= MISSING_DOSAGE);
+        let byte_index = index / 4;
+        let shift = (index % 4) * 2;
+        let mask = !(0b11_u8 << shift);
+        self.bytes[byte_index] = (self.bytes[byte_index] & mask) | (dosage << shift);
+    }
+
+    fn get(&self, index: usize) -> u8 {
+        debug_assert!(index < self.sample_count);
+        let byte_index = index / 4;
+        let shift = (index % 4) * 2;
+        (self.bytes[byte_index] >> shift) & 0b11
+    }
+
+    #[cfg(test)]
+    fn byte_len(&self) -> usize {
+        self.bytes.len()
+    }
+}
 
 fn ld_site_from_record(
     record: &RecordView<'_>,
@@ -506,13 +542,14 @@ fn ld_site_from_record(
     let gt_index = record
         .column(8)
         .and_then(|format| format_key_index(format, b"GT"));
-    let mut dosages = vec![MISSING_DOSAGE; samples.len()];
+    let mut dosages = PackedDosages::new_missing(samples.len());
 
     for_each_selected_sample_value(record, samples, |index, _sample, value| {
-        dosages[index] = gt_index
+        let dosage = gt_index
             .and_then(|index| sample_format_value_at(value, index))
             .and_then(parse_ld_alt_dosage)
             .unwrap_or(MISSING_DOSAGE);
+        dosages.set(index, dosage);
     });
 
     Ok(Some(LdSite {
@@ -1148,7 +1185,7 @@ fn tajima_d(pi_sum: f64, segregating_sites: u64, n_chr: u64) -> Option<f64> {
     (denominator > 0.0).then_some((pi_sum - s / a1) / denominator)
 }
 
-fn genotype_dosage_r2(left: &[u8], right: &[u8]) -> Option<(u64, f64)> {
+fn genotype_dosage_r2(left: &PackedDosages, right: &PackedDosages) -> Option<(u64, f64)> {
     let mut n = 0_u64;
     let mut sum_left = 0.0;
     let mut sum_right = 0.0;
@@ -1156,12 +1193,14 @@ fn genotype_dosage_r2(left: &[u8], right: &[u8]) -> Option<(u64, f64)> {
     let mut sum_right_sq = 0.0;
     let mut sum_product = 0.0;
 
-    for (left, right) in left.iter().zip(right) {
-        if *left == MISSING_DOSAGE || *right == MISSING_DOSAGE {
+    for index in 0..left.sample_count.min(right.sample_count) {
+        let left = left.get(index);
+        let right = right.get(index);
+        if left == MISSING_DOSAGE || right == MISSING_DOSAGE {
             continue;
         }
-        let left = f64::from(*left);
-        let right = f64::from(*right);
+        let left = f64::from(left);
+        let right = f64::from(right);
         n += 1;
         sum_left += left;
         sum_right += right;
@@ -1388,7 +1427,10 @@ fn trim_line_end(line: &[u8]) -> &[u8] {
 
 #[cfg(test)]
 mod tests {
-    use super::{for_each_called_allele, format_ratio, genotype_is_missing};
+    use super::{
+        MISSING_DOSAGE, PackedDosages, for_each_called_allele, format_ratio, genotype_dosage_r2,
+        genotype_is_missing,
+    };
 
     #[test]
     fn genotype_missing_detects_dot_and_partial_missing_values() {
@@ -1420,5 +1462,44 @@ mod tests {
         assert_eq!(format_ratio(1.0), "1");
         assert_eq!(format_ratio(1.0 / 6.0), "0.166667");
         assert_eq!(format_ratio(1.0 / 3.0), "0.333333");
+    }
+
+    #[test]
+    fn packed_dosages_store_four_samples_per_byte_with_missing_default() {
+        let mut dosages = PackedDosages::new_missing(5);
+
+        assert_eq!(dosages.byte_len(), 2);
+        for index in 0..5 {
+            assert_eq!(dosages.get(index), MISSING_DOSAGE);
+        }
+
+        dosages.set(0, 0);
+        dosages.set(1, 1);
+        dosages.set(2, 2);
+        dosages.set(3, MISSING_DOSAGE);
+        dosages.set(4, 1);
+
+        assert_eq!(dosages.get(0), 0);
+        assert_eq!(dosages.get(1), 1);
+        assert_eq!(dosages.get(2), 2);
+        assert_eq!(dosages.get(3), MISSING_DOSAGE);
+        assert_eq!(dosages.get(4), 1);
+    }
+
+    #[test]
+    fn packed_dosage_r2_ignores_missing_pairs() {
+        let mut left = PackedDosages::new_missing(4);
+        let mut right = PackedDosages::new_missing(4);
+
+        for (index, dosage) in [0, 1, 2, MISSING_DOSAGE].into_iter().enumerate() {
+            left.set(index, dosage);
+        }
+        for (index, dosage) in [0, 1, 1, 2].into_iter().enumerate() {
+            right.set(index, dosage);
+        }
+
+        let (n, r2) = genotype_dosage_r2(&left, &right).unwrap();
+        assert_eq!(n, 3);
+        assert!((r2 - 0.75).abs() < 1e-12);
     }
 }
