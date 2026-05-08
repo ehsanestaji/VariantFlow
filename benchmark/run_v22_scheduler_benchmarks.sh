@@ -86,14 +86,26 @@ prepare_stress_bgzf() {
 prepare_public_bgzf() {
   local records="$1"
   local bgzf="$DATA_DIR/public-human-format-${records}.vcf.gz"
+  if [[ -s "$bgzf" ]] && ! bcftools view -H "$bgzf" >/dev/null 2>&1; then
+    rm -f "$bgzf" "$bgzf.tbi" "$bgzf.csi"
+  fi
   if [[ ! -s "$bgzf" ]]; then
     set +e
-    stream_public_source | awk -v limit="$records" '
-      BEGIN { seen_records = 0 }
-      /^#/ { print; next }
-      seen_records < limit { print; seen_records++ }
-      seen_records >= limit { exit }
-    ' | bgzip -c >"$bgzf"
+    stream_public_source | python3 -c '
+import sys
+
+limit = int(sys.argv[1])
+records = 0
+stdout = sys.stdout.buffer
+for line in sys.stdin.buffer:
+    if line.startswith(b"#"):
+        stdout.write(line)
+        continue
+    if records >= limit:
+        break
+    stdout.write(line)
+    records += 1
+' "$records" | bgzip -c >"$bgzf"
     local statuses=("${PIPESTATUS[@]}")
     set -e
     if [[ "${statuses[1]}" -ne 0 || "${statuses[2]}" -ne 0 ]]; then
@@ -155,6 +167,21 @@ measure_resource_pair() {
       END {
         if (rss == "") rss = "n/a";
         if (user == "" || sys == "") cpu = "n/a"; else cpu = sprintf("%.6f", user + sys);
+        print rss, cpu
+      }
+    ' "$OUT_DIR/${label}.time"
+  elif command -v /usr/bin/time >/dev/null 2>&1 && /usr/bin/time -l true >/dev/null 2>&1; then
+    /usr/bin/time -l "$@" >"$OUT_DIR/${label}.stdout" 2>"$OUT_DIR/${label}.time"
+    awk '
+      NR == 1 && $2 == "real" && $4 == "user" && $6 == "sys" {
+        cpu = sprintf("%.6f", $3 + $5)
+      }
+      /maximum resident set size/ {
+        rss = sprintf("%.0f", $1 / 1024)
+      }
+      END {
+        if (rss == "") rss = "n/a";
+        if (cpu == "") cpu = "n/a";
         print rss, cpu
       }
     ' "$OUT_DIR/${label}.time"
