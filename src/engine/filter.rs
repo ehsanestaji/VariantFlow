@@ -13,7 +13,7 @@ use rayon::prelude::*;
 use crate::compat::{Backend, CompressionMode, Region, select_backend};
 use crate::engine::index::{
     OffsetModel, SkipDecision, VariantFlowIndex, default_index_path, first_record_virtual_start,
-    for_each_decoded_bgzf_block, for_each_virtual_range_slice, plan_chunk, read_index,
+    for_each_decoded_bgzf_block_with_threads, for_each_virtual_range_slice, plan_chunk, read_index,
     source_matches,
 };
 use crate::engine::pipeline::{
@@ -532,7 +532,7 @@ fn stream_native_bgzf_pipeline(
     let group_capacity = config.queue_batches.max(1);
     let mut ready_batches = Vec::with_capacity(group_capacity);
 
-    for_each_decoded_bgzf_block(input, |block| {
+    for_each_decoded_bgzf_block_with_threads(input, config.bgzf_threads, |block| {
         for batch in carry.push_block(block, config.batch_records) {
             ready_batches.push(batch);
             if ready_batches.len() >= group_capacity {

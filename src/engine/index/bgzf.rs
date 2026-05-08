@@ -24,6 +24,16 @@ impl BgzfBlock {
     }
 }
 
+#[derive(Debug)]
+struct RawBgzfBlock {
+    sequence: u64,
+    compressed_start: u64,
+    compressed_end: u64,
+    payload: Vec<u8>,
+    expected_crc32: u32,
+    expected_isize: u32,
+}
+
 pub(crate) fn for_each_bgzf_block(
     path: &Path,
     mut visit: impl FnMut(BgzfBlock) -> Result<()>,
@@ -119,6 +129,80 @@ pub(crate) fn for_each_decoded_bgzf_block(
         block_sequence += 1;
         visit(decoded)
     })
+}
+
+pub(crate) fn for_each_decoded_bgzf_block_with_threads(
+    path: &Path,
+    worker_count: usize,
+    mut visit: impl FnMut(crate::engine::pipeline::DecodedBlock) -> Result<()>,
+) -> Result<()> {
+    if worker_count <= 1 {
+        return for_each_decoded_bgzf_block(path, visit);
+    }
+
+    let mut file =
+        File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
+    let file_len = file
+        .metadata()
+        .with_context(|| format!("failed to stat {}", path.display()))?
+        .len();
+    let group_capacity = worker_count.saturating_mul(2).max(1);
+    let mut sequence = 0_u64;
+
+    loop {
+        let mut raw_blocks = Vec::with_capacity(group_capacity);
+        while raw_blocks.len() < group_capacity {
+            let compressed_start = file
+                .stream_position()
+                .with_context(|| format!("failed to seek {}", path.display()))?;
+            if compressed_start == file_len {
+                break;
+            }
+
+            raw_blocks.push(read_raw_bgzf_block(
+                path,
+                &mut file,
+                compressed_start,
+                sequence,
+            )?);
+            sequence += 1;
+        }
+
+        if raw_blocks.is_empty() {
+            break;
+        }
+
+        let mut decoded_blocks = std::thread::scope(|scope| {
+            let mut handles = Vec::with_capacity(raw_blocks.len());
+            for raw in raw_blocks {
+                handles.push(scope.spawn(move || {
+                    let sequence = raw.sequence;
+                    inflate_raw_bgzf_block(raw).map(|block| (sequence, block))
+                }));
+            }
+
+            let mut decoded = Vec::with_capacity(handles.len());
+            for handle in handles {
+                match handle.join() {
+                    Ok(result) => decoded.push(result?),
+                    Err(payload) => std::panic::resume_unwind(payload),
+                }
+            }
+            Ok::<_, anyhow::Error>(decoded)
+        })?;
+
+        decoded_blocks
+            .sort_by_key(|(block_sequence, block)| (*block_sequence, block.compressed_start));
+        for (block_sequence, block) in decoded_blocks {
+            visit(crate::engine::pipeline::DecodedBlock {
+                block_sequence,
+                virtual_offset: block.virtual_start(),
+                bytes: block.uncompressed,
+            })?;
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -217,6 +301,15 @@ pub(crate) fn for_each_virtual_range_slice(
 }
 
 fn read_one_bgzf_block(path: &Path, file: &mut File, compressed_start: u64) -> Result<BgzfBlock> {
+    inflate_raw_bgzf_block(read_raw_bgzf_block(path, file, compressed_start, 0)?)
+}
+
+fn read_raw_bgzf_block(
+    path: &Path,
+    file: &mut File,
+    compressed_start: u64,
+    sequence: u64,
+) -> Result<RawBgzfBlock> {
     file.seek(SeekFrom::Start(compressed_start))
         .with_context(|| format!("failed to seek {} to {compressed_start}", path.display()))?;
 
@@ -258,7 +351,18 @@ fn read_one_bgzf_block(path: &Path, file: &mut File, compressed_start: u64) -> R
     let expected_crc32 = u32::from_le_bytes([footer[0], footer[1], footer[2], footer[3]]);
     let expected_isize = u32::from_le_bytes([footer[4], footer[5], footer[6], footer[7]]);
 
-    let mut decoder = DeflateDecoder::new(&remaining[..payload_end]);
+    Ok(RawBgzfBlock {
+        sequence,
+        compressed_start,
+        compressed_end: compressed_start + block_size,
+        payload: remaining[..payload_end].to_vec(),
+        expected_crc32,
+        expected_isize,
+    })
+}
+
+fn inflate_raw_bgzf_block(raw: RawBgzfBlock) -> Result<BgzfBlock> {
+    let mut decoder = DeflateDecoder::new(raw.payload.as_slice());
     let mut capped_decoder = decoder
         .by_ref()
         .take((MAX_BGZF_UNCOMPRESSED_BLOCK_SIZE + 1) as u64);
@@ -266,30 +370,39 @@ fn read_one_bgzf_block(path: &Path, file: &mut File, compressed_start: u64) -> R
     capped_decoder
         .read_to_end(&mut uncompressed)
         .with_context(|| {
-            format!("failed to inflate BGZF block at compressed offset {compressed_start}")
+            format!(
+                "failed to inflate BGZF block at compressed offset {}",
+                raw.compressed_start
+            )
         })?;
     ensure!(
         uncompressed.len() <= MAX_BGZF_UNCOMPRESSED_BLOCK_SIZE,
-        "decoded BGZF block exceeds maximum uncompressed block size at compressed offset {compressed_start}"
+        "decoded BGZF block exceeds maximum uncompressed block size at compressed offset {}",
+        raw.compressed_start
     );
     ensure!(
-        expected_isize as usize <= MAX_BGZF_UNCOMPRESSED_BLOCK_SIZE,
-        "BGZF block at compressed offset {compressed_start} exceeds BGZF maximum uncompressed block size"
+        raw.expected_isize as usize <= MAX_BGZF_UNCOMPRESSED_BLOCK_SIZE,
+        "BGZF block at compressed offset {} exceeds BGZF maximum uncompressed block size",
+        raw.compressed_start
     );
     ensure!(
-        uncompressed.len() as u32 == expected_isize,
-        "BGZF ISIZE mismatch at compressed offset {compressed_start}: expected {expected_isize}, decoded {}",
+        uncompressed.len() as u32 == raw.expected_isize,
+        "BGZF ISIZE mismatch at compressed offset {}: expected {}, decoded {}",
+        raw.compressed_start,
+        raw.expected_isize,
         uncompressed.len()
     );
     let actual_crc32 = crc32fast::hash(&uncompressed);
     ensure!(
-        actual_crc32 == expected_crc32,
-        "BGZF CRC32 mismatch at compressed offset {compressed_start}: expected {expected_crc32:#010x}, decoded {actual_crc32:#010x}"
+        actual_crc32 == raw.expected_crc32,
+        "BGZF CRC32 mismatch at compressed offset {}: expected {:#010x}, decoded {actual_crc32:#010x}",
+        raw.compressed_start,
+        raw.expected_crc32
     );
 
     Ok(BgzfBlock {
-        compressed_start,
-        compressed_end: compressed_start + block_size,
+        compressed_start: raw.compressed_start,
+        compressed_end: raw.compressed_end,
         uncompressed,
     })
 }
@@ -481,6 +594,28 @@ chr1\t1\t.\tA\tG\t1\tPASS\tDP=1\n";
 
         assert!(block_count >= 1);
         assert!(non_empty_count >= 1);
+    }
+
+    #[test]
+    fn threaded_decoded_bgzf_walker_matches_serial_decoded_bytes() {
+        let dir = tempdir().unwrap();
+        let input = dir.path().join("tiny.vcf.gz");
+        write_bgzf(&input);
+        let mut serial = Vec::new();
+        let mut threaded = Vec::new();
+
+        for_each_decoded_bgzf_block(&input, |block| {
+            serial.extend_from_slice(&block.bytes);
+            Ok(())
+        })
+        .unwrap();
+        for_each_decoded_bgzf_block_with_threads(&input, 2, |block| {
+            threaded.extend_from_slice(&block.bytes);
+            Ok(())
+        })
+        .unwrap();
+
+        assert_eq!(threaded, serial);
     }
 
     #[test]
