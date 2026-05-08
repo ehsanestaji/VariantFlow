@@ -20,7 +20,7 @@ pub fn open_reader(path: &Path) -> Result<Box<dyn std::io::BufRead>> {
     open_reader_with_native_bgzf_threads(path, native_bgzf_threads_from_env()?)
 }
 
-fn open_reader_with_native_bgzf_threads(
+pub(crate) fn open_reader_with_native_bgzf_threads(
     path: &Path,
     bgzf_threads: Option<NonZeroUsize>,
 ) -> Result<Box<dyn std::io::BufRead>> {

@@ -190,7 +190,7 @@ vcf-fast index tests/data/example.vcf -o tests/output/example.vcf.vfi
 - Inputs: `.vcf`, `.vcf.gz`
 - Outputs: `.vcf`, `.vcf.gz`
 - Native BGZF input acceleration: BGZF `.vcf.gz` inputs use auto-capped native BGZF reader workers by default. Set `VCF_FAST_NATIVE_BGZF_THREADS=<positive integer>` to choose a worker count, `VCF_FAST_NATIVE_BGZF_THREADS=auto` to request the default policy explicitly, or `VCF_FAST_NATIVE_BGZF_THREADS=1` to force single-thread fallback behavior. Ordinary gzip input falls back to the single-thread flate2 path.
-- Native predicate scheduling: unset or `VCF_FAST_NATIVE_FILTER_THREADS=auto` keeps site-only filters single-threaded and auto-enables capped workers for CPU-heavy FORMAT aggregate predicates such as `ANY(FORMAT/AD > 80)`. Set `VCF_FAST_NATIVE_FILTER_THREADS=1` to force single-thread behavior, or a positive integer to force a worker count. Set `VCF_FAST_NATIVE_FILTER_BATCH_RECORDS=<positive integer>` to tune batch size.
+- Native predicate scheduling: unset `VCF_FAST_NATIVE_FILTER_THREADS` now keeps predicate evaluation conservative and single-threaded by default; repeated v2.3 stress evidence showed FORMAT aggregate worker overhead can dominate. Use `VCF_FAST_NATIVE_FILTER_THREADS=auto` or a positive integer to opt into capped predicate workers for experiments, and `VCF_FAST_NATIVE_FILTER_THREADS=1` to force single-thread behavior. Set `VCF_FAST_NATIVE_FILTER_BATCH_RECORDS=<positive integer>` to tune batch size.
 - Site fields: `QUAL`, `CHROM`, `POS`, `FILTER`
 - INFO fields: arbitrary `INFO/<KEY>` predicates. `DP` and `AF` remain aliases for `INFO/DP` and `INFO/AF`.
 - FORMAT fields: arbitrary selected-sample `FORMAT/<KEY>` predicates require `--sample <name>`.
