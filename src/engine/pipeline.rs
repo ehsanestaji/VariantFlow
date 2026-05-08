@@ -46,10 +46,11 @@ impl LineCarry {
     }
 
     pub fn finish(&mut self) -> Vec<RecordBatch> {
-        let Some(batch_end) = self.pending.iter().rposition(|byte| *byte == b'\n') else {
+        if self.pending.is_empty() {
             return Vec::new();
         };
-        let bytes: Vec<u8> = self.pending.drain(..=batch_end).collect();
+
+        let bytes = std::mem::take(&mut self.pending);
         let record_count = count_records(&bytes);
 
         if record_count == 0 {
@@ -97,13 +98,30 @@ fn nth_record_end(bytes: &[u8], batch_records: usize) -> Option<usize> {
 }
 
 fn count_records(bytes: &[u8]) -> usize {
-    bytes.iter().filter(|byte| **byte == b'\n').count()
+    let newline_count = bytes.iter().filter(|byte| **byte == b'\n').count();
+    newline_count + usize::from(!bytes.is_empty() && !bytes.ends_with(b"\n"))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AcceptedBatch {
     pub sequence: u64,
     pub bytes: Vec<u8>,
+}
+
+pub fn evaluate_batches_ordered<E>(
+    mut batches: Vec<RecordBatch>,
+    filter_threads: usize,
+    mut evaluate: impl FnMut(RecordBatch) -> Result<AcceptedBatch, E>,
+) -> Result<Vec<AcceptedBatch>, E> {
+    let _bounded_filter_threads = filter_threads.max(1);
+
+    batches.sort_by_key(|batch| batch.sequence);
+    let mut accepted = Vec::with_capacity(batches.len());
+    for batch in batches {
+        accepted.push(evaluate(batch)?);
+    }
+    accepted.sort_by_key(|batch| batch.sequence);
+    Ok(accepted)
 }
 
 pub fn write_ordered_batches<W, I>(writer: &mut W, batches: I) -> io::Result<()>
@@ -206,6 +224,44 @@ mod tests {
                 bytes: b"c\n".to_vec(),
                 record_count: 1,
             }]
+        );
+    }
+
+    #[test]
+    fn ordered_evaluator_returns_accepted_batches_by_sequence() {
+        let batches = vec![
+            RecordBatch {
+                sequence: 1,
+                bytes: b"second\n".to_vec(),
+                record_count: 1,
+            },
+            RecordBatch {
+                sequence: 0,
+                bytes: b"first\n".to_vec(),
+                record_count: 1,
+            },
+        ];
+
+        let accepted = evaluate_batches_ordered(batches, 4, |batch| {
+            Ok::<_, std::convert::Infallible>(AcceptedBatch {
+                sequence: batch.sequence,
+                bytes: batch.bytes,
+            })
+        })
+        .unwrap();
+
+        assert_eq!(
+            accepted,
+            vec![
+                AcceptedBatch {
+                    sequence: 0,
+                    bytes: b"first\n".to_vec(),
+                },
+                AcceptedBatch {
+                    sequence: 1,
+                    bytes: b"second\n".to_vec(),
+                },
+            ]
         );
     }
 }
