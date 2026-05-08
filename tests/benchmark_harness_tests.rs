@@ -185,7 +185,7 @@ fn v24_index_pushdown_harness_tracks_planner_evidence() {
         "chunks skipped",
         "fallback reason",
         "break-even query count",
-        "not yet measured",
+        "100.0%",
     ] {
         assert!(report.contains(required), "report missing {required}");
     }
@@ -232,7 +232,7 @@ fn v25_packed_genotype_harness_tracks_popgen_memory_evidence() {
         "missingness",
         "HWE",
         "Fst",
-        "not yet measured",
+        "100k",
     ] {
         assert!(report.contains(required), "report missing {required}");
     }
