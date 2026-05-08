@@ -406,6 +406,31 @@ fn v22_scheduler_harness_tracks_auto_bgzf_predicate_and_resource_evidence() {
 }
 
 #[test]
+fn native_parallel_filter_uses_bounded_ordered_pipeline() {
+    let source =
+        std::fs::read_to_string("src/engine/filter.rs").expect("read native filter implementation");
+
+    for required in [
+        "sync_channel",
+        "PARALLEL_PIPELINE_QUEUE_BATCHES",
+        "run_parallel_evaluator",
+        "send_parallel_work_batch",
+        "TrySendError::Full",
+        "drain_parallel_results",
+    ] {
+        assert!(
+            source.contains(required),
+            "filter pipeline missing {required}"
+        );
+    }
+
+    assert!(
+        source.contains("write_parallel_batch_result"),
+        "pipeline should write evaluated batches in receive order"
+    );
+}
+
+#[test]
 fn v09_expression_parity_report_tracks_required_fields() {
     let report = std::fs::read_to_string("benchmark/reports/v09-expression-parity-benchmark.md")
         .expect("read v0.9 report");
