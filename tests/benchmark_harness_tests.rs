@@ -399,7 +399,8 @@ fn v22_scheduler_harness_tracks_auto_bgzf_predicate_and_resource_evidence() {
         "runtime mean",
         "peak RSS KB",
         "CPU seconds",
-        "not yet measured",
+        "Measured Rows",
+        "correctness matched",
     ] {
         assert!(report.contains(required), "report missing {required}");
     }
