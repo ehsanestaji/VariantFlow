@@ -52,6 +52,7 @@ fn plain_vcf_index_records_source_identity_and_record_chunk_offset_model() {
             .as_u64()
             .is_some_and(|seconds| seconds > 0)
     );
+    assert_eq!(json["source"]["content_sha256"].as_str().unwrap().len(), 64);
     assert_eq!(json["record_count"], 2);
 }
 

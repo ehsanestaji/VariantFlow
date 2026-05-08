@@ -3,6 +3,7 @@ use std::time::UNIX_EPOCH;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct VariantFlowIndex {
@@ -29,6 +30,7 @@ pub(crate) struct SourceIdentity {
     pub(crate) path: String,
     pub(crate) size_bytes: u64,
     pub(crate) modified_unix_seconds: u64,
+    pub(crate) content_sha256: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -81,10 +83,45 @@ pub(crate) fn source_identity(path: &Path) -> Result<SourceIdentity> {
         path: path.display().to_string(),
         size_bytes: metadata.len(),
         modified_unix_seconds,
+        content_sha256: file_sha256(path)?,
     })
 }
 
 #[allow(dead_code)]
 pub(crate) fn source_matches(index: &VariantFlowIndex, path: &Path) -> Result<bool> {
     Ok(index.source == source_identity(path)?)
+}
+
+fn file_sha256(path: &Path) -> Result<String> {
+    let mut file = std::fs::File::open(path)
+        .with_context(|| format!("failed to hash source {}", path.display()))?;
+    let mut hasher = Sha256::new();
+    std::io::copy(&mut file, &mut hasher)
+        .with_context(|| format!("failed reading source hash for {}", path.display()))?;
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn source_identity_includes_content_hash_for_same_size_files() {
+        let dir = tempdir().unwrap();
+        let first = dir.path().join("first.vcf.gz");
+        let second = dir.path().join("second.vcf.gz");
+        std::fs::write(&first, b"aaaa").unwrap();
+        std::fs::write(&second, b"bbbb").unwrap();
+
+        let first_identity = source_identity(&first).unwrap();
+        let second_identity = source_identity(&second).unwrap();
+
+        assert_eq!(first_identity.size_bytes, second_identity.size_bytes);
+        assert_eq!(first_identity.content_sha256.len(), 64);
+        assert_ne!(
+            first_identity.content_sha256,
+            second_identity.content_sha256
+        );
+    }
 }
