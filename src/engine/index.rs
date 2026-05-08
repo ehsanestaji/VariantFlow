@@ -14,8 +14,11 @@ pub(crate) mod planner;
 pub(crate) mod schema;
 
 use bgzf::for_each_bgzf_block;
+pub(crate) use bgzf::read_virtual_range;
 use metadata::ChunkMetadataBuilder;
-use schema::{OffsetModel, VariantFlowIndex, source_identity};
+pub(crate) use planner::{SkipDecision, plan_chunk};
+pub(crate) use schema::{OffsetModel, default_index_path, read_index, source_matches};
+use schema::{VariantFlowIndex, source_identity};
 
 const DEFAULT_CHUNK_RECORDS: u64 = 8192;
 
@@ -68,7 +71,7 @@ fn write_index(input: &Path, output: &Path, chunk_record_target: u64) -> Result<
 
     let index = VariantFlowIndex {
         schema_version: 2,
-        index_kind: "variantflow-vfi",
+        index_kind: "variantflow-vfi".to_string(),
         offset_model: OffsetModel::RecordChunk,
         virtual_offsets_available: false,
         source: source_identity(input)?,
@@ -147,7 +150,7 @@ fn write_bgzf_index(input: &Path, output: &Path, chunk_record_target: u64) -> Re
 
     let index = VariantFlowIndex {
         schema_version: 2,
-        index_kind: "variantflow-vfi",
+        index_kind: "variantflow-vfi".to_string(),
         offset_model: OffsetModel::BgzfVirtual,
         virtual_offsets_available: true,
         source: source_identity(input)?,

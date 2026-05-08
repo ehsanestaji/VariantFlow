@@ -8,12 +8,17 @@ use rayon::ThreadPool;
 use rayon::prelude::*;
 
 use crate::compat::{Backend, CompressionMode, Region, select_backend};
+use crate::engine::index::{
+    OffsetModel, SkipDecision, default_index_path, plan_chunk, read_index, read_virtual_range,
+    source_matches,
+};
 use crate::expr::{EvalContext, Expression, RequiredFields, parse_expression};
 use crate::io::{open_reader, open_vcf_writer};
 use crate::vcf::{self, InfoView, RecordView, column_value, resolve_sample_column};
 
 pub const NATIVE_FILTER_THREADS_ENV: &str = "VCF_FAST_NATIVE_FILTER_THREADS";
 pub const NATIVE_FILTER_BATCH_RECORDS_ENV: &str = "VCF_FAST_NATIVE_FILTER_BATCH_RECORDS";
+const DISABLE_VFI_ENV: &str = "VCF_FAST_DISABLE_VFI";
 const DEFAULT_PARALLEL_BATCH_RECORDS: usize = 8192;
 
 pub fn run(
@@ -82,6 +87,20 @@ pub fn run(
         bail!("FORMAT predicates require #CHROM header with sample columns");
     }
 
+    if env::var_os(DISABLE_VFI_ENV).is_none()
+        && try_indexed_filter(
+            input,
+            output,
+            compression,
+            &headers,
+            &expr,
+            &required,
+            sample_column,
+        )?
+    {
+        return Ok(());
+    }
+
     let mut writer = open_vcf_writer(output, compression)?;
     for header in &headers {
         writer.write_all(header)?;
@@ -109,6 +128,84 @@ pub fn run(
     }
 
     writer.flush()?;
+    Ok(())
+}
+
+fn try_indexed_filter(
+    input: &Path,
+    output: &Path,
+    compression: CompressionMode,
+    headers: &[Vec<u8>],
+    expr: &Expression,
+    required: &RequiredFields,
+    sample_column: Option<usize>,
+) -> Result<bool> {
+    let index_path = default_index_path(input);
+    if !index_path.exists() {
+        return Ok(false);
+    }
+
+    let index = read_index(&index_path)?;
+    if index.offset_model != OffsetModel::BgzfVirtual
+        || !index.virtual_offsets_available
+        || !source_matches(&index, input)?
+    {
+        return Ok(false);
+    }
+
+    let mut chunk_plan = Vec::with_capacity(index.chunks.len());
+    for chunk in &index.chunks {
+        let decision = plan_chunk(expr, chunk);
+        if decision == SkipDecision::UnsupportedForIndex {
+            return Ok(false);
+        }
+
+        let (Some(virtual_start), Some(virtual_end)) = (chunk.virtual_start, chunk.virtual_end)
+        else {
+            return Ok(false);
+        };
+        chunk_plan.push((decision, virtual_start, virtual_end));
+    }
+
+    let mut writer = open_vcf_writer(output, compression)?;
+    for header in headers {
+        writer.write_all(header)?;
+    }
+
+    for (decision, virtual_start, virtual_end) in chunk_plan {
+        if decision == SkipDecision::CanSkip {
+            continue;
+        }
+
+        let bytes = read_virtual_range(input, virtual_start, virtual_end)?;
+        scan_indexed_chunk_bytes(&bytes, &mut *writer, expr, required, sample_column)?;
+    }
+
+    writer.flush()?;
+    Ok(true)
+}
+
+fn scan_indexed_chunk_bytes(
+    bytes: &[u8],
+    writer: &mut dyn Write,
+    expr: &Expression,
+    required: &RequiredFields,
+    sample_column: Option<usize>,
+) -> Result<()> {
+    for line in bytes.split_inclusive(|byte| *byte == b'\n') {
+        if line.is_empty()
+            || line.starts_with(b"#")
+            || line.iter().all(|byte| matches!(byte, b'\n' | b'\r'))
+        {
+            continue;
+        }
+
+        let record = ByteEvalRecord::parse(line, required, sample_column)?;
+        if expr.evaluate_context(&record) {
+            writer.write_all(line)?;
+        }
+    }
+
     Ok(())
 }
 

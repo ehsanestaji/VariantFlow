@@ -1,13 +1,13 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
 use anyhow::{Context, Result};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct VariantFlowIndex {
     pub(crate) schema_version: u32,
-    pub(crate) index_kind: &'static str,
+    pub(crate) index_kind: String,
     pub(crate) offset_model: OffsetModel,
     pub(crate) virtual_offsets_available: bool,
     pub(crate) source: SourceIdentity,
@@ -16,7 +16,7 @@ pub(crate) struct VariantFlowIndex {
     pub(crate) chunks: Vec<IndexChunk>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum OffsetModel {
     RecordChunk,
@@ -24,14 +24,14 @@ pub(crate) enum OffsetModel {
     BgzfVirtual,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub(crate) struct SourceIdentity {
     pub(crate) path: String,
     pub(crate) size_bytes: u64,
     pub(crate) modified_unix_seconds: u64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct IndexChunk {
     pub(crate) ordinal: u64,
     pub(crate) first_record: u64,
@@ -52,6 +52,18 @@ pub(crate) struct IndexChunk {
     pub(crate) format_keys: Vec<String>,
     pub(crate) virtual_start: Option<u64>,
     pub(crate) virtual_end: Option<u64>,
+}
+
+pub(crate) fn read_index(path: &Path) -> Result<VariantFlowIndex> {
+    let file =
+        std::fs::File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
+    serde_json::from_reader(file).with_context(|| format!("failed to parse {}", path.display()))
+}
+
+pub(crate) fn default_index_path(input: &Path) -> PathBuf {
+    let mut path = input.as_os_str().to_os_string();
+    path.push(".vfi");
+    PathBuf::from(path)
 }
 
 pub(crate) fn source_identity(path: &Path) -> Result<SourceIdentity> {
