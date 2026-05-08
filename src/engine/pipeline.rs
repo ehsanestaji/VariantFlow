@@ -129,30 +129,57 @@ where
     W: Write + ?Sized,
     I: IntoIterator<Item = AcceptedBatch>,
 {
-    let mut next_sequence = 0_u64;
-    let mut pending = BTreeMap::<u64, Vec<u8>>::new();
+    let mut writer = OrderedBatchWriter::new(writer);
 
     for batch in batches {
-        if batch.sequence < next_sequence || pending.insert(batch.sequence, batch.bytes).is_some() {
+        writer.write_batch(batch)?;
+    }
+
+    writer.finish()
+}
+
+pub struct OrderedBatchWriter<'a, W: Write + ?Sized> {
+    writer: &'a mut W,
+    next_sequence: u64,
+    pending: BTreeMap<u64, Vec<u8>>,
+}
+
+impl<'a, W: Write + ?Sized> OrderedBatchWriter<'a, W> {
+    pub fn new(writer: &'a mut W) -> Self {
+        Self {
+            writer,
+            next_sequence: 0,
+            pending: BTreeMap::new(),
+        }
+    }
+
+    pub fn write_batch(&mut self, batch: AcceptedBatch) -> io::Result<()> {
+        if batch.sequence < self.next_sequence
+            || self.pending.insert(batch.sequence, batch.bytes).is_some()
+        {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "duplicate accepted batch sequence",
             ));
         }
 
-        while let Some(bytes) = pending.remove(&next_sequence) {
-            writer.write_all(&bytes)?;
-            next_sequence += 1;
+        while let Some(bytes) = self.pending.remove(&self.next_sequence) {
+            self.writer.write_all(&bytes)?;
+            self.next_sequence += 1;
         }
+
+        Ok(())
     }
 
-    if pending.is_empty() {
-        Ok(())
-    } else {
-        Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "accepted batch sequence gap",
-        ))
+    pub fn finish(self) -> io::Result<()> {
+        if self.pending.is_empty() {
+            Ok(())
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "accepted batch sequence gap",
+            ))
+        }
     }
 }
 
@@ -181,6 +208,28 @@ mod tests {
         write_ordered_batches(&mut output, batches).unwrap();
 
         assert_eq!(output, b"first\nsecond\nthird\n");
+    }
+
+    #[test]
+    fn ordered_batch_writer_flushes_incrementally() {
+        let mut output = Vec::new();
+        let mut writer = OrderedBatchWriter::new(&mut output);
+
+        writer
+            .write_batch(AcceptedBatch {
+                sequence: 0,
+                bytes: b"first\n".to_vec(),
+            })
+            .unwrap();
+        writer
+            .write_batch(AcceptedBatch {
+                sequence: 1,
+                bytes: b"second\n".to_vec(),
+            })
+            .unwrap();
+        writer.finish().unwrap();
+
+        assert_eq!(output, b"first\nsecond\n");
     }
 
     #[test]

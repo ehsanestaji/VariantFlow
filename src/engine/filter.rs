@@ -13,11 +13,11 @@ use rayon::prelude::*;
 use crate::compat::{Backend, CompressionMode, Region, select_backend};
 use crate::engine::index::{
     OffsetModel, SkipDecision, VariantFlowIndex, default_index_path, first_record_virtual_start,
-    for_each_virtual_range_slice, plan_chunk, read_decoded_bgzf_blocks, read_index, source_matches,
+    for_each_decoded_bgzf_block, for_each_virtual_range_slice, plan_chunk, read_index,
+    source_matches,
 };
 use crate::engine::pipeline::{
-    AcceptedBatch, LineCarry, PipelineConfig, RecordBatch, evaluate_batches_ordered,
-    write_ordered_batches,
+    AcceptedBatch, LineCarry, OrderedBatchWriter, PipelineConfig, RecordBatch,
 };
 use crate::expr::{EvalContext, Expression, RequiredFields, parse_expression};
 use crate::io::{open_reader, open_vcf_writer};
@@ -494,30 +494,56 @@ fn try_native_bgzf_pipeline(
         return Ok(false);
     }
 
-    let decoded_blocks = match read_decoded_bgzf_blocks(input) {
-        Ok(blocks) => blocks,
-        Err(error) if is_not_bgzf_error(&error) => return Ok(false),
-        Err(error) => return Err(error),
-    };
+    let mut writer = open_vcf_writer(output, compression)?;
+    let result =
+        stream_native_bgzf_pipeline(input, &mut *writer, expr, required, sample_column, config);
+    match result {
+        Ok(()) => {
+            writer.flush()?;
+            Ok(true)
+        }
+        Err(error) if is_not_bgzf_error(&error) => Ok(false),
+        Err(error) => Err(error),
+    }
+}
 
+fn stream_native_bgzf_pipeline(
+    input: &Path,
+    writer: &mut dyn Write,
+    expr: &Expression,
+    required: &RequiredFields,
+    sample_column: Option<usize>,
+    config: PipelineConfig,
+) -> Result<()> {
     let mut carry = LineCarry {
         pending: Vec::new(),
         next_batch_sequence: 0,
     };
-    let mut batches = Vec::new();
-    for block in decoded_blocks {
-        batches.extend(carry.push_block(block, config.batch_records));
-    }
-    batches.extend(carry.finish());
+    let mut ordered_writer = OrderedBatchWriter::new(writer);
+    let mut header_open = true;
 
-    let accepted = evaluate_batches_ordered(batches, config.filter_threads, |batch| {
-        evaluate_original_byte_batch(batch, expr, required, sample_column)
+    for_each_decoded_bgzf_block(input, |block| {
+        for batch in carry.push_block(block, config.batch_records) {
+            let accepted = evaluate_original_byte_batch(
+                batch,
+                expr,
+                required,
+                sample_column,
+                &mut header_open,
+            )?;
+            ordered_writer.write_batch(accepted)?;
+        }
+        Ok(())
     })?;
 
-    let mut writer = open_vcf_writer(output, compression)?;
-    write_ordered_batches(&mut *writer, accepted)?;
-    writer.flush()?;
-    Ok(true)
+    for batch in carry.finish() {
+        let accepted =
+            evaluate_original_byte_batch(batch, expr, required, sample_column, &mut header_open)?;
+        ordered_writer.write_batch(accepted)?;
+    }
+
+    ordered_writer.finish()?;
+    Ok(())
 }
 
 fn is_not_bgzf_error(error: &anyhow::Error) -> bool {
@@ -533,14 +559,16 @@ fn evaluate_original_byte_batch(
     expr: &Expression,
     required: &RequiredFields,
     sample_column: Option<usize>,
+    header_open: &mut bool,
 ) -> Result<AcceptedBatch> {
     let mut accepted = Vec::with_capacity(batch.bytes.len());
     for line in batch.bytes.split_inclusive(|byte| *byte == b'\n') {
-        if line.starts_with(b"#") {
+        if *header_open && line.starts_with(b"#") {
             accepted.extend_from_slice(line);
             continue;
         }
 
+        *header_open = false;
         let record = ByteEvalRecord::parse(line, required, sample_column)?;
         if expr.evaluate_context(&record) {
             accepted.extend_from_slice(line);
@@ -1002,6 +1030,26 @@ mod tests {
         assert_eq!(
             aggregate_config.threads.get(),
             DEFAULT_AUTO_FILTER_THREAD_CAP
+        );
+    }
+
+    #[test]
+    fn original_byte_batch_rejects_header_after_records_start() {
+        let expr = parse_expression("QUAL > 30").unwrap();
+        let required = expr.required_fields();
+        let batch = RecordBatch {
+            sequence: 0,
+            bytes: b"##fileformat=VCFv4.3\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n1\t100\trs1\tA\tG\t42\tPASS\tDP=1\n#late\n".to_vec(),
+            record_count: 4,
+        };
+        let mut header_open = true;
+
+        let error = evaluate_original_byte_batch(batch, &expr, &required, None, &mut header_open)
+            .unwrap_err();
+
+        assert!(
+            error.to_string().contains("VCF record"),
+            "unexpected error: {error}"
         );
     }
 }
