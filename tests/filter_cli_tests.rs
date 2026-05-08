@@ -1259,7 +1259,7 @@ fn bgzf_pipeline_output_matches_default_native_byte_for_byte() {
     let input = dir.path().join("pipeline-equivalence-input.vcf.gz");
     let default_output = dir.path().join("pipeline-default.vcf");
     let pipeline_output = dir.path().join("pipeline-forced.vcf");
-    gzip_fixture(&fixture("tests/data/stress_small.vcf"), &input);
+    bgzf_fixture(&fixture("tests/data/stress_small.vcf"), &input);
 
     Command::cargo_bin("variantflow")
         .unwrap()
