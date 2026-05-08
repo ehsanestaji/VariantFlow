@@ -13,6 +13,15 @@ chr1\t10\t.\tA\tG\t50\tPASS\tDP=12;AF=0.2\tGT:DP:AD\t0/1:12:6,6\t0/0:10:10,0
 chr1\t20\t.\tC\tT\t.\tq10\tDP=5\tGT:DP\t0/1:5\t./.:.
 ";
 
+const SCIENTIFIC_INFO_VCF: &str = "\
+##fileformat=VCFv4.3
+##INFO=<ID=AF,Number=A,Type=Float,Description=\"Allele frequency\">
+##INFO=<ID=HWE,Number=1,Type=Float,Description=\"Hardy-Weinberg p-value\">
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO
+chr1\t10\t.\tA\tC\t.\tPASS\tAF=1.39617e-40;HWE=1.39617e-40
+chr1\t20\t.\tA\tG\t.\tPASS\tAF=0.000312305;HWE=2.04971e-40
+";
+
 fn write_bgzf(path: &Path, text: &str) {
     let file = fs::File::create(path).unwrap();
     let mut writer = noodles_bgzf::io::Writer::new(file);
@@ -58,6 +67,98 @@ fn plain_vcf_index_records_source_identity_and_record_chunk_offset_model() {
             .is_some_and(|nanoseconds| nanoseconds > 0)
     );
     assert_eq!(json["record_count"], 2);
+}
+
+#[test]
+fn index_chunk_record_env_splits_plain_vcf_chunks() {
+    let dir = tempdir().unwrap();
+    let input = dir.path().join("format-rich.vcf");
+    let output = dir.path().join("format-rich.vcf.vfi");
+    fs::write(&input, FORMAT_RICH_VCF).unwrap();
+
+    Command::cargo_bin("variantflow")
+        .unwrap()
+        .args([
+            "index",
+            input.to_str().unwrap(),
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .env("VCF_FAST_INDEX_CHUNK_RECORDS", "1")
+        .assert()
+        .success();
+
+    let json: Value = serde_json::from_str(&fs::read_to_string(output).unwrap()).unwrap();
+    assert_eq!(json["chunk_record_target"], 1);
+    assert_eq!(json["chunks"].as_array().unwrap().len(), 2);
+    assert_eq!(json["chunks"][0]["record_count"], 1);
+    assert_eq!(json["chunks"][1]["first_record"], 1);
+}
+
+#[test]
+fn index_chunk_record_env_rejects_invalid_values() {
+    let dir = tempdir().unwrap();
+    let input = dir.path().join("format-rich.vcf");
+    let output = dir.path().join("format-rich.vcf.vfi");
+    fs::write(&input, FORMAT_RICH_VCF).unwrap();
+
+    for invalid in ["0", "-1", "abc"] {
+        Command::cargo_bin("variantflow")
+            .unwrap()
+            .args([
+                "index",
+                input.to_str().unwrap(),
+                "-o",
+                output.to_str().unwrap(),
+            ])
+            .env("VCF_FAST_INDEX_CHUNK_RECORDS", invalid)
+            .assert()
+            .failure()
+            .stderr(predicates::str::contains(
+                "VCF_FAST_INDEX_CHUNK_RECORDS must be a positive integer",
+            ));
+    }
+}
+
+#[test]
+fn index_checksum_accepts_scientific_float_metadata_after_roundtrip() {
+    let dir = tempdir().unwrap();
+    let input = dir.path().join("scientific-info.vcf.gz");
+    let index = dir.path().join("scientific-info.vcf.gz.vfi");
+    let output = dir.path().join("filtered.vcf");
+    let report = dir.path().join("index-report.json");
+    write_bgzf(&input, SCIENTIFIC_INFO_VCF);
+
+    Command::cargo_bin("variantflow")
+        .unwrap()
+        .args([
+            "index",
+            input.to_str().unwrap(),
+            "-o",
+            index.to_str().unwrap(),
+        ])
+        .env("VCF_FAST_INDEX_CHUNK_RECORDS", "1")
+        .assert()
+        .success();
+
+    Command::cargo_bin("variantflow")
+        .unwrap()
+        .args([
+            "filter",
+            input.to_str().unwrap(),
+            "--where",
+            "AF > 2",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .env("VCF_FAST_INDEX_REPORT", report.to_str().unwrap())
+        .env("VCF_FAST_INDEX_MIN_SKIP_RATE", "0")
+        .assert()
+        .success();
+
+    let json: Value = serde_json::from_str(&fs::read_to_string(report).unwrap()).unwrap();
+    assert_eq!(json["indexed"], true);
+    assert_eq!(json["chunks_skipped"], 1);
 }
 
 #[test]

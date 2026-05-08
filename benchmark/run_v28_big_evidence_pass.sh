@@ -43,12 +43,27 @@ if [[ "$MODE" == "report-only" ]]; then
   exit 0
 fi
 
-if [[ "${VCF_FAST_V28_RUN_VERIFY:-0}" == "1" || "$MODE" == "full" ]]; then
-  make verify
-  cargo test --features htslib-static
-  cargo clippy --features htslib-static --all-targets -- -D warnings
-  make vcftools-parity
-fi
+start_execution_results() {
+  {
+    echo
+    echo "## Execution Results"
+    echo
+    echo "| step | status | command |"
+    echo "| --- | --- | --- |"
+  } >>"$REPORT"
+}
+
+run_step() {
+  local label="$1"
+  shift
+  local command_text="$*"
+  if "$@"; then
+    echo "| $label | passed | \`$command_text\` |" >>"$REPORT"
+  else
+    echo "| $label | failed | \`$command_text\` |" >>"$REPORT"
+    return 1
+  fi
+}
 
 if [[ "$MODE" == "smoke" ]]; then
   VCF_FAST_V23_MODE=smoke VCF_FAST_V23_RUNS=1 make bench-v23-pipeline
@@ -63,10 +78,19 @@ if [[ "$MODE" != "full" ]]; then
   exit 2
 fi
 
-make bench-v23-pipeline
-make bench-v24-index
-make bench-v25-genotype
-make bench-v26-columnar
+start_execution_results
+
+if [[ "${VCF_FAST_V28_RUN_VERIFY:-0}" == "1" || "$MODE" == "full" ]]; then
+  run_step "make verify" make verify
+  run_step "htslib tests" cargo test --features htslib-static
+  run_step "htslib clippy" cargo clippy --features htslib-static --all-targets -- -D warnings
+  run_step "VCFtools parity" make vcftools-parity
+fi
+
+run_step "v2.3 BGZF pipeline" make bench-v23-pipeline
+run_step "v2.4 .vfi pushdown" make bench-v24-index
+run_step "v2.5 packed genotype" make bench-v25-genotype
+run_step "v2.6 columnar workflow" make bench-v26-columnar
 
 {
   echo

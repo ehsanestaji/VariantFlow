@@ -16,6 +16,8 @@ PUBLIC_REGION="${VCF_FAST_PUBLIC_REGION:-chr22:1-20000000}"
 IGSR_SOURCE="${VCF_FAST_IGSR_SOURCE:-tests/output/public-data/1kGP_high_coverage_Illumina.chr22.filtered.SNV_INDEL_SV_phased_panel.vcf.gz}"
 PYTHON="${VCF_FAST_PYTHON:-python3}"
 QUERY="${VCF_FAST_COLUMNAR_QUERY:-auto}"
+# The bcftools baseline helper uses bcftools filter/query/view as appropriate
+# for each query shape, including bcftools filter for QUAL and FILTER counts.
 
 require_tool() {
   local tool="$1"
@@ -63,7 +65,7 @@ measure_peak_rss_kb() {
   shift
 
   if [[ "${VCF_FAST_BENCH_GNU_TIME:-0}" == "1" ]]; then
-    /usr/bin/time -v -o "$raw_output" "$@"
+    /usr/bin/time -v -o "$raw_output" "$@" >/dev/null
     awk -F ':' '/Maximum resident set size/ { gsub(/ /, "", $2); print $2 }' "$raw_output"
   else
     "$@" >/dev/null
@@ -123,16 +125,8 @@ stage_public_heavy_dataset() {
 repeated_bcftools_count() {
   local input="$1"
   local repeats="$2"
-  local expr="$3"
-  local result="0"
-  for _ in $(seq 1 "$repeats"); do
-    if [[ "$expr" == "__ROW_COUNT__" ]]; then
-      result="$(bcftools view -H "$input" | wc -l | tr -d ' ')"
-    else
-      result="$(bcftools filter -i "$expr" "$input" -Ou | bcftools view -H | wc -l | tr -d ' ')"
-    fi
-  done
-  echo "$result"
+  local query="$3"
+  ./benchmark/bcftools_columnar_baseline.sh "$input" "$query" "$repeats"
 }
 
 require_tool bcftools
@@ -210,20 +204,25 @@ for records in $SIZES; do
     row_count)
       case_name="export once repeated row count"
       query_label="row count"
-      bcftools_expr="__ROW_COUNT__"
       ;;
     qual_gt_30)
       case_name="export once repeated QUAL > 30"
       query_label="QUAL > 30"
-      bcftools_expr="QUAL>30"
+      ;;
+    dp_gt_40)
+      case_name="export once repeated INFO/DP > 40"
+      query_label="INFO/DP > 40"
       ;;
     filter_pass)
       case_name="export once repeated FILTER == \"PASS\""
       query_label='FILTER == "PASS"'
-      bcftools_expr='FILTER="PASS"'
+      ;;
+    group_by_chrom_filter)
+      case_name="export once repeated grouped counts by CHROM,FILTER"
+      query_label="grouped counts by CHROM,FILTER"
       ;;
     *)
-      echo "unsupported VCF_FAST_COLUMNAR_QUERY=$selected_query; expected auto, row_count, qual_gt_30, or filter_pass" >&2
+      echo "unsupported VCF_FAST_COLUMNAR_QUERY=$selected_query; expected auto, row_count, qual_gt_30, dp_gt_40, filter_pass, or group_by_chrom_filter" >&2
       exit 2
       ;;
   esac
@@ -235,22 +234,21 @@ for records in $SIZES; do
   hyperfine_json="$OUT_DIR/hyperfine-columnar-${MODE}-${records}.json"
   export_command="./target/release/vcf-fast convert $dataset --to parquet -o $parquet_out"
   duckdb_command="$PYTHON benchmark/query_parquet_duckdb.py $parquet_out --query $selected_query --repeats $REPEATED_QUERIES"
-  if [[ "$bcftools_expr" == "__ROW_COUNT__" ]]; then
-    competitor_command="repeat $REPEATED_QUERIES x: bcftools view -H $dataset | wc -l"
-    bcftools_hyperfine_command="bash -c 'for _ in \$(seq 1 \"\$1\"); do bcftools view -H \"\$2\" | wc -l >/dev/null; done' _ $REPEATED_QUERIES $dataset"
-    baseline_label="bcftools view row count"
-  else
-    competitor_command="repeat $REPEATED_QUERIES x: bcftools filter -i '$bcftools_expr' $dataset -Ou | bcftools view -H | wc -l"
-    bcftools_hyperfine_command="bash -c 'for _ in \$(seq 1 \"\$1\"); do bcftools filter -i \"\$2\" \"\$3\" -Ou | bcftools view -H | wc -l >/dev/null; done' _ $REPEATED_QUERIES '$bcftools_expr' $dataset"
-    baseline_label="bcftools filter count"
-  fi
+  competitor_command="./benchmark/bcftools_columnar_baseline.sh $dataset $selected_query $REPEATED_QUERIES"
+  bcftools_hyperfine_command="./benchmark/bcftools_columnar_baseline.sh $dataset $selected_query $REPEATED_QUERIES >/dev/null"
+  baseline_label="bcftools columnar baseline"
 
   ./target/release/vcf-fast convert "$dataset" --to parquet -o "$parquet_out"
   duckdb_count="$("$PYTHON" benchmark/query_parquet_duckdb.py "$parquet_out" --query "$selected_query" --repeats 1)"
-  bcftools_count="$(repeated_bcftools_count "$dataset" 1 "$bcftools_expr")"
+  bcftools_count="$(repeated_bcftools_count "$dataset" 1 "$selected_query")"
   if [[ "$duckdb_count" != "$bcftools_count" ]]; then
     echo "DuckDB count $duckdb_count did not match bcftools count $bcftools_count for $dataset" >&2
     exit 1
+  fi
+  if [[ "$selected_query" == "group_by_chrom_filter" ]]; then
+    correctness_message="DuckDB $query_label result matches normalized $baseline_label"
+  else
+    correctness_message="DuckDB $query_label count $duckdb_count matches $baseline_label $bcftools_count"
   fi
 
   hyperfine \
@@ -265,11 +263,7 @@ for records in $SIZES; do
 
   export_rss="$(measure_peak_rss_kb "$OUT_DIR/rss-export-${MODE}-${records}.txt" ./target/release/vcf-fast convert "$dataset" --to parquet -o "$OUT_DIR/variants-${MODE}-${records}.rss.parquet")"
   duckdb_rss="$(measure_peak_rss_kb "$OUT_DIR/rss-duckdb-${MODE}-${records}.txt" "$PYTHON" benchmark/query_parquet_duckdb.py "$parquet_out" --query "$selected_query" --repeats "$REPEATED_QUERIES")"
-  if [[ "$bcftools_expr" == "__ROW_COUNT__" ]]; then
-    bcftools_rss="$(measure_peak_rss_kb "$OUT_DIR/rss-bcftools-${MODE}-${records}.txt" bash -c 'for _ in $(seq 1 "$1"); do bcftools view -H "$2" | wc -l >/dev/null; done' _ "$REPEATED_QUERIES" "$dataset")"
-  else
-    bcftools_rss="$(measure_peak_rss_kb "$OUT_DIR/rss-bcftools-${MODE}-${records}.txt" bash -c 'for _ in $(seq 1 "$1"); do bcftools filter -i "$2" "$3" -Ou | bcftools view -H | wc -l >/dev/null; done' _ "$REPEATED_QUERIES" "$bcftools_expr" "$dataset")"
-  fi
+  bcftools_rss="$(measure_peak_rss_kb "$OUT_DIR/rss-bcftools-${MODE}-${records}.txt" ./benchmark/bcftools_columnar_baseline.sh "$dataset" "$selected_query" "$REPEATED_QUERIES")"
   vps="$(variants_per_second "$records" "$duckdb_mean")"
 
   claim="correctness matched; repeated Parquet query needs optimization before speed claim"
@@ -293,7 +287,7 @@ PY
     "$export_command_md" \
     "$duckdb_command_md" \
     "$competitor_command_md" \
-    "DuckDB $query_label count $duckdb_count matches $baseline_label $bcftools_count" \
+    "$correctness_message" \
     "$export_mean" "$export_stddev" \
     "$duckdb_mean" "$duckdb_stddev" \
     "$bcftools_mean" "$bcftools_stddev" \

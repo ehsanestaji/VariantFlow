@@ -1,8 +1,9 @@
 use std::fs::File;
 use std::io::{BufRead, BufWriter};
 use std::path::Path;
+use std::{env, num::NonZeroU64};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 
 use crate::io::open_reader;
 use crate::vcf::RecordView;
@@ -26,17 +27,32 @@ pub(crate) use schema::{
 use schema::{set_metadata_sha256, source_identity};
 
 const DEFAULT_CHUNK_RECORDS: u64 = 8192;
+const INDEX_CHUNK_RECORDS_ENV: &str = "VCF_FAST_INDEX_CHUNK_RECORDS";
 
 pub fn run(input: &Path, output: &Path) -> Result<()> {
+    let chunk_record_target = index_chunk_record_target()?;
     if has_gz_extension(input) {
-        match write_bgzf_index(input, output, DEFAULT_CHUNK_RECORDS) {
+        match write_bgzf_index(input, output, chunk_record_target) {
             Ok(()) => return Ok(()),
             Err(error) if error.to_string().contains("not a BGZF file") => {}
             Err(error) => return Err(error),
         }
     }
 
-    write_index(input, output, DEFAULT_CHUNK_RECORDS)
+    write_index(input, output, chunk_record_target)
+}
+
+fn index_chunk_record_target() -> Result<u64> {
+    let Some(value) = env::var_os(INDEX_CHUNK_RECORDS_ENV) else {
+        return Ok(DEFAULT_CHUNK_RECORDS);
+    };
+    let Some(value) = value.to_str() else {
+        bail!("{INDEX_CHUNK_RECORDS_ENV} must be a positive integer");
+    };
+    let Ok(value) = value.parse::<NonZeroU64>() else {
+        bail!("{INDEX_CHUNK_RECORDS_ENV} must be a positive integer");
+    };
+    Ok(value.get())
 }
 
 fn write_index(input: &Path, output: &Path, chunk_record_target: u64) -> Result<()> {
