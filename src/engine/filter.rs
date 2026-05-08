@@ -1,7 +1,8 @@
 use std::env;
-use std::io::{BufRead, Write};
+use std::fs::File;
+use std::io::{BufRead, BufWriter, Write};
 use std::num::NonZeroUsize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use rayon::ThreadPool;
@@ -20,7 +21,19 @@ use crate::vcf::{self, InfoView, RecordView, column_value, resolve_sample_column
 pub const NATIVE_FILTER_THREADS_ENV: &str = "VCF_FAST_NATIVE_FILTER_THREADS";
 pub const NATIVE_FILTER_BATCH_RECORDS_ENV: &str = "VCF_FAST_NATIVE_FILTER_BATCH_RECORDS";
 const DISABLE_VFI_ENV: &str = "VCF_FAST_DISABLE_VFI";
+const INDEX_REPORT_ENV: &str = "VCF_FAST_INDEX_REPORT";
 const DEFAULT_PARALLEL_BATCH_RECORDS: usize = 8192;
+
+#[derive(Debug, serde::Serialize)]
+struct IndexFilterReport {
+    indexed: bool,
+    fallback_reason: Option<String>,
+    chunks_total: u64,
+    chunks_skipped: u64,
+    chunks_scanned: u64,
+    records_indexed: u64,
+    records_skipped_estimate: u64,
+}
 
 pub fn run(
     input: &Path,
@@ -148,23 +161,79 @@ fn try_indexed_filter(
 
     let index = match read_index(&index_path) {
         Ok(index) => index,
-        Err(_) => return Ok(false),
+        Err(_) => {
+            maybe_write_index_report(&IndexFilterReport {
+                indexed: false,
+                fallback_reason: Some("failed to read or parse VFI index".to_string()),
+                chunks_total: 0,
+                chunks_skipped: 0,
+                chunks_scanned: 0,
+                records_indexed: 0,
+                records_skipped_estimate: 0,
+            })?;
+            return Ok(false);
+        }
     };
     if !is_usable_bgzf_index(&index, input)? {
+        maybe_write_index_report(&IndexFilterReport {
+            indexed: false,
+            fallback_reason: Some(
+                "VFI index is stale or invalid for BGZF virtual-offset filtering".to_string(),
+            ),
+            chunks_total: index.chunks.len() as u64,
+            chunks_skipped: 0,
+            chunks_scanned: 0,
+            records_indexed: index.record_count,
+            records_skipped_estimate: 0,
+        })?;
         return Ok(false);
     }
 
     let mut chunk_plan = Vec::with_capacity(index.chunks.len());
+    let mut chunks_skipped = 0_u64;
+    let mut chunks_scanned = 0_u64;
+    let mut records_skipped_estimate = 0_u64;
     for chunk in &index.chunks {
         let decision = plan_chunk(expr, chunk);
         if decision == SkipDecision::UnsupportedForIndex {
+            maybe_write_index_report(&IndexFilterReport {
+                indexed: false,
+                fallback_reason: Some(
+                    "filter predicate is unsupported by VFI chunk planning".to_string(),
+                ),
+                chunks_total: index.chunks.len() as u64,
+                chunks_skipped: 0,
+                chunks_scanned: 0,
+                records_indexed: index.record_count,
+                records_skipped_estimate: 0,
+            })?;
             return Ok(false);
         }
 
         let (Some(virtual_start), Some(virtual_end)) = (chunk.virtual_start, chunk.virtual_end)
         else {
+            maybe_write_index_report(&IndexFilterReport {
+                indexed: false,
+                fallback_reason: Some("VFI index chunk is missing virtual offsets".to_string()),
+                chunks_total: index.chunks.len() as u64,
+                chunks_skipped: 0,
+                chunks_scanned: 0,
+                records_indexed: index.record_count,
+                records_skipped_estimate: 0,
+            })?;
             return Ok(false);
         };
+
+        match decision {
+            SkipDecision::CanSkip => {
+                chunks_skipped += 1;
+                records_skipped_estimate += chunk.record_count;
+            }
+            SkipDecision::MustScan => {
+                chunks_scanned += 1;
+            }
+            SkipDecision::UnsupportedForIndex => unreachable!("unsupported decisions return early"),
+        }
         chunk_plan.push((decision, virtual_start, virtual_end));
     }
 
@@ -183,7 +252,29 @@ fn try_indexed_filter(
     }
 
     writer.flush()?;
+    maybe_write_index_report(&IndexFilterReport {
+        indexed: true,
+        fallback_reason: None,
+        chunks_total: index.chunks.len() as u64,
+        chunks_skipped,
+        chunks_scanned,
+        records_indexed: index.record_count,
+        records_skipped_estimate,
+    })?;
     Ok(true)
+}
+
+fn maybe_write_index_report(report: &IndexFilterReport) -> Result<()> {
+    let Some(path) = env::var_os(INDEX_REPORT_ENV) else {
+        return Ok(());
+    };
+
+    let path = PathBuf::from(path);
+    let file = File::create(&path)
+        .with_context(|| format!("failed to create index report {}", path.display()))?;
+    serde_json::to_writer_pretty(BufWriter::new(file), report)
+        .with_context(|| format!("failed to write index report {}", path.display()))?;
+    Ok(())
 }
 
 fn is_usable_bgzf_index(index: &VariantFlowIndex, input: &Path) -> Result<bool> {

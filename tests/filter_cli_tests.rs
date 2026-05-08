@@ -214,6 +214,47 @@ fn indexed_bgzf_filter_matches_default_output_byte_for_byte() {
 }
 
 #[test]
+fn indexed_filter_can_write_skip_report() {
+    let dir = tempdir().unwrap();
+    let input = dir.path().join("stress.vcf.gz");
+    let index = PathBuf::from(format!("{}.vfi", input.display()));
+    let output = dir.path().join("filtered.vcf");
+    let report = dir.path().join("report.json");
+    bgzf_fixture(&fixture("tests/data/stress_small.vcf"), &input);
+
+    Command::cargo_bin("variantflow")
+        .unwrap()
+        .args([
+            "index",
+            input.to_str().unwrap(),
+            "-o",
+            index.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    Command::cargo_bin("variantflow")
+        .unwrap()
+        .args([
+            "filter",
+            input.to_str().unwrap(),
+            "--where",
+            "QUAL > 1000",
+            "-o",
+            output.to_str().unwrap(),
+        ])
+        .env("VCF_FAST_INDEX_REPORT", report.to_str().unwrap())
+        .assert()
+        .success();
+
+    let report: Value = serde_json::from_str(&fs::read_to_string(report).unwrap()).unwrap();
+    assert_eq!(report["indexed"], Value::Bool(true));
+    assert!(report["chunks_total"].as_u64().unwrap() >= 1);
+    assert!(report["chunks_skipped"].as_u64().unwrap() >= 1);
+    assert!(report["records_skipped_estimate"].as_u64().unwrap() >= 1);
+}
+
+#[test]
 fn stale_or_incomplete_index_falls_back_to_default_streaming_output() {
     let dir = tempdir().unwrap();
     let input = dir.path().join("stress.vcf.gz");
