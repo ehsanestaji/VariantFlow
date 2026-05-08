@@ -3,6 +3,7 @@ use std::fs::File;
 use std::io::{BufRead, BufWriter, Write};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{Receiver, SyncSender, TrySendError, sync_channel};
 use std::thread;
 
 use anyhow::{Context, Result, bail};
@@ -26,6 +27,7 @@ const INDEX_MIN_SKIP_RATE_ENV: &str = "VCF_FAST_INDEX_MIN_SKIP_RATE";
 const DEFAULT_INDEX_MIN_SKIP_RATE: f64 = 0.80;
 const DEFAULT_PARALLEL_BATCH_RECORDS: usize = 8192;
 const DEFAULT_AUTO_FILTER_THREAD_CAP: usize = 4;
+const PARALLEL_PIPELINE_QUEUE_BATCHES: usize = 2;
 
 #[derive(Debug, serde::Serialize)]
 struct IndexFilterReport {
@@ -498,38 +500,72 @@ fn run_parallel_filter(
         .build()
         .context("failed to build native filter thread pool")?;
     let mut batch = Vec::with_capacity(config.batch_records.get());
+    let (work_tx, work_rx) = sync_channel::<Vec<Vec<u8>>>(PARALLEL_PIPELINE_QUEUE_BATCHES);
+    let (result_tx, result_rx) =
+        sync_channel::<ParallelBatchResult>(PARALLEL_PIPELINE_QUEUE_BATCHES);
 
-    loop {
-        if !line.is_empty() {
-            batch.push(std::mem::take(&mut line));
-            if batch.len() >= config.batch_records.get() {
-                flush_parallel_batch(&mut batch, &pool, expr, required, sample_column, writer)?;
+    thread::scope(|scope| -> Result<()> {
+        let evaluator = scope.spawn(move || -> Result<()> {
+            run_parallel_evaluator(work_rx, result_tx, &pool, expr, required, sample_column)
+        });
+
+        loop {
+            if !line.is_empty() {
+                batch.push(std::mem::take(&mut line));
+                if batch.len() >= config.batch_records.get() {
+                    send_parallel_work_batch(
+                        &work_tx,
+                        &result_rx,
+                        std::mem::take(&mut batch),
+                        writer,
+                    )?;
+                }
+            }
+
+            if reader.read_until(b'\n', &mut line)? == 0 {
+                break;
             }
         }
 
-        if reader.read_until(b'\n', &mut line)? == 0 {
-            break;
+        if !batch.is_empty() {
+            send_parallel_work_batch(&work_tx, &result_rx, batch, writer)?;
         }
-    }
-
-    flush_parallel_batch(&mut batch, &pool, expr, required, sample_column, writer)?;
-    Ok(())
+        drop(work_tx);
+        drain_parallel_results(&result_rx, writer)?;
+        evaluator
+            .join()
+            .map_err(|_| anyhow::anyhow!("native filter evaluator thread panicked"))??;
+        Ok(())
+    })
 }
 
-fn flush_parallel_batch(
-    batch: &mut Vec<Vec<u8>>,
+type ParallelBatchResult = Result<Vec<Option<Vec<u8>>>>;
+
+fn run_parallel_evaluator(
+    work_rx: Receiver<Vec<Vec<u8>>>,
+    result_tx: SyncSender<ParallelBatchResult>,
     pool: &ThreadPool,
     expr: &Expression,
     required: &RequiredFields,
     sample_column: Option<usize>,
-    writer: &mut dyn Write,
 ) -> Result<()> {
-    if batch.is_empty() {
-        return Ok(());
+    for lines in work_rx {
+        let evaluated = evaluate_parallel_batch(lines, pool, expr, required, sample_column);
+        result_tx
+            .send(evaluated)
+            .map_err(|_| anyhow::anyhow!("native filter result receiver disconnected"))?;
     }
+    Ok(())
+}
 
-    let lines = std::mem::take(batch);
-    let evaluated = pool.install(|| {
+fn evaluate_parallel_batch(
+    lines: Vec<Vec<u8>>,
+    pool: &ThreadPool,
+    expr: &Expression,
+    required: &RequiredFields,
+    sample_column: Option<usize>,
+) -> ParallelBatchResult {
+    pool.install(|| {
         lines
             .into_par_iter()
             .map(|line| {
@@ -540,13 +576,56 @@ fn flush_parallel_batch(
                     None
                 })
             })
-            .collect::<Vec<Result<Option<Vec<u8>>>>>()
-    });
+            .collect::<Result<Vec<Option<Vec<u8>>>>>()
+    })
+}
 
-    for maybe_line in evaluated {
-        if let Some(line) = maybe_line? {
-            writer.write_all(&line)?;
+fn send_parallel_work_batch(
+    work_tx: &SyncSender<Vec<Vec<u8>>>,
+    result_rx: &Receiver<ParallelBatchResult>,
+    mut batch: Vec<Vec<u8>>,
+    writer: &mut dyn Write,
+) -> Result<()> {
+    loop {
+        match work_tx.try_send(batch) {
+            Ok(()) => return drain_available_parallel_results(result_rx, writer),
+            Err(TrySendError::Full(returned_batch)) => {
+                batch = returned_batch;
+                let result = result_rx
+                    .recv()
+                    .context("native filter evaluator disconnected while queue was full")?;
+                write_parallel_batch_result(result, writer)?;
+            }
+            Err(TrySendError::Disconnected(_)) => {
+                bail!("native filter evaluator disconnected before accepting work");
+            }
         }
+    }
+}
+
+fn drain_available_parallel_results(
+    result_rx: &Receiver<ParallelBatchResult>,
+    writer: &mut dyn Write,
+) -> Result<()> {
+    while let Ok(result) = result_rx.try_recv() {
+        write_parallel_batch_result(result, writer)?;
+    }
+    Ok(())
+}
+
+fn drain_parallel_results(
+    result_rx: &Receiver<ParallelBatchResult>,
+    writer: &mut dyn Write,
+) -> Result<()> {
+    while let Ok(result) = result_rx.recv() {
+        write_parallel_batch_result(result, writer)?;
+    }
+    Ok(())
+}
+
+fn write_parallel_batch_result(result: ParallelBatchResult, writer: &mut dyn Write) -> Result<()> {
+    for line in result?.into_iter().flatten() {
+        writer.write_all(&line)?;
     }
 
     Ok(())
