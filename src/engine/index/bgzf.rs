@@ -173,18 +173,28 @@ pub(crate) fn for_each_decoded_bgzf_block_with_threads(
         }
 
         let mut decoded_blocks = std::thread::scope(|scope| {
-            let mut handles = Vec::with_capacity(raw_blocks.len());
-            for raw in raw_blocks {
+            let chunk_size = bgzf_decode_chunk_size(raw_blocks.len(), worker_count);
+            let mut handles = Vec::with_capacity(raw_blocks.len().div_ceil(chunk_size));
+            let mut remaining = raw_blocks.into_iter();
+            loop {
+                let raw_chunk = remaining.by_ref().take(chunk_size).collect::<Vec<_>>();
+                if raw_chunk.is_empty() {
+                    break;
+                }
                 handles.push(scope.spawn(move || {
-                    let sequence = raw.sequence;
-                    inflate_raw_bgzf_block(raw).map(|block| (sequence, block))
+                    let mut decoded = Vec::with_capacity(raw_chunk.len());
+                    for raw in raw_chunk {
+                        let sequence = raw.sequence;
+                        decoded.push(inflate_raw_bgzf_block(raw).map(|block| (sequence, block))?);
+                    }
+                    Ok::<_, anyhow::Error>(decoded)
                 }));
             }
 
-            let mut decoded = Vec::with_capacity(handles.len());
+            let mut decoded = Vec::new();
             for handle in handles {
                 match handle.join() {
-                    Ok(result) => decoded.push(result?),
+                    Ok(result) => decoded.extend(result?),
                     Err(payload) => std::panic::resume_unwind(payload),
                 }
             }
@@ -203,6 +213,10 @@ pub(crate) fn for_each_decoded_bgzf_block_with_threads(
     }
 
     Ok(())
+}
+
+fn bgzf_decode_chunk_size(raw_group_len: usize, worker_count: usize) -> usize {
+    raw_group_len.div_ceil(worker_count.max(1)).max(1)
 }
 
 #[cfg(test)]
@@ -616,6 +630,17 @@ chr1\t1\t.\tA\tG\t1\tPASS\tDP=1\n";
         .unwrap();
 
         assert_eq!(threaded, serial);
+    }
+
+    #[test]
+    fn bgzf_decode_chunk_size_bounds_active_workers() {
+        let raw_group_len = 8_usize;
+        let worker_count = 4_usize;
+        let chunk_size = bgzf_decode_chunk_size(raw_group_len, worker_count);
+        let spawned_workers = raw_group_len.div_ceil(chunk_size);
+
+        assert_eq!(chunk_size, 2);
+        assert!(spawned_workers <= worker_count);
     }
 
     #[test]
