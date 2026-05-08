@@ -1254,6 +1254,51 @@ fn parallel_native_filter_matches_default_output_byte_for_byte() {
 }
 
 #[test]
+fn auto_native_scheduler_matches_default_output_for_format_aggregate() {
+    let dir = tempdir().unwrap();
+    let single_thread_output = dir.path().join("single-thread.vcf");
+    let auto_output = dir.path().join("auto.vcf");
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .env("VCF_FAST_NATIVE_FILTER_THREADS", "1")
+        .args([
+            "filter",
+            fixture("tests/data/expression_parity.vcf")
+                .to_str()
+                .unwrap(),
+            "--where",
+            "ANY(FORMAT/AD > 15) || INFO/MQ >= 50",
+            "-o",
+            single_thread_output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .env("VCF_FAST_NATIVE_FILTER_THREADS", "auto")
+        .env("VCF_FAST_NATIVE_FILTER_BATCH_RECORDS", "2")
+        .args([
+            "filter",
+            fixture("tests/data/expression_parity.vcf")
+                .to_str()
+                .unwrap(),
+            "--where",
+            "ANY(FORMAT/AD > 15) || INFO/MQ >= 50",
+            "-o",
+            auto_output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    assert_eq!(
+        fs::read(single_thread_output).unwrap(),
+        fs::read(auto_output).unwrap()
+    );
+}
+
+#[test]
 fn filter_supports_vector_indexes_and_n_pass_aggregate() {
     let dir = tempdir().unwrap();
     let indexed_output = dir.path().join("indexed.vcf");
@@ -1317,7 +1362,7 @@ fn parallel_native_filter_rejects_invalid_thread_env() {
         .assert()
         .failure()
         .stderr(predicate::str::contains(
-            "VCF_FAST_NATIVE_FILTER_THREADS must be a positive integer",
+            "VCF_FAST_NATIVE_FILTER_THREADS must be auto or a positive integer",
         ));
 }
 

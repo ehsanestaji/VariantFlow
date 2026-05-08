@@ -3,6 +3,7 @@ use std::fs::File;
 use std::io::{BufRead, BufWriter, Write};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
+use std::thread;
 
 use anyhow::{Context, Result, bail};
 use rayon::ThreadPool;
@@ -24,6 +25,7 @@ const INDEX_REPORT_ENV: &str = "VCF_FAST_INDEX_REPORT";
 const INDEX_MIN_SKIP_RATE_ENV: &str = "VCF_FAST_INDEX_MIN_SKIP_RATE";
 const DEFAULT_INDEX_MIN_SKIP_RATE: f64 = 0.80;
 const DEFAULT_PARALLEL_BATCH_RECORDS: usize = 8192;
+const DEFAULT_AUTO_FILTER_THREAD_CAP: usize = 4;
 
 #[derive(Debug, serde::Serialize)]
 struct IndexFilterReport {
@@ -69,7 +71,7 @@ pub fn run(
     if required.requires_selected_format() && sample.is_none() {
         bail!("FORMAT predicates require --sample <name>");
     }
-    let parallel_config = NativeParallelFilterConfig::from_env()?;
+    let parallel_config = NativeParallelFilterConfig::from_env(&required)?;
 
     let mut reader = open_reader(input)?;
     let mut headers = Vec::new();
@@ -557,9 +559,17 @@ struct NativeParallelFilterConfig {
 }
 
 impl NativeParallelFilterConfig {
-    fn from_env() -> Result<Self> {
+    fn from_env(required: &RequiredFields) -> Result<Self> {
+        let available = thread::available_parallelism().map_or(1, NonZeroUsize::get);
+        Self::from_env_with_available_parallelism(required, available)
+    }
+
+    fn from_env_with_available_parallelism(
+        required: &RequiredFields,
+        available_parallelism: usize,
+    ) -> Result<Self> {
         Ok(Self {
-            threads: parse_positive_env(NATIVE_FILTER_THREADS_ENV, None)?,
+            threads: parse_filter_threads_env(required, available_parallelism)?,
             batch_records: parse_positive_env(
                 NATIVE_FILTER_BATCH_RECORDS_ENV,
                 NonZeroUsize::new(DEFAULT_PARALLEL_BATCH_RECORDS),
@@ -570,6 +580,44 @@ impl NativeParallelFilterConfig {
     fn enabled(&self) -> bool {
         self.threads.get() > 1
     }
+}
+
+fn parse_filter_threads_env(
+    required: &RequiredFields,
+    available_parallelism: usize,
+) -> Result<NonZeroUsize> {
+    match env::var(NATIVE_FILTER_THREADS_ENV) {
+        Ok(raw) if raw.eq_ignore_ascii_case("auto") => Ok(auto_filter_threads(
+            required.requires_format_aggregates(),
+            available_parallelism,
+        )),
+        Ok(raw) => {
+            let value = raw.parse::<usize>().map_err(|_| {
+                anyhow::anyhow!("{NATIVE_FILTER_THREADS_ENV} must be auto or a positive integer")
+            })?;
+            NonZeroUsize::new(value).ok_or_else(|| {
+                anyhow::anyhow!("{NATIVE_FILTER_THREADS_ENV} must be auto or a positive integer")
+            })
+        }
+        Err(env::VarError::NotPresent) => Ok(auto_filter_threads(
+            required.requires_format_aggregates(),
+            available_parallelism,
+        )),
+        Err(env::VarError::NotUnicode(_)) => {
+            bail!("{NATIVE_FILTER_THREADS_ENV} must be valid UTF-8")
+        }
+    }
+}
+
+fn auto_filter_threads(
+    enable_for_cpu_heavy_expression: bool,
+    available_parallelism: usize,
+) -> NonZeroUsize {
+    if !enable_for_cpu_heavy_expression {
+        return NonZeroUsize::new(1).unwrap();
+    }
+    let threads = available_parallelism.clamp(1, DEFAULT_AUTO_FILTER_THREAD_CAP);
+    NonZeroUsize::new(threads).unwrap()
 }
 
 fn parse_positive_env(name: &str, default: Option<NonZeroUsize>) -> Result<NonZeroUsize> {
@@ -718,5 +766,53 @@ impl EvalContext for ByteEvalRecord<'_> {
             }
         });
         count
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn aggregate_required_fields() -> RequiredFields {
+        RequiredFields {
+            format_aggregates: true,
+            format_keys: vec![b"AD".to_vec()],
+            ..RequiredFields::default()
+        }
+    }
+
+    #[test]
+    fn auto_filter_threads_stay_single_thread_for_site_only_predicates() {
+        assert_eq!(auto_filter_threads(false, 8).get(), 1);
+    }
+
+    #[test]
+    fn auto_filter_threads_enable_workers_for_format_aggregates() {
+        assert_eq!(auto_filter_threads(true, 1).get(), 1);
+        assert_eq!(auto_filter_threads(true, 2).get(), 2);
+        assert_eq!(
+            auto_filter_threads(true, 16).get(),
+            DEFAULT_AUTO_FILTER_THREAD_CAP
+        );
+    }
+
+    #[test]
+    fn native_parallel_filter_config_auto_uses_expression_shape() {
+        let site_only = RequiredFields {
+            qual: true,
+            ..RequiredFields::default()
+        };
+        let aggregate = aggregate_required_fields();
+
+        let site_config =
+            NativeParallelFilterConfig::from_env_with_available_parallelism(&site_only, 8).unwrap();
+        let aggregate_config =
+            NativeParallelFilterConfig::from_env_with_available_parallelism(&aggregate, 8).unwrap();
+
+        assert_eq!(site_config.threads.get(), 1);
+        assert_eq!(
+            aggregate_config.threads.get(),
+            DEFAULT_AUTO_FILTER_THREAD_CAP
+        );
     }
 }
