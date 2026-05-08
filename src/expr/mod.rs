@@ -60,7 +60,6 @@ impl RequiredFields {
         !self.format_keys.is_empty() || self.format_aggregates
     }
 
-    #[cfg(feature = "htslib")]
     pub(crate) fn requires_format_aggregates(&self) -> bool {
         self.format_aggregates
     }
