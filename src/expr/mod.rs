@@ -10,7 +10,7 @@ pub struct Expression {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum ExprNode {
+pub(crate) enum ExprNode {
     Comparison(Comparison),
     SampleAggregate {
         quantifier: SampleQuantifier,
@@ -26,7 +26,7 @@ enum ExprNode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SampleQuantifier {
+pub(crate) enum SampleQuantifier {
     Any,
     All,
 }
@@ -110,14 +110,14 @@ impl RequiredFields {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct Comparison {
+pub(crate) struct Comparison {
     field: Field,
     op: Operator,
     literal: Literal,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum Field {
+pub(crate) enum Field {
     Chrom,
     Pos,
     Qual,
@@ -127,7 +127,7 @@ enum Field {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Operator {
+pub(crate) enum Operator {
     Gt,
     Gte,
     Lt,
@@ -137,7 +137,7 @@ enum Operator {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum Literal {
+pub(crate) enum Literal {
     Number(f64),
     String(String),
 }
@@ -244,6 +244,11 @@ impl Expression {
         self.root.collect_required_fields(&mut required);
         required
     }
+
+    #[allow(dead_code)]
+    pub(crate) fn root_node(&self) -> &ExprNode {
+        &self.root
+    }
 }
 
 impl<'a> EvalRecord<'a> {
@@ -346,6 +351,21 @@ impl ExprNode {
 }
 
 impl Comparison {
+    #[allow(dead_code)]
+    pub(crate) fn field(&self) -> &Field {
+        &self.field
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn op(&self) -> Operator {
+        self.op
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn literal(&self) -> &Literal {
+        &self.literal
+    }
+
     fn evaluate(&self, record: &impl EvalContext) -> bool {
         match (&self.field, &self.literal) {
             (Field::Chrom, Literal::String(expected)) => record
