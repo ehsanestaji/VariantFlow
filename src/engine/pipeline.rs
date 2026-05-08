@@ -27,6 +27,80 @@ pub struct RecordBatch {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DecodedBlock {
+    pub block_sequence: u64,
+    pub virtual_offset: u64,
+    pub bytes: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LineCarry {
+    pub pending: Vec<u8>,
+    pub next_batch_sequence: u64,
+}
+
+impl LineCarry {
+    pub fn push_block(&mut self, block: DecodedBlock, batch_records: usize) -> Vec<RecordBatch> {
+        self.pending.extend_from_slice(&block.bytes);
+        self.drain_full_batches(batch_records.max(1))
+    }
+
+    pub fn finish(&mut self) -> Vec<RecordBatch> {
+        let Some(batch_end) = self.pending.iter().rposition(|byte| *byte == b'\n') else {
+            return Vec::new();
+        };
+        let bytes: Vec<u8> = self.pending.drain(..=batch_end).collect();
+        let record_count = count_records(&bytes);
+
+        if record_count == 0 {
+            Vec::new()
+        } else {
+            vec![self.next_batch(bytes, record_count)]
+        }
+    }
+
+    fn drain_full_batches(&mut self, batch_records: usize) -> Vec<RecordBatch> {
+        let mut batches = Vec::new();
+
+        while let Some(batch_end) = nth_record_end(&self.pending, batch_records) {
+            let bytes: Vec<u8> = self.pending.drain(..=batch_end).collect();
+            batches.push(self.next_batch(bytes, batch_records));
+        }
+
+        batches
+    }
+
+    fn next_batch(&mut self, bytes: Vec<u8>, record_count: usize) -> RecordBatch {
+        let sequence = self.next_batch_sequence;
+        self.next_batch_sequence += 1;
+        RecordBatch {
+            sequence,
+            bytes,
+            record_count,
+        }
+    }
+}
+
+fn nth_record_end(bytes: &[u8], batch_records: usize) -> Option<usize> {
+    let mut records = 0_usize;
+
+    for (index, byte) in bytes.iter().enumerate() {
+        if *byte == b'\n' {
+            records += 1;
+            if records == batch_records {
+                return Some(index);
+            }
+        }
+    }
+
+    None
+}
+
+fn count_records(bytes: &[u8]) -> usize {
+    bytes.iter().filter(|byte| **byte == b'\n').count()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AcceptedBatch {
     pub sequence: u64,
     pub bytes: Vec<u8>,
@@ -89,5 +163,49 @@ mod tests {
         write_ordered_batches(&mut output, batches).unwrap();
 
         assert_eq!(output, b"first\nsecond\nthird\n");
+    }
+
+    #[test]
+    fn line_carry_preserves_lines_across_blocks() {
+        let mut carry = LineCarry {
+            pending: Vec::new(),
+            next_batch_sequence: 0,
+        };
+
+        let first = carry.push_block(
+            DecodedBlock {
+                block_sequence: 0,
+                virtual_offset: 0,
+                bytes: b"a\nb".to_vec(),
+            },
+            2,
+        );
+        let second = carry.push_block(
+            DecodedBlock {
+                block_sequence: 1,
+                virtual_offset: 3,
+                bytes: b"\nc\n".to_vec(),
+            },
+            2,
+        );
+        let final_batches = carry.finish();
+
+        assert!(first.is_empty());
+        assert_eq!(
+            second,
+            vec![RecordBatch {
+                sequence: 0,
+                bytes: b"a\nb\n".to_vec(),
+                record_count: 2,
+            }]
+        );
+        assert_eq!(
+            final_batches,
+            vec![RecordBatch {
+                sequence: 1,
+                bytes: b"c\n".to_vec(),
+                record_count: 1,
+            }]
+        );
     }
 }

@@ -93,6 +93,22 @@ pub(crate) fn first_record_virtual_start(path: &Path) -> Result<Option<u64>> {
     Ok(first_record_start)
 }
 
+#[allow(dead_code)]
+pub(crate) fn read_decoded_bgzf_blocks(
+    path: &Path,
+) -> Result<Vec<crate::engine::pipeline::DecodedBlock>> {
+    let mut blocks = Vec::new();
+    for_each_bgzf_block(path, |block| {
+        blocks.push(crate::engine::pipeline::DecodedBlock {
+            block_sequence: blocks.len() as u64,
+            virtual_offset: block.virtual_start(),
+            bytes: block.uncompressed,
+        });
+        Ok(())
+    })?;
+    Ok(blocks)
+}
+
 #[cfg(test)]
 pub(crate) fn read_bgzf_blocks(path: &Path) -> Result<Vec<BgzfBlock>> {
     let mut blocks = Vec::new();
