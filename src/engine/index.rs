@@ -14,7 +14,10 @@ pub(crate) mod planner;
 pub(crate) mod schema;
 
 use bgzf::for_each_bgzf_block;
-pub(crate) use bgzf::{bgzf_data_virtual_end, read_virtual_range};
+pub(crate) use bgzf::{
+    bgzf_data_virtual_end, first_record_virtual_start, read_virtual_range,
+    virtual_ends_are_record_boundaries,
+};
 use metadata::ChunkMetadataBuilder;
 pub(crate) use planner::{SkipDecision, plan_chunk};
 use schema::source_identity;
