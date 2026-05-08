@@ -120,7 +120,12 @@ pub(crate) fn source_matches(index: &VariantFlowIndex, path: &Path) -> Result<bo
 }
 
 pub(crate) fn set_metadata_sha256(index: &mut VariantFlowIndex) -> Result<()> {
-    index.index_metadata_sha256 = metadata_sha256(index)?;
+    index.index_metadata_sha256.clear();
+    let normalized: VariantFlowIndex = serde_json::from_slice(
+        &serde_json::to_vec(index).context("failed to serialize VFI index for checksum")?,
+    )
+    .context("failed to normalize VFI index metadata for checksum")?;
+    index.index_metadata_sha256 = metadata_sha256(&normalized)?;
     Ok(())
 }
 

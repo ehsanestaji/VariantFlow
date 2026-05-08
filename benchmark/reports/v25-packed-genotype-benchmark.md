@@ -25,3 +25,7 @@ Source generated report: `tests/output/benchmark-results/v25-packed-genotype/tru
 ## Caveat
 
 This report is not a broad VCFtools replacement claim. It supports scoped claims for the measured 100k 1000 Genomes / IGSR diploid biallelic human cohort only. Larger 1M repeated rows remain the next evidence step.
+
+## v3.0 1M Evidence Attempt
+
+On 2026-05-08, the Docker/Linux 1M tier was started with `VCF_FAST_V25_TIERS="1000000"`, `VCF_FAST_V25_RUNS=3`, and `VCF_FAST_V25_WARMUP=1`. The run staged `public-cohort.biallelic.1000000.vcf.gz` and completed the frequency hyperfine pair, but it was interrupted before the tier-level VCFtools parity gate could run. At interruption, `public-cohort-1000000-frequency.hyperfine.json` contained VariantFlow `24.123s` and VCFtools `91.810s`, and `public-cohort-1000000-missingness.hyperfine.json` contained only the first VariantFlow mean (`22.220s`) while VCFtools `--missing-indv` was still running. Because the full tier did not finish and normalized tier outputs were not accepted by `benchmark/check_vcftools_parity.py`, no 1M row is promoted to the claim matrix.

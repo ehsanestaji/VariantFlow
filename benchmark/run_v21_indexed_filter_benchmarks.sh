@@ -19,6 +19,7 @@ fi
 EXPR="${VCF_FAST_V21_EXPR:-$DEFAULT_EXPR}"
 BCFTOOLS_EXPR="${VCF_FAST_V21_BCFTOOLS_EXPR:-$DEFAULT_BCFTOOLS_EXPR}"
 INDEX_MIN_SKIP_RATE="${VCF_FAST_INDEX_MIN_SKIP_RATE:-0.80}"
+INDEX_CHUNK_RECORDS="${VCF_FAST_INDEX_CHUNK_RECORDS:-8192}"
 OUT_DIR="${VCF_FAST_V21_OUT_DIR:-${VCF_FAST_BENCH_OUT_DIR:-tests/output/benchmark-results/v21-indexed-filter}}"
 DATA_DIR="${OUT_DIR}/data"
 REPORT="${VCF_FAST_V21_REPORT:-benchmark/reports/v21-indexed-filter-benchmark.md}"
@@ -145,7 +146,10 @@ try:
         value = json.load(handle).get(sys.argv[2], "n/a")
 except FileNotFoundError:
     value = "n/a"
-print(value if value is not None else "n/a")
+if isinstance(value, bool):
+    print(str(value).lower())
+else:
+    print(value if value is not None else "n/a")
 PY
 }
 
@@ -277,7 +281,7 @@ run_bcftools_filter() {
   echo "This report measures VariantFlow v2.1 Indexed Filter behavior using BGZF virtual offsets. It compares default native filtering, indexed native filtering, and bcftools filter."
   if [[ "$MODE" = "public-igsr" ]]; then
     echo
-    echo "The public mode stages bounded BGZF tiers from the cached 1000 Genomes / IGSR chr22 VCF without writing a plain VCF intermediate. The default expression is \`${EXPR}\`, which exercises INFO/AF chunk metadata on real public records."
+    echo "The public mode stages bounded BGZF tiers from the cached 1000 Genomes / IGSR chr22 VCF without writing a plain VCF intermediate. The configured expression is \`${EXPR}\`, which exercises guarded chunk metadata on real public records."
   else
     echo
     echo "The synthetic mode default expression is \`${EXPR}\`, which is designed to skip all deterministic stress chunks because generated QUAL values are 0..99."
@@ -294,6 +298,7 @@ run_bcftools_filter() {
   echo "- expression: \`${EXPR}\`"
   echo "- bcftools expression: \`${BCFTOOLS_EXPR}\`"
   echo "- index minimum skip rate: \`${INDEX_MIN_SKIP_RATE}\`"
+  echo "- index chunk_record_target: \`${INDEX_CHUNK_RECORDS}\`"
   if [[ "$MODE" = "public-igsr" ]]; then
     echo "- dataset source: \`${PUBLIC_SOURCE_URL}\`"
     echo "- cached input: \`${PUBLIC_INPUT}\`"
@@ -309,8 +314,8 @@ run_bcftools_filter() {
   echo
   echo "## Results"
   echo
-  echo "| tier records | index action | chunks_total | chunks_skipped | skip rate | records_skipped_estimate | core records | correctness result | guarded indexed runtime mean +/- stddev | default runtime mean +/- stddev | bcftools runtime mean +/- stddev | speedup | guarded variants/sec | peak RSS | claim decision | caveat |"
-  echo "| ---: | --- | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |"
+  echo "| tier records | chunk_record_target | index action | chunks_total | chunks_skipped | skip rate | records_skipped_estimate | core records | correctness result | guarded indexed runtime mean +/- stddev | default runtime mean +/- stddev | bcftools runtime mean +/- stddev | speedup | guarded variants/sec | peak RSS | claim decision | caveat |"
+  echo "| ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |"
 } >"$REPORT"
 
 for records in $SIZES; do
@@ -323,10 +328,10 @@ for records in $SIZES; do
   bcftools_core="${OUT_DIR}/bcftools-core-${records}.tsv"
   index_report="${OUT_DIR}/index-report-${records}.json"
 
-  index_cmd="$(shell_command "$BIN" index "$dataset" -o "$index_path")"
+  index_cmd="VCF_FAST_INDEX_CHUNK_RECORDS=$(printf "%q" "$INDEX_CHUNK_RECORDS") $(shell_command "$BIN" index "$dataset" -o "$index_path")"
 
   # variantflow index creates the .vfi sidecar used for BGZF virtual offsets.
-  "$BIN" index "$dataset" -o "$index_path"
+  VCF_FAST_INDEX_CHUNK_RECORDS="$INDEX_CHUNK_RECORDS" "$BIN" index "$dataset" -o "$index_path"
 
   run_default_filter "$dataset" "$default_vcf"
   run_indexed_filter "$dataset" "$indexed_vcf" "$index_report"
@@ -355,6 +360,7 @@ for records in $SIZES; do
   bcftools_rss="$(measure_peak_rss_kb "bcftools-${records}-rss" bcftools filter -Ov -i "$BCFTOOLS_EXPR" "$dataset" -o /dev/null || echo "n/a")"
 
   chunks_total="$(json_field "$index_report" chunks_total)"
+  chunk_record_target="$(json_field "$index_path" chunk_record_target)"
   chunks_skipped="$(json_field "$index_report" chunks_skipped)"
   records_skipped="$(json_field "$index_report" records_skipped_estimate)"
   indexed_flag="$(json_field "$index_report" indexed)"
@@ -384,7 +390,7 @@ for records in $SIZES; do
   fi
 
   {
-    echo "| ${records} | ${index_action} | ${chunks_total} | ${chunks_skipped} | ${rate} | ${records_skipped} | ${core_records} | ${correctness} | ${indexed_mean}s +/- ${indexed_stddev}s | ${default_mean}s +/- ${default_stddev}s | ${bcftools_mean}s +/- ${bcftools_stddev}s | ${speedup} | ${throughput} | indexed ${indexed_rss} KB; bcftools ${bcftools_rss} KB | ${claim} | ${caveat} |"
+    echo "| ${records} | ${chunk_record_target} | ${index_action} | ${chunks_total} | ${chunks_skipped} | ${rate} | ${records_skipped} | ${core_records} | ${correctness} | ${indexed_mean}s +/- ${indexed_stddev}s | ${default_mean}s +/- ${default_stddev}s | ${bcftools_mean}s +/- ${bcftools_stddev}s | ${speedup} | ${throughput} | indexed ${indexed_rss} KB; bcftools ${bcftools_rss} KB | ${claim} | ${caveat} |"
   } >>"$REPORT"
 
   {

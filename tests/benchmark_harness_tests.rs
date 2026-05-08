@@ -153,12 +153,18 @@ fn v24_index_pushdown_harness_tracks_planner_evidence() {
 
     for required in [
         "VCF_FAST_V24_SIZES",
+        "VCF_FAST_V24_PUBLIC_CHUNK_RECORDS",
+        "VCF_FAST_INDEX_CHUNK_RECORDS",
         "100000 1000000",
         "QUAL > 1000",
+        "public-qual-high-skip",
         "FILTER == \"PASS\"",
+        "public-filter-pass",
         "AF > 0.99",
+        "8192 1024 256",
         "DP > 1000",
         "indexed INFO/<KEY>",
+        "chunk_record_target",
         "chunks_total",
         "chunks_skipped",
         "skip rate",
@@ -257,6 +263,12 @@ fn v26_columnar_pushdown_harness_and_converter_track_row_group_tuning() {
         "INFO/DP",
         "INFO/AF",
         "DuckDB",
+        "qual_gt_30",
+        "dp_gt_40",
+        "filter_pass",
+        "group_by_chrom_filter",
+        "VCF_FAST_V26_QUERIES",
+        "duckdb==1.5.2",
         "export time",
         "query-only time",
         "amortized time",
@@ -312,6 +324,9 @@ fn v28_big_evidence_pass_orchestrates_release_gate_inputs() {
         "unsupported broad claims",
         "Linux RSS",
         "CPU seconds",
+        "Execution Results",
+        "passed",
+        "failed",
     ] {
         assert!(script.contains(required), "script missing {required}");
     }
