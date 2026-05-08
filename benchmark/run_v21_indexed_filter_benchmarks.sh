@@ -10,7 +10,7 @@ RUNS="${VCF_FAST_BENCH_RUNS:-3}"
 WARMUP="${VCF_FAST_BENCH_WARMUP:-1}"
 EXPR="${VCF_FAST_V21_EXPR:-QUAL > 1000}"
 BCFTOOLS_EXPR="${VCF_FAST_V21_BCFTOOLS_EXPR:-QUAL>1000}"
-OUT_DIR="${VCF_FAST_BENCH_OUT_DIR:-tests/output/benchmark-results/v21-indexed-filter}"
+OUT_DIR="${VCF_FAST_V21_OUT_DIR:-${VCF_FAST_BENCH_OUT_DIR:-tests/output/benchmark-results/v21-indexed-filter}}"
 DATA_DIR="${OUT_DIR}/data"
 REPORT="${VCF_FAST_V21_REPORT:-benchmark/reports/v21-indexed-filter-benchmark.md}"
 BIN="${VCF_FAST_BIN:-target/release/variantflow}"
@@ -245,6 +245,8 @@ for records in $SIZES; do
   bcftools_core="${OUT_DIR}/bcftools-core-${records}.tsv"
   index_report="${OUT_DIR}/index-report-${records}.json"
 
+  index_cmd="$(shell_command "$BIN" index "$dataset" -o "$index_path")"
+
   # variantflow index creates the .vfi sidecar used for BGZF virtual offsets.
   "$BIN" index "$dataset" -o "$index_path"
 
@@ -291,7 +293,7 @@ for records in $SIZES; do
     echo
     echo "### Commands for ${records}"
     echo
-    echo "- index: \`variantflow index ${dataset} -o ${index_path}\`"
+    echo "- index: \`${index_cmd}\`"
     echo "- default: \`${default_cmd}\`"
     echo "- indexed: \`${indexed_cmd}\`"
     echo "- bcftools: \`${bcftools_cmd}\`"

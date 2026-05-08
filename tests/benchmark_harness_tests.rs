@@ -301,6 +301,7 @@ fn v21_indexed_filter_harness_tracks_skip_rate_and_correctness() {
         "VCF_FAST_V21_SIZES",
         "10000 100000 1000000",
         "VCF_FAST_V21_EXPR",
+        "VCF_FAST_V21_OUT_DIR",
         "QUAL > 1000",
         "variantflow index",
         "VCF_FAST_INDEX_REPORT",
@@ -317,6 +318,7 @@ fn v21_indexed_filter_harness_tracks_skip_rate_and_correctness() {
         "hyperfine",
         "claim decision",
         "default_cmd",
+        "index_cmd",
         "bench-disabled",
     ] {
         assert!(script.contains(required), "script missing {required}");
