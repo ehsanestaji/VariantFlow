@@ -6,7 +6,7 @@ cd "$ROOT_DIR"
 
 OUT_DIR="${VCF_FAST_V23_OUT_DIR:-tests/output/benchmark-results/v23-bgzf-pipeline}"
 DATA_DIR="$OUT_DIR/data"
-REPORT="${VCF_FAST_V23_REPORT:-benchmark/reports/v23-bgzf-pipeline-benchmark.md}"
+REPORT="${VCF_FAST_V23_REPORT:-$OUT_DIR/v23-bgzf-pipeline-benchmark.md}"
 MODE="${VCF_FAST_V23_MODE:-smoke}"
 RUNS="${VCF_FAST_V23_RUNS:-1}"
 BGZF_THREADS="${VCF_FAST_NATIVE_BGZF_THREADS_BENCH:-4}"

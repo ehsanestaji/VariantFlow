@@ -345,4 +345,3 @@ This order is deliberate: compressed public VCF is the common path, index skippi
 - Packed genotype kernels can accidentally drift from VCFtools edge behavior; parity tests must stay first-class.
 - Full public runs can be limited by remote I/O and disk quotas; harnesses should support bounded tiers and `/dev/null` timed output.
 - SIMD may be a small win if decompression dominates; profiling decides whether it proceeds.
-
