@@ -21,7 +21,10 @@ use crate::engine::pipeline::{
     evaluate_batches_ordered,
 };
 use crate::expr::{EvalContext, Expression, RequiredFields, parse_expression};
-use crate::io::{open_reader, open_vcf_writer};
+use crate::io::{
+    NATIVE_BGZF_THREADS_ENV, native_bgzf_threads_from_env, open_reader_with_native_bgzf_threads,
+    open_vcf_writer,
+};
 use crate::vcf::{self, InfoView, RecordView, column_value, resolve_sample_column};
 
 #[cfg(test)]
@@ -86,10 +89,11 @@ pub fn run(
     if required.requires_selected_format() && sample.is_none() {
         bail!("FORMAT predicates require --sample <name>");
     }
+    let bgzf_threads = native_filter_bgzf_threads(&required)?;
     let parallel_config = NativeParallelFilterConfig::from_env(&required)?;
-    let pipeline_config = native_pipeline_config_from_env(&required)?;
+    let pipeline_config = native_pipeline_config_from_env(&required, bgzf_threads)?;
 
-    let mut reader = open_reader(input)?;
+    let mut reader = open_reader_with_native_bgzf_threads(input, bgzf_threads)?;
     let mut headers = Vec::new();
     let mut line = Vec::new();
     let mut sample_column = None;
@@ -857,18 +861,28 @@ impl NativeParallelFilterConfig {
     }
 }
 
-fn native_pipeline_config_from_env(required: &RequiredFields) -> Result<PipelineConfig> {
+fn native_pipeline_config_from_env(
+    required: &RequiredFields,
+    bgzf_threads: Option<NonZeroUsize>,
+) -> Result<PipelineConfig> {
     let available = thread::available_parallelism().map_or(1, NonZeroUsize::get);
     let filter_config =
         NativeParallelFilterConfig::from_env_with_available_parallelism(required, available)?;
-    let bgzf_threads = crate::io::native_bgzf_threads_from_env()?.map_or(1, NonZeroUsize::get);
 
     Ok(PipelineConfig {
-        bgzf_threads,
+        bgzf_threads: bgzf_threads.map_or(1, NonZeroUsize::get),
         filter_threads: filter_config.threads.get(),
         batch_records: filter_config.batch_records.get(),
         queue_batches: filter_config.queue_batches.get(),
     })
+}
+
+fn native_filter_bgzf_threads(required: &RequiredFields) -> Result<Option<NonZeroUsize>> {
+    if required.requires_format_aggregates() && env::var_os(NATIVE_BGZF_THREADS_ENV).is_none() {
+        return Ok(NonZeroUsize::new(1));
+    }
+
+    native_bgzf_threads_from_env()
 }
 
 fn parse_filter_threads_env(
@@ -888,10 +902,7 @@ fn parse_filter_threads_env(
                 anyhow::anyhow!("{NATIVE_FILTER_THREADS_ENV} must be auto or a positive integer")
             })
         }
-        Err(env::VarError::NotPresent) => Ok(auto_filter_threads(
-            required.requires_format_aggregates(),
-            available_parallelism,
-        )),
+        Err(env::VarError::NotPresent) => Ok(NonZeroUsize::new(1).unwrap()),
         Err(env::VarError::NotUnicode(_)) => {
             bail!("{NATIVE_FILTER_THREADS_ENV} must be valid UTF-8")
         }
@@ -1079,7 +1090,7 @@ mod tests {
     }
 
     #[test]
-    fn auto_filter_threads_enable_workers_for_format_aggregates() {
+    fn explicit_auto_filter_threads_enable_workers_for_format_aggregates() {
         assert_eq!(auto_filter_threads(true, 1).get(), 1);
         assert_eq!(auto_filter_threads(true, 2).get(), 2);
         assert_eq!(
@@ -1089,7 +1100,7 @@ mod tests {
     }
 
     #[test]
-    fn native_parallel_filter_config_auto_uses_expression_shape() {
+    fn native_parallel_filter_config_default_is_conservative_for_format_aggregates() {
         let site_only = RequiredFields {
             qual: true,
             ..RequiredFields::default()
@@ -1102,10 +1113,28 @@ mod tests {
             NativeParallelFilterConfig::from_env_with_available_parallelism(&aggregate, 8).unwrap();
 
         assert_eq!(site_config.threads.get(), 1);
-        assert_eq!(
-            aggregate_config.threads.get(),
-            DEFAULT_AUTO_FILTER_THREAD_CAP
-        );
+        assert_eq!(aggregate_config.threads.get(), 1);
+    }
+
+    #[test]
+    fn native_pipeline_config_defaults_to_single_bgzf_for_format_aggregates() {
+        let site_only = RequiredFields {
+            qual: true,
+            ..RequiredFields::default()
+        };
+        let aggregate = aggregate_required_fields();
+
+        let site_bgzf = native_filter_bgzf_threads(&site_only)
+            .unwrap()
+            .map(NonZeroUsize::get)
+            .unwrap_or(0);
+        let aggregate_bgzf = native_filter_bgzf_threads(&aggregate)
+            .unwrap()
+            .map(NonZeroUsize::get)
+            .unwrap_or(0);
+
+        assert!(site_bgzf >= 1);
+        assert_eq!(aggregate_bgzf, 1);
     }
 
     #[test]
