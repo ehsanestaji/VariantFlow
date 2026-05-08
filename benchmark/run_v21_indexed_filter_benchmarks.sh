@@ -81,7 +81,7 @@ import time
 print(f"{time.perf_counter():.9f}")
 PY
 )"
-    eval "$command_text" >"${OUT_DIR}/${label}.runtime.stdout" 2>"${OUT_DIR}/${label}.runtime.stderr"
+    bash -lc "$command_text" >"${OUT_DIR}/${label}.runtime.stdout" 2>"${OUT_DIR}/${label}.runtime.stderr"
     end_seconds="$(python3 - <<'PY'
 import time
 print(f"{time.perf_counter():.9f}")
