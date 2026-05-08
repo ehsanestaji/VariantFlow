@@ -110,6 +110,226 @@ fn v23_pipeline_benchmark_harness_declares_required_modes() {
 }
 
 #[test]
+fn v30_candidate_benchmark_targets_are_declared() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let makefile = fs::read_to_string(root.join("Makefile")).unwrap();
+
+    for required in [
+        "bench-v24-index:",
+        "bench-v25-genotype:",
+        "bench-v26-columnar:",
+        "bench-v28-evidence:",
+        "run_v24_index_pushdown_benchmarks.sh",
+        "run_v25_packed_genotype_benchmarks.sh",
+        "run_v26_columnar_pushdown_benchmarks.sh",
+        "run_v28_big_evidence_pass.sh",
+    ] {
+        assert!(
+            makefile.contains(required),
+            "missing Makefile text {required}"
+        );
+    }
+
+    for script in [
+        "benchmark/run_v24_index_pushdown_benchmarks.sh",
+        "benchmark/run_v25_packed_genotype_benchmarks.sh",
+        "benchmark/run_v26_columnar_pushdown_benchmarks.sh",
+        "benchmark/run_v28_big_evidence_pass.sh",
+    ] {
+        assert!(
+            makefile.contains(&format!("bash -n {script}")),
+            "verify should syntax-check {script}"
+        );
+    }
+}
+
+#[test]
+fn v24_index_pushdown_harness_tracks_planner_evidence() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let script = fs::read_to_string(root.join("benchmark/run_v24_index_pushdown_benchmarks.sh"))
+        .expect("read v2.4 index pushdown script");
+    let report = fs::read_to_string(root.join("benchmark/reports/v24-index-pushdown-benchmark.md"))
+        .expect("read v2.4 index pushdown report");
+
+    for required in [
+        "VCF_FAST_V24_SIZES",
+        "100000 1000000",
+        "QUAL > 1000",
+        "FILTER == \"PASS\"",
+        "AF > 0.99",
+        "DP > 1000",
+        "indexed INFO/<KEY>",
+        "chunks_total",
+        "chunks_skipped",
+        "skip rate",
+        "fallback reason",
+        "index build cost",
+        "break-even query count",
+        "used VFI",
+        "fell back",
+        "bcftools filter",
+        "correctness result",
+    ] {
+        assert!(script.contains(required), "script missing {required}");
+    }
+
+    for required in [
+        "v2.4 Index Pushdown Benchmark",
+        "CHROM",
+        "POS",
+        "QUAL",
+        "FILTER",
+        "INFO/DP",
+        "INFO/AF",
+        "chunks scanned",
+        "chunks skipped",
+        "fallback reason",
+        "break-even query count",
+        "not yet measured",
+    ] {
+        assert!(report.contains(required), "report missing {required}");
+    }
+}
+
+#[test]
+fn v25_packed_genotype_harness_tracks_popgen_memory_evidence() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let script = fs::read_to_string(root.join("benchmark/run_v25_packed_genotype_benchmarks.sh"))
+        .expect("read v2.5 packed genotype script");
+    let report =
+        fs::read_to_string(root.join("benchmark/reports/v25-packed-genotype-benchmark.md"))
+            .expect("read v2.5 packed genotype report");
+
+    for required in [
+        "VCF_FAST_V25_TIERS",
+        "100000 1000000",
+        "make vcftools-parity",
+        "bench-vcftools-true-popgen",
+        "frequency",
+        "missingness",
+        "HWE",
+        "heterozygosity",
+        "site pi",
+        "window pi",
+        "Tajima's D",
+        "LD",
+        "Weir-Cockerham Fst",
+        "peak RSS KB",
+        "CPU seconds",
+        "CPU-hour estimate",
+        "samples/sec",
+        "correctness result",
+    ] {
+        assert!(script.contains(required), "script missing {required}");
+    }
+
+    for required in [
+        "v2.5 Packed Genotype Benchmark",
+        "VCFtools parity",
+        "diploid biallelic",
+        "LD RSS",
+        "frequency",
+        "missingness",
+        "HWE",
+        "Fst",
+        "not yet measured",
+    ] {
+        assert!(report.contains(required), "report missing {required}");
+    }
+}
+
+#[test]
+fn v26_columnar_pushdown_harness_and_converter_track_row_group_tuning() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let script = fs::read_to_string(root.join("benchmark/run_v26_columnar_pushdown_benchmarks.sh"))
+        .expect("read v2.6 columnar pushdown script");
+    let report =
+        fs::read_to_string(root.join("benchmark/reports/v26-columnar-pushdown-benchmark.md"))
+            .expect("read v2.6 columnar pushdown report");
+    let converter = fs::read_to_string(root.join("src/engine/convert.rs"))
+        .expect("read convert implementation");
+
+    for required in [
+        "VCF_FAST_PARQUET_ROW_GROUP_RECORDS",
+        "CHROM",
+        "FILTER",
+        "QUAL",
+        "INFO/DP",
+        "INFO/AF",
+        "DuckDB",
+        "export time",
+        "query-only time",
+        "amortized time",
+        "break-even query count",
+        "QUAL > 30",
+        "INFO/DP > 40",
+        "FILTER == \"PASS\"",
+        "GROUP BY CHROM, FILTER",
+    ] {
+        assert!(script.contains(required), "script missing {required}");
+    }
+
+    for required in [
+        "VCF_FAST_PARQUET_ROW_GROUP_RECORDS",
+        "parquet_batch_rows",
+        "positive integer",
+    ] {
+        assert!(converter.contains(required), "converter missing {required}");
+    }
+
+    for required in [
+        "v2.6 Columnar Pushdown Benchmark",
+        "row-group sizing",
+        "DuckDB",
+        "export time",
+        "query-only time",
+        "amortized time",
+        "break-even query count",
+        "not yet measured",
+    ] {
+        assert!(report.contains(required), "report missing {required}");
+    }
+}
+
+#[test]
+fn v28_big_evidence_pass_orchestrates_release_gate_inputs() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let script = fs::read_to_string(root.join("benchmark/run_v28_big_evidence_pass.sh"))
+        .expect("read v2.8 evidence script");
+    let report = fs::read_to_string(root.join("benchmark/reports/v28-big-linux-evidence-pass.md"))
+        .expect("read v2.8 evidence report");
+
+    for required in [
+        "bench-v23-pipeline",
+        "bench-v24-index",
+        "bench-v25-genotype",
+        "bench-v26-columnar",
+        "make verify",
+        "cargo test --features htslib-static",
+        "cargo clippy --features htslib-static --all-targets -- -D warnings",
+        "make vcftools-parity",
+        "claim matrix",
+        "unsupported broad claims",
+        "Linux RSS",
+        "CPU seconds",
+    ] {
+        assert!(script.contains(required), "script missing {required}");
+    }
+
+    for required in [
+        "v2.8 Big Linux Evidence Pass",
+        "v2.3 BGZF pipeline",
+        "v2.4 .vfi pushdown",
+        "v2.5 packed genotype",
+        "v2.6 columnar workflow",
+        "Release gate",
+        "no broad best-tool claim",
+    ] {
+        assert!(report.contains(required), "report missing {required}");
+    }
+}
+
+#[test]
 fn true_population_downloader_documents_igsr_metadata_inputs() {
     let root = repo_root();
     let downloader = fs::read_to_string(root.join("benchmark/download_public_data.sh"))

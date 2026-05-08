@@ -1,3 +1,4 @@
+use std::env;
 use std::fs::File;
 use std::io::{BufRead, Write};
 use std::path::Path;
@@ -13,7 +14,8 @@ use parquet::arrow::ArrowWriter;
 use crate::compat::{Backend, Region, select_backend};
 use crate::io::{open_reader, open_writer};
 
-const PARQUET_BATCH_ROWS: usize = 8192;
+const DEFAULT_PARQUET_BATCH_ROWS: usize = 8192;
+const PARQUET_ROW_GROUP_ENV: &str = "VCF_FAST_PARQUET_ROW_GROUP_RECORDS";
 
 pub fn run(input: &Path, target: &str, output: &Path, region: Option<&Region>) -> Result<()> {
     match target {
@@ -62,13 +64,14 @@ fn convert_to_parquet(input: &Path, output: &Path, region: Option<&Region>) -> R
     let mut writer = ArrowWriter::try_new(file, schema.clone(), None)?;
     let mut fields: [Vec<u8>; 8] = std::array::from_fn(|_| Vec::new());
     let mut batch = ParquetBatch::new(schema);
+    let batch_rows = parquet_batch_rows()?;
 
     loop {
         match peek_byte(&mut *reader)? {
             Some(b'#') => skip_line_tail(&mut *reader)?,
             Some(_) => {
                 append_next_parquet_record(&mut *reader, &mut fields, &mut batch)?;
-                if batch.len() >= PARQUET_BATCH_ROWS {
+                if batch.len() >= batch_rows {
                     batch.flush(&mut writer)?;
                 }
             }
@@ -79,6 +82,22 @@ fn convert_to_parquet(input: &Path, output: &Path, region: Option<&Region>) -> R
     batch.flush(&mut writer)?;
     writer.close()?;
     Ok(())
+}
+
+fn parquet_batch_rows() -> Result<usize> {
+    match env::var(PARQUET_ROW_GROUP_ENV) {
+        Ok(raw) => {
+            let rows = raw
+                .parse::<usize>()
+                .with_context(|| format!("{PARQUET_ROW_GROUP_ENV} must be a positive integer"))?;
+            if rows == 0 {
+                bail!("{PARQUET_ROW_GROUP_ENV} must be a positive integer");
+            }
+            Ok(rows)
+        }
+        Err(env::VarError::NotPresent) => Ok(DEFAULT_PARQUET_BATCH_ROWS),
+        Err(err) => Err(err).with_context(|| format!("failed to read {PARQUET_ROW_GROUP_ENV}")),
+    }
 }
 
 fn write_tsv_records_streaming(

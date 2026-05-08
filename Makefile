@@ -1,4 +1,4 @@
-.PHONY: build test test-htslib fmt clippy verify release-candidate-check bioconda-recipe-check paper-check benchmark-table vcftools-parity bench-vcftools-popgen bench-vcftools-true-popgen bench-smoke bench-stress bench-public bench-public-region bench-heavy bench-compat bench-v09 bench-v10-compressed bench-v10-parquet bench-v10-columnar bench-v11-parallel bench-v12 bench-v14 bench-v17 bench-v18 bench-v19 bench-v20 bench-v21-index bench-v21-public-index bench-v22-scheduler bench-v22-matrix bench-v23-pipeline bench-v06-smoke
+.PHONY: build test test-htslib fmt clippy verify release-candidate-check bioconda-recipe-check paper-check benchmark-table vcftools-parity bench-vcftools-popgen bench-vcftools-true-popgen bench-smoke bench-stress bench-public bench-public-region bench-heavy bench-compat bench-v09 bench-v10-compressed bench-v10-parquet bench-v10-columnar bench-v11-parallel bench-v12 bench-v14 bench-v17 bench-v18 bench-v19 bench-v20 bench-v21-index bench-v21-public-index bench-v22-scheduler bench-v22-matrix bench-v23-pipeline bench-v24-index bench-v25-genotype bench-v26-columnar bench-v28-evidence bench-v06-smoke
 
 build:
 	cargo build
@@ -39,6 +39,10 @@ verify:
 	bash -n benchmark/run_v22_scheduler_benchmarks.sh
 	bash -n benchmark/run_v22_scheduler_matrix.sh
 	bash -n benchmark/run_v23_bgzf_pipeline_benchmarks.sh
+	bash -n benchmark/run_v24_index_pushdown_benchmarks.sh
+	bash -n benchmark/run_v25_packed_genotype_benchmarks.sh
+	bash -n benchmark/run_v26_columnar_pushdown_benchmarks.sh
+	bash -n benchmark/run_v28_big_evidence_pass.sh
 	bash -n benchmark/run_vcftools_population_benchmarks.sh
 	bash -n benchmark/run_v17_true_population_evidence.sh
 	bash -n benchmark/run_vcftools_parity.sh
@@ -152,6 +156,18 @@ bench-v22-matrix:
 
 bench-v23-pipeline:
 	./benchmark/run_v23_bgzf_pipeline_benchmarks.sh
+
+bench-v24-index:
+	./benchmark/run_v24_index_pushdown_benchmarks.sh
+
+bench-v25-genotype:
+	./benchmark/run_v25_packed_genotype_benchmarks.sh
+
+bench-v26-columnar:
+	./benchmark/run_v26_columnar_pushdown_benchmarks.sh
+
+bench-v28-evidence:
+	./benchmark/run_v28_big_evidence_pass.sh
 
 bench-v06-smoke:
 	VCF_FAST_BENCH_MODE=synthetic VCF_FAST_BENCH_SIZES="$${VCF_FAST_BENCH_SIZES:-100}" VCF_FAST_BENCH_RUNS="$${VCF_FAST_BENCH_RUNS:-1}" VCF_FAST_BENCH_WARMUP="$${VCF_FAST_BENCH_WARMUP:-0}" ./benchmark/run_benchmarks.sh
