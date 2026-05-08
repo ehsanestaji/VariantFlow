@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::io::{self, Write};
+use std::thread;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PipelineConfig {
@@ -108,20 +109,78 @@ pub struct AcceptedBatch {
     pub bytes: Vec<u8>,
 }
 
-pub fn evaluate_batches_ordered<E>(
+pub fn evaluate_batches_ordered<E, F>(
     mut batches: Vec<RecordBatch>,
     filter_threads: usize,
-    mut evaluate: impl FnMut(RecordBatch) -> Result<AcceptedBatch, E>,
-) -> Result<Vec<AcceptedBatch>, E> {
-    let _bounded_filter_threads = filter_threads.max(1);
-
+    evaluate: F,
+) -> Result<Vec<AcceptedBatch>, E>
+where
+    E: Send,
+    F: Fn(RecordBatch) -> Result<AcceptedBatch, E> + Sync,
+{
     batches.sort_by_key(|batch| batch.sequence);
+
+    if filter_threads <= 1 || batches.len() <= 1 {
+        return evaluate_batches_sequential(batches, evaluate);
+    }
+
+    evaluate_batches_parallel(batches, filter_threads, &evaluate)
+}
+
+fn evaluate_batches_sequential<E>(
+    batches: Vec<RecordBatch>,
+    evaluate: impl Fn(RecordBatch) -> Result<AcceptedBatch, E>,
+) -> Result<Vec<AcceptedBatch>, E> {
     let mut accepted = Vec::with_capacity(batches.len());
     for batch in batches {
         accepted.push(evaluate(batch)?);
     }
     accepted.sort_by_key(|batch| batch.sequence);
     Ok(accepted)
+}
+
+fn evaluate_batches_parallel<E, F>(
+    batches: Vec<RecordBatch>,
+    filter_threads: usize,
+    evaluate: &F,
+) -> Result<Vec<AcceptedBatch>, E>
+where
+    E: Send,
+    F: Fn(RecordBatch) -> Result<AcceptedBatch, E> + Sync,
+{
+    let worker_count = filter_threads.min(batches.len()).max(1);
+    let chunk_size = batches.len().div_ceil(worker_count);
+
+    thread::scope(|scope| {
+        let mut handles = Vec::with_capacity(worker_count);
+        let mut remaining = batches.into_iter();
+
+        for _ in 0..worker_count {
+            let chunk = remaining.by_ref().take(chunk_size).collect::<Vec<_>>();
+            if chunk.is_empty() {
+                break;
+            }
+
+            handles.push(scope.spawn(move || {
+                let mut accepted = Vec::with_capacity(chunk.len());
+                for batch in chunk {
+                    accepted.push(evaluate(batch)?);
+                }
+                accepted.sort_by_key(|batch| batch.sequence);
+                Ok::<_, E>(accepted)
+            }));
+        }
+
+        let mut accepted = Vec::new();
+        for handle in handles {
+            match handle.join() {
+                Ok(result) => accepted.extend(result?),
+                Err(payload) => std::panic::resume_unwind(payload),
+            }
+        }
+        accepted.sort_by_key(|batch| batch.sequence);
+        Ok(accepted)
+    })
 }
 
 pub fn write_ordered_batches<W, I>(writer: &mut W, batches: I) -> io::Result<()>
@@ -312,5 +371,75 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn ordered_evaluator_uses_worker_threads_when_configured() {
+        use std::collections::HashSet;
+        use std::sync::{Arc, Mutex};
+        use std::time::Duration;
+
+        let batches = (0..8)
+            .rev()
+            .map(|sequence| RecordBatch {
+                sequence,
+                bytes: format!("batch-{sequence}\n").into_bytes(),
+                record_count: 1,
+            })
+            .collect::<Vec<_>>();
+        let threads_seen = Arc::new(Mutex::new(HashSet::new()));
+
+        let accepted = evaluate_batches_ordered(batches, 4, {
+            let threads_seen = Arc::clone(&threads_seen);
+            move |batch| {
+                threads_seen
+                    .lock()
+                    .unwrap()
+                    .insert(std::thread::current().id());
+                std::thread::sleep(Duration::from_millis(10));
+                Ok::<_, std::convert::Infallible>(AcceptedBatch {
+                    sequence: batch.sequence,
+                    bytes: batch.bytes,
+                })
+            }
+        })
+        .unwrap();
+
+        assert_eq!(
+            accepted
+                .iter()
+                .map(|batch| batch.sequence)
+                .collect::<Vec<_>>(),
+            (0..8).collect::<Vec<_>>()
+        );
+        assert!(
+            threads_seen.lock().unwrap().len() > 1,
+            "expected evaluation to run on more than one thread"
+        );
+    }
+
+    #[test]
+    fn ordered_evaluator_propagates_parallel_callback_errors() {
+        let batches = (0..4)
+            .map(|sequence| RecordBatch {
+                sequence,
+                bytes: format!("batch-{sequence}\n").into_bytes(),
+                record_count: 1,
+            })
+            .collect::<Vec<_>>();
+
+        let error = evaluate_batches_ordered(batches, 4, |batch| {
+            if batch.sequence == 2 {
+                Err("rejected batch")
+            } else {
+                Ok(AcceptedBatch {
+                    sequence: batch.sequence,
+                    bytes: batch.bytes,
+                })
+            }
+        })
+        .unwrap_err();
+
+        assert_eq!(error, "rejected batch");
     }
 }
