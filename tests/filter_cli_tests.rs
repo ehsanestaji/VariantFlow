@@ -271,6 +271,108 @@ fn stale_or_incomplete_index_falls_back_to_default_streaming_output() {
 }
 
 #[test]
+fn malformed_index_falls_back_to_default_streaming_output() {
+    let dir = tempdir().unwrap();
+    let input = dir.path().join("stress.vcf.gz");
+    let index = PathBuf::from(format!("{}.vfi", input.display()));
+    let default_output = dir.path().join("default.vcf");
+    let indexed_enabled_output = dir.path().join("indexed-enabled.vcf");
+    bgzf_fixture(&fixture("tests/data/stress_small.vcf"), &input);
+    fs::write(&index, b"{ definitely not valid json").unwrap();
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            input.to_str().unwrap(),
+            "--where",
+            "QUAL > 30",
+            "-o",
+            default_output.to_str().unwrap(),
+        ])
+        .env("VCF_FAST_DISABLE_VFI", "1")
+        .assert()
+        .success();
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            input.to_str().unwrap(),
+            "--where",
+            "QUAL > 30",
+            "-o",
+            indexed_enabled_output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    assert_eq!(
+        fs::read(default_output).unwrap(),
+        fs::read(indexed_enabled_output).unwrap()
+    );
+}
+
+#[test]
+fn truncated_index_range_falls_back_to_default_streaming_output() {
+    let dir = tempdir().unwrap();
+    let input = dir.path().join("stress.vcf.gz");
+    let index = PathBuf::from(format!("{}.vfi", input.display()));
+    let default_output = dir.path().join("default.vcf");
+    let indexed_enabled_output = dir.path().join("indexed-enabled.vcf");
+    bgzf_fixture(&fixture("tests/data/stress_small.vcf"), &input);
+
+    Command::cargo_bin("variantflow")
+        .unwrap()
+        .args([
+            "index",
+            input.to_str().unwrap(),
+            "-o",
+            index.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    let mut json: Value = serde_json::from_str(&fs::read_to_string(&index).unwrap()).unwrap();
+    let first_chunk = &mut json["chunks"][0];
+    let virtual_start = first_chunk["virtual_start"].as_u64().unwrap();
+    first_chunk["virtual_end"] = Value::from(virtual_start + 1);
+    fs::write(&index, serde_json::to_string_pretty(&json).unwrap()).unwrap();
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            input.to_str().unwrap(),
+            "--where",
+            "QUAL > 30",
+            "-o",
+            default_output.to_str().unwrap(),
+        ])
+        .env("VCF_FAST_DISABLE_VFI", "1")
+        .assert()
+        .success();
+
+    Command::cargo_bin("vcf-fast")
+        .unwrap()
+        .args([
+            "filter",
+            input.to_str().unwrap(),
+            "--where",
+            "QUAL > 30",
+            "-o",
+            indexed_enabled_output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    assert_eq!(
+        fs::read(default_output).unwrap(),
+        fs::read(indexed_enabled_output).unwrap()
+    );
+}
+
+#[test]
 fn indexed_bgzf_filter_equality_matches_default_for_exact_filter_column_values() {
     for (filter_value, expression) in [
         (".", "FILTER == \".\""),

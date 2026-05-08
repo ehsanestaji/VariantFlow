@@ -22,6 +22,14 @@ impl BgzfBlock {
     pub(crate) fn virtual_end(&self) -> u64 {
         self.compressed_end << 16
     }
+
+    fn data_virtual_end(&self) -> u64 {
+        if self.uncompressed.len() == MAX_BGZF_UNCOMPRESSED_BLOCK_SIZE {
+            self.virtual_end()
+        } else {
+            self.virtual_start() | self.uncompressed.len() as u64
+        }
+    }
 }
 
 pub(crate) fn for_each_bgzf_block(
@@ -48,6 +56,17 @@ pub(crate) fn for_each_bgzf_block(
     }
 
     Ok(())
+}
+
+pub(crate) fn bgzf_data_virtual_end(path: &Path) -> Result<Option<u64>> {
+    let mut data_virtual_end = None;
+    for_each_bgzf_block(path, |block| {
+        if !block.uncompressed.is_empty() {
+            data_virtual_end = Some(block.data_virtual_end());
+        }
+        Ok(())
+    })?;
+    Ok(data_virtual_end)
 }
 
 #[cfg(test)]

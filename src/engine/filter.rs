@@ -9,8 +9,8 @@ use rayon::prelude::*;
 
 use crate::compat::{Backend, CompressionMode, Region, select_backend};
 use crate::engine::index::{
-    OffsetModel, SkipDecision, VariantFlowIndex, default_index_path, plan_chunk, read_index,
-    read_virtual_range, source_matches,
+    OffsetModel, SkipDecision, VariantFlowIndex, bgzf_data_virtual_end, default_index_path,
+    plan_chunk, read_index, read_virtual_range, source_matches,
 };
 use crate::expr::{EvalContext, Expression, RequiredFields, parse_expression};
 use crate::io::{open_reader, open_vcf_writer};
@@ -145,7 +145,10 @@ fn try_indexed_filter(
         return Ok(false);
     }
 
-    let index = read_index(&index_path)?;
+    let index = match read_index(&index_path) {
+        Ok(index) => index,
+        Err(_) => return Ok(false),
+    };
     if !is_usable_bgzf_index(&index, input)? {
         return Ok(false);
     }
@@ -193,6 +196,7 @@ fn is_usable_bgzf_index(index: &VariantFlowIndex, input: &Path) -> Result<bool> 
     }
 
     let mut next_first_record = 0_u64;
+    let mut previous_virtual_end = None;
     for (expected_ordinal, chunk) in index.chunks.iter().enumerate() {
         let Some(virtual_start) = chunk.virtual_start else {
             return Ok(false);
@@ -203,7 +207,9 @@ fn is_usable_bgzf_index(index: &VariantFlowIndex, input: &Path) -> Result<bool> 
 
         if chunk.ordinal != expected_ordinal as u64
             || chunk.first_record != next_first_record
+            || chunk.record_count == 0
             || virtual_end <= virtual_start
+            || previous_virtual_end.is_some_and(|previous| virtual_start != previous)
         {
             return Ok(false);
         }
@@ -212,9 +218,18 @@ fn is_usable_bgzf_index(index: &VariantFlowIndex, input: &Path) -> Result<bool> 
             return Ok(false);
         };
         next_first_record = next;
+        previous_virtual_end = Some(virtual_end);
     }
 
-    Ok(index.record_count == next_first_record)
+    if index.record_count != next_first_record {
+        return Ok(false);
+    }
+
+    if let Some(last_virtual_end) = previous_virtual_end {
+        return Ok(bgzf_data_virtual_end(input)? == Some(last_virtual_end));
+    }
+
+    Ok(index.record_count == 0)
 }
 
 fn scan_indexed_chunk_bytes(
