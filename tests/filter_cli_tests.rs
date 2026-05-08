@@ -1254,6 +1254,50 @@ fn parallel_native_filter_matches_default_output_byte_for_byte() {
 }
 
 #[test]
+fn bgzf_pipeline_output_matches_default_native_byte_for_byte() {
+    let dir = tempdir().unwrap();
+    let input = dir.path().join("pipeline-equivalence-input.vcf.gz");
+    let default_output = dir.path().join("pipeline-default.vcf");
+    let pipeline_output = dir.path().join("pipeline-forced.vcf");
+    gzip_fixture(&fixture("tests/data/stress_small.vcf"), &input);
+
+    Command::cargo_bin("variantflow")
+        .unwrap()
+        .args([
+            "filter",
+            input.to_str().unwrap(),
+            "--where",
+            "ANY(FORMAT/AD > 80)",
+            "-o",
+            default_output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    Command::cargo_bin("variantflow")
+        .unwrap()
+        .env("VCF_FAST_NATIVE_BGZF_THREADS", "4")
+        .env("VCF_FAST_NATIVE_FILTER_THREADS", "4")
+        .env("VCF_FAST_NATIVE_FILTER_BATCH_RECORDS", "128")
+        .env("VCF_FAST_NATIVE_FILTER_QUEUE_BATCHES", "2")
+        .args([
+            "filter",
+            input.to_str().unwrap(),
+            "--where",
+            "ANY(FORMAT/AD > 80)",
+            "-o",
+            pipeline_output.to_str().unwrap(),
+        ])
+        .assert()
+        .success();
+
+    assert_eq!(
+        fs::read(default_output).unwrap(),
+        fs::read(pipeline_output).unwrap()
+    );
+}
+
+#[test]
 fn auto_native_scheduler_matches_default_output_for_format_aggregate() {
     let dir = tempdir().unwrap();
     let single_thread_output = dir.path().join("single-thread.vcf");
