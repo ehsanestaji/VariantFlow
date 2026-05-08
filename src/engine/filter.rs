@@ -18,10 +18,18 @@ use crate::engine::index::{
 };
 use crate::engine::pipeline::{
     AcceptedBatch, LineCarry, OrderedBatchWriter, PipelineConfig, RecordBatch,
+    evaluate_batches_ordered,
 };
 use crate::expr::{EvalContext, Expression, RequiredFields, parse_expression};
 use crate::io::{open_reader, open_vcf_writer};
 use crate::vcf::{self, InfoView, RecordView, column_value, resolve_sample_column};
+
+#[cfg(test)]
+type BatchThreadObserver = dyn Fn(thread::ThreadId, &RecordBatch) + Send + Sync + 'static;
+
+#[cfg(test)]
+static BGZF_BATCH_THREAD_OBSERVER: std::sync::Mutex<Option<std::sync::Arc<BatchThreadObserver>>> =
+    std::sync::Mutex::new(None);
 
 pub const NATIVE_FILTER_THREADS_ENV: &str = "VCF_FAST_NATIVE_FILTER_THREADS";
 pub const NATIVE_FILTER_BATCH_RECORDS_ENV: &str = "VCF_FAST_NATIVE_FILTER_BATCH_RECORDS";
@@ -521,28 +529,87 @@ fn stream_native_bgzf_pipeline(
     };
     let mut ordered_writer = OrderedBatchWriter::new(writer);
     let mut header_open = true;
+    let group_capacity = config.queue_batches.max(1);
+    let mut ready_batches = Vec::with_capacity(group_capacity);
 
     for_each_decoded_bgzf_block(input, |block| {
         for batch in carry.push_block(block, config.batch_records) {
-            let accepted = evaluate_original_byte_batch(
-                batch,
-                expr,
-                required,
-                sample_column,
-                &mut header_open,
-            )?;
-            ordered_writer.write_batch(accepted)?;
+            ready_batches.push(batch);
+            if ready_batches.len() >= group_capacity {
+                flush_bgzf_batch_group(
+                    &mut ready_batches,
+                    &mut ordered_writer,
+                    expr,
+                    required,
+                    sample_column,
+                    &mut header_open,
+                    config.filter_threads,
+                )?;
+            }
         }
         Ok(())
     })?;
 
-    for batch in carry.finish() {
-        let accepted =
-            evaluate_original_byte_batch(batch, expr, required, sample_column, &mut header_open)?;
-        ordered_writer.write_batch(accepted)?;
-    }
+    ready_batches.extend(carry.finish());
+    flush_bgzf_batch_group(
+        &mut ready_batches,
+        &mut ordered_writer,
+        expr,
+        required,
+        sample_column,
+        &mut header_open,
+        config.filter_threads,
+    )?;
 
     ordered_writer.finish()?;
+    Ok(())
+}
+
+fn flush_bgzf_batch_group<W: Write + ?Sized>(
+    ready_batches: &mut Vec<RecordBatch>,
+    ordered_writer: &mut OrderedBatchWriter<'_, W>,
+    expr: &Expression,
+    required: &RequiredFields,
+    sample_column: Option<usize>,
+    header_open: &mut bool,
+    filter_threads: usize,
+) -> Result<()> {
+    if ready_batches.is_empty() {
+        return Ok(());
+    }
+
+    let batches = std::mem::take(ready_batches);
+    let mut batch_iter = batches.into_iter();
+    let mut record_batches = Vec::new();
+
+    for batch in batch_iter.by_ref() {
+        if *header_open {
+            let accepted =
+                evaluate_original_byte_batch(batch, expr, required, sample_column, header_open)?;
+            ordered_writer.write_batch(accepted)?;
+        } else {
+            record_batches.push(batch);
+            record_batches.extend(batch_iter);
+            break;
+        }
+    }
+
+    if !record_batches.is_empty() {
+        let accepted_batches = evaluate_batches_ordered(record_batches, filter_threads, |batch| {
+            let mut record_header_open = false;
+            evaluate_original_byte_batch(
+                batch,
+                expr,
+                required,
+                sample_column,
+                &mut record_header_open,
+            )
+        })?;
+        for accepted in accepted_batches {
+            ordered_writer.write_batch(accepted)?;
+        }
+    }
+
     Ok(())
 }
 
@@ -561,6 +628,11 @@ fn evaluate_original_byte_batch(
     sample_column: Option<usize>,
     header_open: &mut bool,
 ) -> Result<AcceptedBatch> {
+    #[cfg(test)]
+    if let Some(observer) = BGZF_BATCH_THREAD_OBSERVER.lock().unwrap().clone() {
+        observer(thread::current().id(), &batch);
+    }
+
     let mut accepted = Vec::with_capacity(batch.bytes.len());
     for line in batch.bytes.split_inclusive(|byte| *byte == b'\n') {
         if *header_open && line.starts_with(b"#") {
@@ -989,6 +1061,9 @@ impl EvalContext for ByteEvalRecord<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
+    use std::io::Write;
+    use std::sync::{Arc, Mutex};
 
     fn aggregate_required_fields() -> RequiredFields {
         RequiredFields {
@@ -1050,6 +1125,66 @@ mod tests {
         assert!(
             error.to_string().contains("VCF record"),
             "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn native_bgzf_pipeline_uses_predicate_workers_for_bounded_batch_groups() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("input.vcf.gz");
+        let mut plain = b"##fileformat=VCFv4.3\n\
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\tS2\n"
+            .to_vec();
+        for position in 1..=24 {
+            plain.extend_from_slice(
+                format!(
+                    "1\t{position}\ttask5probe{position}\tA\tG\t42\tPASS\tDP=1\tAD\t10,90\t5,6\n"
+                )
+                .as_bytes(),
+            );
+        }
+        let file = std::fs::File::create(&input).unwrap();
+        let mut writer = noodles_bgzf::io::Writer::new(file);
+        writer.write_all(&plain).unwrap();
+        writer.finish().unwrap();
+
+        let expr = parse_expression("ANY(FORMAT/AD[1] > 80)").unwrap();
+        let required = expr.required_fields();
+        let threads_seen = Arc::new(Mutex::new(HashSet::new()));
+        *BGZF_BATCH_THREAD_OBSERVER.lock().unwrap() = Some(Arc::new({
+            let threads_seen = Arc::clone(&threads_seen);
+            move |thread_id, batch| {
+                if batch
+                    .bytes
+                    .windows(b"task5probe".len())
+                    .any(|window| window == b"task5probe")
+                {
+                    threads_seen.lock().unwrap().insert(thread_id);
+                }
+            }
+        }));
+
+        let mut output = Vec::new();
+        let result = stream_native_bgzf_pipeline(
+            &input,
+            &mut output,
+            &expr,
+            &required,
+            None,
+            PipelineConfig {
+                bgzf_threads: 1,
+                filter_threads: 4,
+                batch_records: 1,
+                queue_batches: 4,
+            },
+        );
+        *BGZF_BATCH_THREAD_OBSERVER.lock().unwrap() = None;
+        result.unwrap();
+
+        assert_eq!(output, plain);
+        assert!(
+            threads_seen.lock().unwrap().len() > 1,
+            "expected real BGZF pipeline predicate batches to run on worker threads"
         );
     }
 }
