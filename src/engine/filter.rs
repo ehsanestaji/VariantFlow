@@ -212,6 +212,7 @@ fn is_usable_bgzf_index(index: &VariantFlowIndex, input: &Path) -> Result<bool> 
     }
 
     let mut next_first_record = 0_u64;
+    let mut counted_records = 0_u64;
     let mut previous_virtual_end = None;
     let mut boundary_virtual_ends = Vec::new();
     for (expected_ordinal, chunk) in index.chunks.iter().enumerate() {
@@ -237,6 +238,18 @@ fn is_usable_bgzf_index(index: &VariantFlowIndex, input: &Path) -> Result<bool> 
             boundary_virtual_ends.push(virtual_end);
         }
 
+        let Ok(bytes) = read_virtual_range(input, virtual_start, virtual_end) else {
+            return Ok(false);
+        };
+        let range_record_count = count_vcf_record_lines(&bytes);
+        if range_record_count != chunk.record_count {
+            return Ok(false);
+        }
+        let Some(counted_next) = counted_records.checked_add(range_record_count) else {
+            return Ok(false);
+        };
+        counted_records = counted_next;
+
         let Some(next) = next_first_record.checked_add(chunk.record_count) else {
             return Ok(false);
         };
@@ -245,6 +258,10 @@ fn is_usable_bgzf_index(index: &VariantFlowIndex, input: &Path) -> Result<bool> 
     }
 
     if index.record_count != next_first_record {
+        return Ok(false);
+    }
+
+    if index.record_count != counted_records {
         return Ok(false);
     }
 
@@ -267,10 +284,7 @@ fn scan_indexed_chunk_bytes(
     sample_column: Option<usize>,
 ) -> Result<()> {
     for line in bytes.split_inclusive(|byte| *byte == b'\n') {
-        if line.is_empty()
-            || line.starts_with(b"#")
-            || line.iter().all(|byte| matches!(byte, b'\n' | b'\r'))
-        {
+        if !is_vcf_record_line(line) {
             continue;
         }
 
@@ -281,6 +295,19 @@ fn scan_indexed_chunk_bytes(
     }
 
     Ok(())
+}
+
+fn count_vcf_record_lines(bytes: &[u8]) -> u64 {
+    bytes
+        .split_inclusive(|byte| *byte == b'\n')
+        .filter(|line| is_vcf_record_line(line))
+        .count() as u64
+}
+
+fn is_vcf_record_line(line: &[u8]) -> bool {
+    !line.is_empty()
+        && !line.starts_with(b"#")
+        && !line.iter().all(|byte| matches!(byte, b'\n' | b'\r'))
 }
 
 fn run_streaming_filter(
