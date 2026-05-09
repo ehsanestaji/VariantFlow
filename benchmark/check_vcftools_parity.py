@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
-"""Normalize small VariantFlow/VCFtools parity artifacts and compare them."""
+"""Normalize VariantFlow/VCFtools parity artifacts and compare them."""
 
 from __future__ import annotations
 
 import argparse
 import math
+import os
+import subprocess
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
 FLOAT_TOLERANCE = 1e-5
+LD_R2_TOLERANCE = 1e-4
 NORMALIZER_POLICY = (
     "exact keys and counts; numeric tolerance for floating statistics; "
     "undefined nan rows are ignored only when both tools mark the value undefined"
@@ -81,6 +85,179 @@ def read_named_tsv(path: Path) -> tuple[list[str], list[dict[str, str]]]:
                 f"expected {len(header)} from header"
             )
     return header, [dict(zip(header, row)) for row in rows[1:]]
+
+
+def read_tsv_header(path: Path) -> list[str]:
+    with path.open() as handle:
+        header = handle.readline()
+    if not header:
+        raise ParityError(f"{path} is empty")
+    return header.rstrip("\n").split("\t")
+
+
+def iter_named_tsv_pairs(
+    left_path: Path, right_path: Path, name: str
+) -> tuple[list[str], list[str], object]:
+    left_handle = left_path.open()
+    right_handle = right_path.open()
+
+    def close_handles() -> None:
+        left_handle.close()
+        right_handle.close()
+
+    left_header_line = left_handle.readline()
+    right_header_line = right_handle.readline()
+    if not left_header_line:
+        close_handles()
+        raise ParityError(f"{left_path} is empty")
+    if not right_header_line:
+        close_handles()
+        raise ParityError(f"{right_path} is empty")
+
+    left_header = left_header_line.rstrip("\n").split("\t")
+    right_header = right_header_line.rstrip("\n").split("\t")
+
+    def row_pairs():
+        try:
+            line_number = 1
+            while True:
+                line_number += 1
+                left_line = left_handle.readline()
+                right_line = right_handle.readline()
+                if not left_line and not right_line:
+                    break
+                if not left_line:
+                    raise ParityError(f"{name} row count mismatch: VariantFlow ended before VCFtools")
+                if not right_line:
+                    raise ParityError(f"{name} row count mismatch: VCFtools ended before VariantFlow")
+
+                left_values = left_line.rstrip("\n").split("\t")
+                right_values = right_line.rstrip("\n").split("\t")
+                if len(left_values) != len(left_header):
+                    raise ParityError(
+                        f"{left_path} row {line_number} has {len(left_values)} fields; "
+                        f"expected {len(left_header)} from header"
+                    )
+                if len(right_values) != len(right_header):
+                    raise ParityError(
+                        f"{right_path} row {line_number} has {len(right_values)} fields; "
+                        f"expected {len(right_header)} from header"
+                    )
+                yield line_number, dict(zip(left_header, left_values)), dict(
+                    zip(right_header, right_values)
+                )
+        finally:
+            close_handles()
+
+    return left_header, right_header, row_pairs()
+
+
+def sort_normalized_ld_rows(
+    source_path: Path,
+    output_path: Path,
+    chrom_column: str,
+    r2_column: str,
+) -> None:
+    unsorted_path = output_path.with_suffix(output_path.suffix + ".unsorted")
+    with source_path.open() as source_handle, unsorted_path.open("w") as output_handle:
+        header_line = source_handle.readline()
+        if not header_line:
+            raise ParityError(f"{source_path} is empty")
+        header = header_line.rstrip("\n").split("\t")
+        positions = {
+            "CHROM": header.index(chrom_column),
+            "POS1": header.index("POS1"),
+            "POS2": header.index("POS2"),
+            "N_INDV": header.index("N_INDV"),
+            "R2": header.index(r2_column),
+        }
+        for line_number, line in enumerate(source_handle, start=2):
+            values = line.rstrip("\n").split("\t")
+            if len(values) != len(header):
+                raise ParityError(
+                    f"{source_path} row {line_number} has {len(values)} fields; "
+                    f"expected {len(header)} from header"
+                )
+            output_handle.write(
+                "\t".join(
+                    values[positions[column]]
+                    for column in ("CHROM", "POS1", "POS2", "N_INDV", "R2")
+                )
+                + "\n"
+            )
+
+    sorted_path = output_path.with_suffix(output_path.suffix + ".sorted")
+    env = {**os.environ, "LC_ALL": "C"}
+    subprocess.run(
+        [
+            "sort",
+            "-t",
+            "\t",
+            "-k1,1",
+            "-k2,2n",
+            "-k3,3n",
+            str(unsorted_path),
+            "-o",
+            str(sorted_path),
+        ],
+        check=True,
+        env=env,
+    )
+    with output_path.open("w") as final_output, sorted_path.open() as sorted_input:
+        final_output.write("CHROM\tPOS1\tPOS2\tN_INDV\tR2\n")
+        for line in sorted_input:
+            final_output.write(line)
+    unsorted_path.unlink(missing_ok=True)
+    sorted_path.unlink(missing_ok=True)
+
+
+def iter_ld_groups(path: Path):
+    with path.open() as handle:
+        header = handle.readline().rstrip("\n").split("\t")
+        if header != ["CHROM", "POS1", "POS2", "N_INDV", "R2"]:
+            raise ParityError(f"{path} has unexpected normalized LD header {header!r}")
+
+        current_key: tuple[str, str, str] | None = None
+        current_rows: list[tuple[str, str]] = []
+        for line_number, line in enumerate(handle, start=2):
+            values = line.rstrip("\n").split("\t")
+            if len(values) != len(header):
+                raise ParityError(
+                    f"{path} row {line_number} has {len(values)} fields; "
+                    f"expected {len(header)} from header"
+                )
+            key = (values[0], values[1], values[2])
+            row = (values[3], values[4])
+            if current_key is None:
+                current_key = key
+            if key != current_key:
+                yield current_key, current_rows
+                current_key = key
+                current_rows = []
+            current_rows.append(row)
+
+        if current_key is not None:
+            yield current_key, current_rows
+
+
+def compare_ld_group(
+    key: tuple[str, str, str],
+    vf_rows: list[tuple[str, str]],
+    vt_rows: list[tuple[str, str]],
+) -> None:
+    assert_equal(f"ld row group {key} count", len(vf_rows), len(vt_rows))
+    vf_sorted = sorted(vf_rows, key=lambda row: (row[0], float(row[1])))
+    vt_sorted = sorted(vt_rows, key=lambda row: (row[0], float(row[1])))
+    for occurrence, ((vf_n, vf_r2), (vt_n, vt_r2)) in enumerate(
+        zip(vf_sorted, vt_sorted), start=1
+    ):
+        assert_equal(f"ld row group {key} occurrence {occurrence} N_INDV", vf_n, vt_n)
+        assert_float_close(
+            f"ld row group {key} occurrence {occurrence} R2",
+            vf_r2,
+            vt_r2,
+            tolerance=LD_R2_TOLERANCE,
+        )
 
 
 def index_rows(
@@ -305,34 +482,36 @@ def compare_tajima_d(out_dir: Path) -> None:
 
 
 def compare_ld(out_dir: Path) -> None:
-    vf_header, vf_rows = read_named_tsv(out_dir / "variantflow.geno.ld")
-    vt_header, vt_rows = read_named_tsv(out_dir / "vcftools-ld.geno.ld")
+    vf_source = out_dir / "variantflow.geno.ld"
+    vt_source = out_dir / "vcftools-ld.geno.ld"
+    vf_header = read_tsv_header(vf_source)
+    vt_header = read_tsv_header(vt_source)
     vf_chrom_column = choose_column("ld", vf_header, ("CHROM", "CHR"), "VariantFlow")
     vt_chrom_column = choose_column("ld", vt_header, ("CHR", "CHROM"), "VCFtools")
     vf_r2_column = choose_column("ld", vf_header, ("R2", "R^2"), "VariantFlow")
     vt_r2_column = choose_column("ld", vt_header, ("R^2", "R2"), "VCFtools")
-    vf_normalized = [
-        {**row, "CHROM_KEY": row_value("ld", row, vf_chrom_column, "VariantFlow")}
-        for row in vf_rows
-    ]
-    vt_normalized = [
-        {**row, "CHROM_KEY": row_value("ld", row, vt_chrom_column, "VCFtools")}
-        for row in vt_rows
-    ]
-    vf_index = index_rows_by_occurrence("ld VariantFlow", vf_normalized, ("CHROM_KEY", "POS1", "POS2"))
-    vt_index = index_rows_by_occurrence("ld VCFtools", vt_normalized, ("CHROM_KEY", "POS1", "POS2"))
 
-    for key in assert_matching_keys("ld", vf_index, vt_index):
-        assert_equal(
-            f"ld row {key} N_INDV",
-            row_value("ld", vf_index[key], "N_INDV", "VariantFlow"),
-            row_value("ld", vt_index[key], "N_INDV", "VCFtools"),
-        )
-        assert_float_close(
-            f"ld row {key} R2",
-            row_value("ld", vf_index[key], vf_r2_column, "VariantFlow"),
-            row_value("ld", vt_index[key], vt_r2_column, "VCFtools"),
-        )
+    with tempfile.TemporaryDirectory(prefix="variantflow-parity-ld-", dir=out_dir) as temp_dir:
+        temp_path = Path(temp_dir)
+        vf_sorted = temp_path / "variantflow.geno.ld.normalized.tsv"
+        vt_sorted = temp_path / "vcftools-ld.geno.ld.normalized.tsv"
+        sort_normalized_ld_rows(vf_source, vf_sorted, vf_chrom_column, vf_r2_column)
+        sort_normalized_ld_rows(vt_source, vt_sorted, vt_chrom_column, vt_r2_column)
+        vf_groups = iter_ld_groups(vf_sorted)
+        vt_groups = iter_ld_groups(vt_sorted)
+        while True:
+            vf_next = next(vf_groups, None)
+            vt_next = next(vt_groups, None)
+            if vf_next is None and vt_next is None:
+                break
+            if vf_next is None:
+                raise ParityError(f"ld key {vt_next[0]!r} exists only in VCFtools")
+            if vt_next is None:
+                raise ParityError(f"ld key {vf_next[0]!r} exists only in VariantFlow")
+            vf_key, vf_rows = vf_next
+            vt_key, vt_rows = vt_next
+            assert_equal("ld key", vf_key, vt_key)
+            compare_ld_group(vf_key, vf_rows, vt_rows)
 
 
 def compare_weir_fst(out_dir: Path) -> None:

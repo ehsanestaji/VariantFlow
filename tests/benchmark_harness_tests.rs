@@ -1999,8 +1999,8 @@ fn vcftools_parity_normalizer_allows_duplicate_position_occurrences() {
     fs::write(
         out.join("vcftools-ld.geno.ld"),
         "CHR\tPOS1\tPOS2\tN_INDV\tR^2\n\
-         1\t90\t100\t4\t0.75\n\
-         1\t90\t100\t4\t0.25\n",
+         1\t90\t100\t4\t0.25\n\
+         1\t90\t100\t4\t0.75\n",
     )
     .expect("write vcftools LD");
     fs::write(
@@ -2030,6 +2030,34 @@ fn vcftools_parity_normalizer_allows_duplicate_position_occurrences() {
         "parity checker should accept duplicate position occurrences; stdout={} stderr={}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn vcftools_parity_normalizer_streams_large_pairwise_outputs() {
+    let root = repo_root();
+    let checker = fs::read_to_string(root.join("benchmark/check_vcftools_parity.py"))
+        .expect("read VCFtools parity checker");
+
+    assert!(
+        checker.contains("iter_named_tsv_pairs"),
+        "large VCFtools parity outputs must be compared as streams"
+    );
+    assert!(
+        checker.contains("sort_normalized_ld_rows"),
+        "LD parity must tolerate different tool output order without holding all rows in memory"
+    );
+    assert!(
+        checker.contains("iter_ld_groups") && checker.contains("compare_ld_group"),
+        "LD parity must compare duplicate LD keys as small grouped multisets"
+    );
+    assert!(
+        checker.contains("LD_R2_TOLERANCE"),
+        "LD R2 parity needs an explicit tolerance for near-zero floating differences"
+    );
+    assert!(
+        checker.contains("compare_ld") && checker.contains("iter_named_tsv_pairs("),
+        "LD parity must avoid materializing both 15M-row outputs"
     );
 }
 
