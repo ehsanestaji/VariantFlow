@@ -18,15 +18,16 @@ longer bars indicate larger speedups over the stated baseline.}
 Workflow & Range & Visual range \\
 \midrule
 \vfrangebar{Human CHM13 FORMAT filters}{4.74--17.78x}{1.0cm}{2.7cm}
-\vfrangebar{Sheep FORMAT breadth}{3.22--8.77x}{0.7cm}{1.2cm}
-\vfrangebar{Cattle FORMAT cohort}{1.46--26.66x}{0.3cm}{4.1cm}
 \vfrangebar{IGSR BGZF filtering}{13.44--13.47x}{2.4cm}{0.1cm}
-\vfrangebar{DuckDB amortized workflow}{3.18--25.67x}{0.7cm}{3.8cm}
-\vfrangebar{Stress FORMAT aggregate}{4.33--5.27x}{0.9cm}{0.2cm}
+\vfrangebar{Indexed FILTER predicate}{122.95--272.73x}{3.2cm}{4.3cm}
+\vfrangebar{Indexed AF predicate}{4.70--4.93x}{1.0cm}{0.1cm}
+\vfrangebar{VCFtools LD summary}{9.88x}{1.8cm}{0.1cm}
+\vfrangebar{DuckDB amortized workflow}{1.19--19.20x}{0.3cm}{2.9cm}
 \bottomrule
 \end{tabularx}
 \vspace{3pt}
 \footnotesize\textit{Baselines are \texttt{bcftools filter} for filtering
-rows and repeated \texttt{bcftools} scans for the DuckDB workflow. Source
-reports: v12, v14, v18, v19, and v20 benchmark reports in the repository.}
+rows, VCFtools for population summaries, and repeated baseline scans for the
+DuckDB workflow. Source reports: v14, v20, v24, v25, and v26 benchmark reports
+in the repository.}
 \end{figure}

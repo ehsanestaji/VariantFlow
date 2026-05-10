@@ -24,7 +24,7 @@
 }
 \setlength{\emergencystretch}{2em}
 
-\title{VariantFlow: selective execution for VCF filtering and analytical export}
+\title{VariantFlow: selective execution for VCF filtering, population summaries, and analytical export}
 \author{
 Ehsan Estaji\\
 Ume{\aa} Plant Science Center\\
@@ -38,21 +38,23 @@ Ume{\aa} Plant Science Center\\
 \begin{abstract}
 \noindent\textbf{Summary:}
 Many post-calling analyses repeatedly scan large VCF, BGZF-compressed VCF, and
-BCF files to evaluate filters or export a few columns. These operations often
-depend on only QUAL, FILTER, one INFO tag, or one FORMAT field, but conventional
-compatibility-first workflows may inspect substantially more of each record.
-VariantFlow is a Rust command-line engine for selective execution. It parses
-only fields required by the current operation, preserves original VCF records
-where possible, and reports speed only for correctness-matched benchmark rows
-against bcftools. Its native engine combines borrowed byte-slice record views,
-threaded BGZF input, ordered parallel predicate evaluation, and TSV/Parquet
-export. On tracked public and stress benchmarks, VariantFlow matched normalized
-bcftools outputs while accelerating bounded human CHM13 FORMAT filtering
-(4.74--17.78x), IGSR BGZF filtering (13.44--13.47x), CPU-heavy FORMAT
-predicates (4.33--5.27x), and export-once DuckDB query workflows
-(3.18--25.67x amortized). VariantFlow is therefore a workflow-specific
-accelerator and analytical bridge, not a universal replacement for bcftools,
-HTSlib, GATK, or VCFtools.
+BCF files to evaluate filters, summarize genotypes, or export a few columns.
+These operations often depend on only QUAL, FILTER, one INFO tag, or one FORMAT
+field, but compatibility-first workflows may inspect substantially more of each
+record. VariantFlow is a Rust command-line engine for selective execution. It
+parses only fields required by the current operation, preserves original VCF
+records where possible, and reports speed only for correctness-matched benchmark
+rows against trusted tools. Its native engine combines borrowed byte-slice record
+views, auto-capped BGZF input scheduling, ordered parallel predicate evaluation,
+optional \texttt{.vfi} index-assisted filtering, VCFtools-style population summaries,
+and TSV/Parquet export. On tracked public and stress benchmarks, VariantFlow
+matched normalized outputs while accelerating bounded human CHM13 FORMAT
+filtering (4.74--17.78x), IGSR BGZF filtering (13.44--13.47x), public indexed
+FILTER predicates (122.95--272.73x), selected VCFtools-style summaries such as
+missingness and LD (8.12x and 9.88x), and export-once DuckDB query workflows
+(1.19--19.20x amortized in the v26 matrix). VariantFlow is therefore a
+workflow-specific accelerator and analytical bridge, not a universal replacement
+for bcftools, HTSlib, GATK, or VCFtools.
 
 \noindent\textbf{Availability and implementation:}
 VariantFlow is implemented in Rust and is released under the MIT OR Apache-2.0

@@ -37,10 +37,29 @@ data, opt-in predicate parallelism matched bcftools core records and was
 4.33--5.27 times faster than \texttt{bcftools filter}; this case exercises the
 CPU side of selective FORMAT scanning.
 
+Query-aware indexed filtering provides an additional high-skip result. In the
+v24 public IGSR matrix, indexed output matched default native output
+byte-for-byte and matched bcftools core records. The public \texttt{FILTER ==
+"PASS"} rows measured 122.95--272.73 times faster than \texttt{bcftools}, while
+\texttt{AF > 0.99} with 256-record chunks measured 4.70--4.93 times faster
+through the requested 1M tier. Coarser chunks and low-skip predicates were
+documented as fallbacks or non-wins, which is why indexed filtering is claimed
+only for metadata-proven high-skip cases.
+
+Population-genetics evidence addresses a different replacement question:
+whether VariantFlow can match familiar VCFtools-style summaries on real cohort
+data. On the 1000 Genomes/IGSR 3202-sample human biallelic cohort through the
+925730-record requested 1M tier, normalized VCFtools parity passed for
+supported diploid biallelic rows. VariantFlow measured 3.71 times faster for
+frequency, 8.12 times faster for missingness, 1.15--1.49 times faster for
+pi/Tajima summaries, 9.88 times faster for LD, and 1.37 times faster for
+Weir-Cockerham Fst; HWE matched correctness but was slightly slower at 0.98x.
+
 The columnar evidence supports a separate workflow claim. For repeated
 analytical queries, VariantFlow exports selected columns to Parquet and then
-uses DuckDB for repeated predicates and grouped summaries. In the measured
-bounded IGSR workflows, DuckDB results over VariantFlow Parquet matched
-normalized bcftools baselines and reduced amortized runtime by 3.18--25.67
-times. This does not mean Parquet replaces streaming VCF filters; it means
-export-once, query-many workflows can avoid repeated decompression and parsing.
+uses DuckDB for repeated predicates and grouped summaries. In the measured v26
+row-group/query matrix, DuckDB results over VariantFlow Parquet matched
+normalized baselines and measured 1.19--19.20 times faster amortized and
+2.51--240.27 times faster query-only on deterministic stress rows. This does
+not mean Parquet replaces streaming VCF filters; it means export-once,
+query-many workflows can avoid repeated decompression and parsing.

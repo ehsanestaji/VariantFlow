@@ -1,0 +1,55 @@
+name: Paper Reviewer Gate
+description: Reviewer-party audit for Bioinformatics submission readiness
+title: "Paper Reviewer Gate: Bioinformatics Application Note"
+labels: ["paper", "submission", "reviewer-gate"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this issue for an independent audit of claims, reproducibility, journal fit, conflicts, and submission readiness.
+  - type: checkboxes
+    id: claims
+    attributes:
+      label: Claim and evidence audit
+      options:
+        - label: Every performance claim maps to docs/public-benchmark-table.md or a tracked source report.
+          required: true
+        - label: Correctness wording is scoped to the checked workflow.
+          required: true
+        - label: Caveats are visible for bounded, slower, deferred, or unsupported paths.
+          required: true
+        - label: No broad "best VCF tool" or universal replacement claim is present.
+          required: true
+  - type: checkboxes
+    id: reproducibility
+    attributes:
+      label: Reproducibility audit
+      options:
+        - label: Installation and test documentation are adequate for reviewers.
+          required: true
+        - label: Release tag and archive DOI are present.
+          required: true
+        - label: Core benchmark reports include commands, versions, correctness, runtime, and caveats.
+          required: true
+        - label: make submission-check passes in strict mode.
+          required: true
+  - type: checkboxes
+    id: journal
+    attributes:
+      label: Journal and reviewer audit
+      options:
+        - label: Bioinformatics Application Note format is appropriate.
+          required: true
+        - label: Suggested reviewers are expert and conflict checked.
+          required: true
+        - label: Opposed reviewers are recorded or explicitly marked as none.
+          required: true
+        - label: AI usage disclosure is present in manuscript and cover letter.
+          required: true
+  - type: textarea
+    id: findings
+    attributes:
+      label: Reviewer findings
+      description: List issues that must be fixed before submission.
+    validations:
+      required: false

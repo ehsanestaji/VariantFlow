@@ -1,4 +1,4 @@
-.PHONY: build test test-htslib fmt clippy verify release-candidate-check bioconda-recipe-check paper-check benchmark-table vcftools-parity bench-vcftools-popgen bench-vcftools-true-popgen bench-smoke bench-stress bench-public bench-public-region bench-heavy bench-compat bench-v09 bench-v10-compressed bench-v10-parquet bench-v10-columnar bench-v11-parallel bench-v12 bench-v14 bench-v17 bench-v18 bench-v19 bench-v20 bench-v21-index bench-v21-public-index bench-v22-scheduler bench-v22-matrix bench-v23-pipeline bench-v24-index bench-v25-genotype bench-v26-columnar bench-v28-evidence bench-v06-smoke
+.PHONY: build test test-htslib fmt clippy verify release-candidate-check bioconda-recipe-check paper-check submission-check benchmark-table vcftools-parity bench-vcftools-popgen bench-vcftools-true-popgen bench-smoke bench-stress bench-public bench-public-region bench-heavy bench-compat bench-v09 bench-v10-compressed bench-v10-parquet bench-v10-columnar bench-v11-parallel bench-v12 bench-v14 bench-v17 bench-v18 bench-v19 bench-v20 bench-v21-index bench-v21-public-index bench-v22-scheduler bench-v22-matrix bench-v23-pipeline bench-v24-index bench-v25-genotype bench-v26-columnar bench-v28-evidence bench-v06-smoke
 
 build:
 	cargo build
@@ -77,6 +77,10 @@ paper-check:
 	else \
 		echo "Set VCF_FAST_PAPER_INARA=1 to compile paper/paper.md with Open Journals Inara Docker."; \
 	fi
+
+submission-check:
+	python3 -m py_compile paper/*.py
+	python3 paper/check_submission.py
 
 benchmark-table:
 	python3 benchmark/generate_public_benchmark_table.py

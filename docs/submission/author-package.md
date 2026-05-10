@@ -1,0 +1,67 @@
+# VariantFlow Author Package
+
+This file is the author-party source of truth for Bioinformatics submission
+metadata. Fill it before marking the Author Gate as passed.
+
+## Target manuscript
+
+- Journal: Bioinformatics
+- Article type: Application Note
+- Title: VariantFlow: selective execution for VCF filtering and analytical export
+- Manuscript source: `paper/bioinformatics-application-note/main.tex`
+- Intended submission state: submission-ready package, not immediate submission
+
+## Authors
+
+| Order | Name | Affiliation | ORCID | CRediT roles | Approval |
+|---|---|---|---|---|---|
+| 1 | Ehsan Estaji | Umea Plant Science Center | TODO_ORCID_OR_NONE | Conceptualization; Software; Validation; Investigation; Data curation; Writing - original draft; Writing - review and editing | TODO_APPROVED |
+
+Author order and CRediT roles must be confirmed before submission. Any
+coauthor added later needs contribution, approval, conflict, and ORCID review
+before the paper is submitted.
+
+## Corresponding author
+
+- Name: Ehsan Estaji
+- Email: TODO_CONTACT_EMAIL
+- Affiliation: Umea Plant Science Center
+- ORCID: TODO_ORCID_OR_NONE
+
+## Funding
+
+TODO_FUNDING_STATEMENT_OR_NONE
+
+If there is no specific funding, replace the placeholder with:
+`No specific funding was received for this work.`
+
+## Conflict of interest
+
+TODO_CONFLICT_STATEMENT
+
+If there are no conflicts, replace the placeholder with:
+`The author declares no competing interests.`
+
+## Acknowledgements
+
+Current planned acknowledgement:
+
+VariantFlow builds on the open genomics software ecosystem, including VCF,
+HTSlib, bcftools, VCFtools, Apache Arrow, Parquet, DuckDB, and Bioconda.
+
+## AI usage disclosure
+
+Codex and related OpenAI systems were used for planning, code-review support,
+test scaffolding, benchmark-report organization, and prose drafting support.
+The human author reviewed and remains responsible for the manuscript, code,
+benchmarks, licensing, and scientific claims.
+
+## Release and archive
+
+- Release tag: TODO_RELEASE_TAG
+- Source archive URL: TODO_RELEASE_SOURCE_URL
+- Zenodo or archival DOI: TODO_ARCHIVE_DOI
+- Bioconda state: planned after release tag and SHA256 are finalized
+
+The Author Gate cannot pass until release and archive fields are replaced with
+final values.

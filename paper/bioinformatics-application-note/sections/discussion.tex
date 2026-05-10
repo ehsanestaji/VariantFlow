@@ -1,10 +1,11 @@
 \section{Discussion}
 
 VariantFlow's evidence supports workflow-specific claims. It is currently best
-positioned for selective native streaming filters over VCF/BGZF inputs and for
-export-once, query-many analytical workflows through Parquet. These are common
-post-calling tasks in which avoiding unused-field parsing can translate into
-lower wall time and, on compute clusters, fewer CPU-hours spent on repeated
+positioned for selective native streaming filters over VCF/BGZF inputs,
+high-skip index-assisted filters, supported VCFtools-style population summaries,
+and export-once, query-many analytical workflows through Parquet. These are
+common post-calling tasks in which avoiding unused-field parsing can translate
+into lower wall time and, on compute clusters, fewer CPU-hours spent on repeated
 file scans. VariantFlow follows a pragmatic genomics-tool model: make a focused
 algorithmic improvement, expose it through a small command-line interface,
 compare against trusted software, and state limitations plainly. It does not
@@ -13,11 +14,12 @@ documents where VariantFlow beats, matches, or complements existing tools.
 
 Several limitations remain. The current human FORMAT evidence is bounded to
 1k/10k/50k tiers from a remote 27 GB CHM13 source, BCF/region TSV compatibility
-paths are not the primary speed claim, and some macOS benchmark rows lack
-reproducible peak RSS measurements. Future work will expand full-file public
-cohort evidence, broaden expression compatibility, improve BCF and
-indexed-region export paths, and add analytical baselines such as Polars and
-PyArrow. The release claim matrix is intended to keep this boundary explicit: a
-VariantFlow claim should exist only when a linked report shows correctness,
-runtime, throughput, memory where available, exact commands, competitor
-version, and caveats.
+paths are not the primary speed claim, HWE was slightly slower than VCFtools at
+the 1M requested tier, and indexed-filter wins depend on predicates that allow
+safe chunk skipping. Future work will expand full-file public cohort evidence,
+broaden expression compatibility, improve BCF and indexed-region export paths,
+add analytical baselines such as Polars and PyArrow, and tune index build
+amortization. The release claim matrix is intended to keep this boundary
+explicit: a VariantFlow claim should exist only when a linked report shows
+correctness, runtime, throughput, memory where available, exact commands,
+competitor version, and caveats.

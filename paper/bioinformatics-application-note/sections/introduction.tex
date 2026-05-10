@@ -23,15 +23,17 @@ VCF/BGZF as the default interchange layer.
 
 Mature tools such as bcftools and HTSlib provide the compatibility baseline for
 VCF/BCF streaming, BGZF compression, region access, filtering, querying, and
-statistics \citep{bcftools,htslib}. Their breadth is essential: real projects
-need BCF, tabix/CSI indexing, complex expressions, normalization, and durable
-interoperability. VariantFlow is designed to complement this ecosystem rather
-than replace it universally. Its central idea is selective execution: for
-supported operations, parse only the fields required by the current predicate or
-projection, preserve original records when possible, and track every
-performance claim against correctness-matched benchmarks. This mirrors the
-style of focused genomics software such as minimap2, which explains the
-algorithmic reason for speed and then evaluates accuracy and runtime on real
-datasets \citep{minimap2}. For bioinformatics practice, this evidence-first
-position is essential: a speedup is useful only when the output remains
-trustworthy and the limitations are visible.
+statistics \citep{bcftools,htslib}. VCFtools remains a familiar reference for
+population summaries such as frequency, missingness, heterozygosity, nucleotide
+diversity, linkage disequilibrium, and Fst. Their breadth is essential: real
+projects need BCF, tabix/CSI indexing, complex expressions, normalization,
+durable interoperability, and trusted statistical outputs. VariantFlow is
+designed to complement this ecosystem rather than replace it universally. Its
+central idea is selective execution: for supported operations, parse only the
+fields required by the current predicate, statistic, or projection; preserve
+original records when possible; and track every performance claim against
+correctness-matched benchmarks. This mirrors the style of focused genomics
+software such as minimap2, which explains the algorithmic reason for speed and
+then evaluates accuracy and runtime on real datasets \citep{minimap2}. For
+bioinformatics practice, this evidence-first position is essential: a speedup is
+useful only when the output remains trustworthy and the limitations are visible.
