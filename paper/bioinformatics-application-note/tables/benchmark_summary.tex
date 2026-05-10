@@ -11,12 +11,12 @@ Workflow & Dataset & Correctness check & Measured result \\
 \midrule
 Human FORMAT filters & DDBJ CHM13 chr22, 3715 samples, 1k/10k/50k tiers & Core records matched bcftools & 4.74--17.78x faster than bcftools \\
 Public BGZF QUAL filter & Bounded IGSR chr22 BGZF & Core records matched bcftools & 13.44--13.47x faster than bcftools \\
-Auto BGZF input & Bounded IGSR chr22 BGZF & Native outputs matched byte-for-byte & 2.26--2.39x faster than single-thread native \\
-FORMAT aggregate filter & Stress 100k/1M AD predicate & Parallel output matched default and bcftools & 4.33--5.27x faster than bcftools \\
-DuckDB repeated queries & IGSR chr22 Parquet export & Predicate and grouped results matched bcftools & 3.18--25.67x faster amortized \\
-DuckDB query-only & IGSR chr22 Parquet export & Query results matched bcftools & 29.27--497.74x faster query-only \\
-Native TSV conversion & Stress 1M byte-core path & Normalized TSV rows matched bcftools query & 2.54x faster than bcftools query \\
-Simple stats counts & Stress 1M byte-core path & Supported stats records matched bcftools stats & 2.50x faster than bcftools stats \\
+Indexed FILTER predicate & Bounded IGSR chr22 BGZF, \texttt{FILTER == "PASS"} & Indexed output matched default and bcftools & 122.95--272.73x faster than bcftools \\
+Indexed AF predicate & Bounded IGSR chr22 BGZF, \texttt{AF > 0.99}, 256-record chunks & Indexed output matched default and bcftools & 4.70--4.93x faster than bcftools \\
+VCFtools missingness & IGSR 3202-sample biallelic cohort, 925730 records & Normalized VCFtools parity passed & 8.12x faster than VCFtools \\
+VCFtools LD & IGSR 3202-sample biallelic cohort, 925730 records & Normalized VCFtools parity passed & 9.88x faster than VCFtools \\
+DuckDB amortized queries & Deterministic stress Parquet row-group matrix & Query results matched normalized baselines & 1.19--19.20x faster amortized \\
+DuckDB query-only & Deterministic stress Parquet row-group matrix & Query results matched normalized baselines & 2.51--240.27x faster query-only \\
 \bottomrule
 \end{tabularx}
 \end{table}

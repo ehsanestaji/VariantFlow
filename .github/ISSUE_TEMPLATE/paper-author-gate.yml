@@ -1,0 +1,57 @@
+name: Paper Author Gate
+description: Author-party checklist for Bioinformatics submission readiness
+title: "Paper Author Gate: Bioinformatics Application Note"
+labels: ["paper", "submission", "author-gate"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this issue to confirm that the author party has approved the manuscript, metadata, release/archive state, and submission materials.
+  - type: checkboxes
+    id: authorship
+    attributes:
+      label: Authorship and metadata
+      options:
+        - label: Final author list and order are approved.
+          required: true
+        - label: Affiliations, ORCID values, and CRediT roles are recorded in docs/submission/author-package.md.
+          required: true
+        - label: Corresponding author name and email are final.
+          required: true
+        - label: Funding statement is final.
+          required: true
+        - label: Conflict-of-interest statement is final.
+          required: true
+  - type: checkboxes
+    id: manuscript
+    attributes:
+      label: Manuscript package
+      options:
+        - label: Bioinformatics LaTeX PDF compiles from paper/bioinformatics-application-note.
+          required: true
+        - label: Abstract, availability, funding, conflict, and AI disclosure are approved.
+          required: true
+        - label: Figures and tables are approved and use tracked benchmark reports only.
+          required: true
+        - label: Cover letter is approved.
+          required: true
+  - type: checkboxes
+    id: release
+    attributes:
+      label: Release and archive
+      options:
+        - label: Release tag is final.
+          required: true
+        - label: Source archive URL is final.
+          required: true
+        - label: Software archive DOI is final.
+          required: true
+        - label: Availability statement matches the final release/archive state.
+          required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Author notes or remaining blockers
+      description: Record any author-side concerns before Reviewer Gate.
+    validations:
+      required: false

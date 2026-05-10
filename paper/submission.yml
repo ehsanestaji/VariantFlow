@@ -1,0 +1,57 @@
+target_journal: Bioinformatics
+article_type: Application Note
+submission_status: blocked
+author_gate_status: blocked
+reviewer_gate_status: blocked
+
+manuscript:
+  source: paper/bioinformatics-application-note/main.tex
+  pdf: paper/bioinformatics-application-note/build/variantflow-bioinformatics-note.pdf
+  title: "VariantFlow: selective execution for VCF filtering and analytical export"
+
+corresponding_author:
+  name: Ehsan Estaji
+  affiliation: Umea Plant Science Center
+  email: TODO_CONTACT_EMAIL
+  orcid: TODO_ORCID_OR_NONE
+
+release:
+  tag: TODO_RELEASE_TAG
+  source_archive_url: TODO_RELEASE_SOURCE_URL
+  archive_doi: TODO_ARCHIVE_DOI
+
+submission_docs:
+  - docs/submission/journal-fit.md
+  - docs/submission/author-package.md
+  - docs/submission/reviewer-package.md
+  - docs/submission/submission-gates.md
+  - docs/submission/cover-letter.md
+  - docs/submission/response-to-reviewers-template.md
+
+benchmark_reports:
+  - benchmark/reports/v14-public-parallel-scale-benchmark.md
+  - benchmark/reports/v20-human-format-cohort.md
+  - benchmark/reports/v24-index-pushdown-benchmark.md
+  - benchmark/reports/v25-packed-genotype-benchmark.md
+  - benchmark/reports/v26-columnar-pushdown-benchmark.md
+  - docs/public-benchmark-table.md
+  - docs/claim-matrix.md
+
+required_human_inputs:
+  - final_author_list
+  - author_order
+  - author_orcid_values
+  - credit_roles
+  - corresponding_author_email
+  - funding_statement
+  - conflict_statement
+  - suggested_reviewers
+  - opposed_reviewers_or_none
+  - release_tag
+  - software_archive_doi
+
+claim_policy:
+  broad_best_tool_claim_allowed: false
+  performance_claim_source: tracked_reports_only
+  correctness_required: true
+  caveats_required: true
