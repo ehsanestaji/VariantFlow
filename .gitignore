@@ -3,6 +3,7 @@
 !/tests/output/.gitkeep
 __pycache__/
 *.py[cod]
+*.swp
 /paper/paper.pdf
 /paper/jats/
 /.claude/
