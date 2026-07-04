@@ -552,9 +552,12 @@ fn read_pixy_populations(path: &Path) -> Result<PixyPopulations> {
             continue;
         }
         let mut fields = line.split_whitespace();
-        let sample = fields
-            .next()
-            .with_context(|| format!("populations file line {} is missing a sample id", line_no + 1))?;
+        let sample = fields.next().with_context(|| {
+            format!(
+                "populations file line {} is missing a sample id",
+                line_no + 1
+            )
+        })?;
         let population = fields.next().with_context(|| {
             format!(
                 "populations file line {} is missing a population name",
@@ -711,11 +714,7 @@ pub fn run_pixy(
     Ok(())
 }
 
-fn write_pixy_pi(
-    out_pi: &Path,
-    order: &[String],
-    pi_windows: &[Vec<PixyPiWindow>],
-) -> Result<()> {
+fn write_pixy_pi(out_pi: &Path, order: &[String], pi_windows: &[Vec<PixyPiWindow>]) -> Result<()> {
     let mut writer = BufWriter::new(
         File::create(out_pi).with_context(|| format!("failed to create {}", out_pi.display()))?,
     );
@@ -1950,8 +1949,7 @@ mod tests {
             .find(|l| l.starts_with("P1\t"))
             .expect("P1 pi row present");
         assert_eq!(
-            p1_row,
-            "P1\t1\t1\t1000\t0.30769231\t3\t4\t13",
+            p1_row, "P1\t1\t1\t1000\t0.30769231\t3\t4\t13",
             "P1 pi row mismatch"
         );
         let p2_row = pi_text
@@ -1959,8 +1957,7 @@ mod tests {
             .find(|l| l.starts_with("P2\t"))
             .expect("P2 pi row present");
         assert_eq!(
-            p2_row,
-            "P2\t1\t1\t1000\t0.38888889\t3\t7\t18",
+            p2_row, "P2\t1\t1\t1000\t0.38888889\t3\t7\t18",
             "P2 pi row mismatch"
         );
 
@@ -1975,8 +1972,7 @@ mod tests {
             .find(|l| l.starts_with("P1\tP2\t"))
             .expect("P1/P2 dxy row present");
         assert_eq!(
-            dxy_row,
-            "P1\tP2\t1\t1\t1000\t0.35000000\t3\t14\t40",
+            dxy_row, "P1\tP2\t1\t1\t1000\t0.35000000\t3\t14\t40",
             "dxy row mismatch"
         );
     }
