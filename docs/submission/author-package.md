@@ -16,7 +16,7 @@ metadata. Fill it before marking the Author Gate as passed.
 | Order | Name | Affiliation | ORCID | CRediT roles | Approval |
 |---|---|---|---|---|---|
 | 1 | Ehsan Estaji | UPSC, Dept. Plant Physiology, Umeå University | 0009-0005-0838-228X | Conceptualization; Software; Validation; Investigation; Data curation; Writing - original draft; Writing - review and editing | Approved |
-| 2 | Jian-Feng Mao | UPSC, Dept. Plant Physiology, Umeå University | TODO_JFM_ORCID | Supervision; Writing - review and editing | Approved |
+| 2 | Jian-Feng Mao | UPSC, Dept. Plant Physiology, Umeå University | 0000-0001-9735-8516 | Supervision; Writing - review and editing | Approved |
 
 Equal contribution: E.E. and J.-F.M. contributed equally to this work.
 
@@ -29,7 +29,7 @@ before the paper is submitted.
 - Name: Jian-Feng Mao
 - Email: jianfeng.mao@umu.se
 - Affiliation: Umeå Plant Science Centre, Dept. Plant Physiology, Umeå University
-- ORCID: TODO_JFM_ORCID
+- ORCID: 0000-0001-9735-8516
 
 ## Funding
 
