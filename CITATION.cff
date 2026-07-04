@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+title: "VariantFlow: selective execution for VCF filtering, population summaries, and analytical export"
+type: software
+authors:
+  - family-names: Estaji
+    given-names: Ehsan
+    orcid: "https://orcid.org/0009-0005-0838-228X"
+    affiliation: "Umeå Plant Science Centre, Department of Plant Physiology, Umeå University"
+  - family-names: Mao
+    given-names: Jian-Feng
+    affiliation: "Umeå Plant Science Centre, Department of Plant Physiology, Umeå University"
+repository-code: "https://github.com/ehsanestaji/VariantFlow"
+url: "https://github.com/ehsanestaji/VariantFlow"
+license: "MIT OR Apache-2.0"
+version: 1.5.0
