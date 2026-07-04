@@ -26,8 +26,8 @@ The software is released under the MIT OR Apache-2.0 license. The submitted
 version, source archive, and reproducibility materials are available at:
 
 - Repository: https://github.com/ehsanestaji/VariantFlow
-- Release tag: TODO_RELEASE_TAG
-- Archive DOI: TODO_ARCHIVE_DOI
+- Release tag: v1.5.0
+- Archive DOI: 10.5281/zenodo.21198171
 - Public benchmark table: `docs/public-benchmark-table.md`
 
 AI usage disclosure: AI coding assistants (OpenAI Codex and Anthropic Claude

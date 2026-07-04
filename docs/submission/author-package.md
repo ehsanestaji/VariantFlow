@@ -56,9 +56,9 @@ for the manuscript, code, benchmarks, licensing, and scientific claims.
 
 ## Release and archive
 
-- Release tag: TODO_RELEASE_TAG
-- Source archive URL: TODO_RELEASE_SOURCE_URL
-- Zenodo or archival DOI: TODO_ARCHIVE_DOI
+- Release tag: v1.5.0
+- Source archive URL: https://github.com/ehsanestaji/VariantFlow/releases/tag/v1.5.0
+- Zenodo or archival DOI: 10.5281/zenodo.21198171 (concept), 10.5281/zenodo.21198172 (v1.5.0)
 - Bioconda state: planned after release tag and SHA256 are finalized
 
 The Author Gate cannot pass until release and archive fields are replaced with
