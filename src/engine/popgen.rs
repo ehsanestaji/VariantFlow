@@ -433,6 +433,368 @@ pub fn run_tajima_d(
     Ok(())
 }
 
+/// Per-population, per-window accumulator for nucleotide diversity (pi).
+///
+/// `count_diffs` and `count_comparisons` are the summed un-doubled pairwise
+/// differences and comparisons across all sites in the window (variant AND
+/// invariant). `no_sites` counts sites where the population had at least two
+/// non-missing gametes (n >= 2), i.e. sites that could contribute a comparison.
+#[derive(Debug, Clone, Default)]
+struct PixyPiWindow {
+    chrom: String,
+    start: u64,
+    end: u64,
+    no_sites: u64,
+    count_diffs: u128,
+    count_comparisons: u128,
+}
+
+/// Per-population-pair, per-window accumulator for between-population divergence (dxy).
+#[derive(Debug, Clone, Default)]
+struct PixyDxyWindow {
+    chrom: String,
+    start: u64,
+    end: u64,
+    no_sites: u64,
+    count_diffs: u128,
+    count_comparisons: u128,
+}
+
+/// A parsed pixy-style populations file: an ordered, de-duplicated list of
+/// population names plus a mapping from each population to its member samples.
+#[derive(Debug, Default)]
+struct PixyPopulations {
+    order: Vec<String>,
+    members: std::collections::HashMap<String, HashSet<String>>,
+}
+
+/// Pairwise differences and comparisons for pi at a single site within one
+/// population, given per-allele counts over the non-missing gametes.
+///
+/// Let `n = sum(counts)`. Then:
+/// - comparisons = n * (n - 1) / 2
+/// - differences = (n^2 - sum(counts[a]^2)) / 2
+///
+/// Both are always exact integers. Returns `(diffs, comparisons)`.
+fn pi_site_counts(counts: &[u64]) -> (u128, u128) {
+    let n: u128 = counts.iter().map(|c| u128::from(*c)).sum();
+    if n < 2 {
+        return (0, 0);
+    }
+    let comparisons = n * (n - 1) / 2;
+    let sum_sq: u128 = counts.iter().map(|c| u128::from(*c) * u128::from(*c)).sum();
+    let differences = (n * n - sum_sq) / 2;
+    (differences, comparisons)
+}
+
+/// Pairwise differences and comparisons for dxy at a single site between two
+/// populations, given per-allele counts over each population's non-missing
+/// gametes.
+///
+/// Let `nP = sum(a)`, `nQ = sum(b)`. Then:
+/// - comparisons = nP * nQ
+/// - differences = nP * nQ - sum_a(a[a] * b[a])
+///
+/// Returns `(diffs, comparisons)`.
+fn dxy_site_counts(a: &[u64], b: &[u64]) -> (u128, u128) {
+    let n_a: u128 = a.iter().map(|c| u128::from(*c)).sum();
+    let n_b: u128 = b.iter().map(|c| u128::from(*c)).sum();
+    if n_a == 0 || n_b == 0 {
+        return (0, 0);
+    }
+    let comparisons = n_a * n_b;
+    let width = a.len().min(b.len());
+    let mut shared = 0_u128;
+    for idx in 0..width {
+        shared += u128::from(a[idx]) * u128::from(b[idx]);
+    }
+    let differences = comparisons - shared;
+    (differences, comparisons)
+}
+
+/// Gather per-allele counts over the non-missing gametes for the samples in a
+/// population at a single site. The returned vector is sized to the number of
+/// alleles observed at the site (`site.allele_counts.len()`), so allele indices
+/// are stable across populations at the same site.
+fn population_allele_counts(site: &SiteAlleleSummary, indices: &[usize]) -> Vec<u64> {
+    let mut counts = vec![0_u64; site.allele_counts.len()];
+    for &index in indices {
+        if let Some(Some(alleles)) = site.genotypes.get(index) {
+            for &allele in alleles {
+                if let Some(slot) = counts.get_mut(allele) {
+                    *slot += 1;
+                }
+            }
+        }
+    }
+    counts
+}
+
+/// Compute the window [start, end] that `pos` falls into for a given
+/// `window_size`, matching the existing `add_window_pi` binning:
+/// `start = ((pos - 1) / window_size) * window_size + 1`.
+fn pixy_window_bounds(pos: u64, window_size: u64) -> (u64, u64) {
+    let start = ((pos - 1) / window_size) * window_size + 1;
+    let end = start + window_size - 1;
+    (start, end)
+}
+
+/// Parse a pixy-style populations file. Each non-blank, non-comment line has two
+/// whitespace/tab separated columns: `sample_id  population_name`. Populations
+/// are recorded in first-seen order, de-duplicated.
+fn read_pixy_populations(path: &Path) -> Result<PixyPopulations> {
+    let text = std::fs::read_to_string(path)
+        .with_context(|| format!("failed to read populations file {}", path.display()))?;
+    let mut result = PixyPopulations::default();
+    for (line_no, raw) in text.lines().enumerate() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let mut fields = line.split_whitespace();
+        let sample = fields
+            .next()
+            .with_context(|| format!("populations file line {} is missing a sample id", line_no + 1))?;
+        let population = fields.next().with_context(|| {
+            format!(
+                "populations file line {} is missing a population name",
+                line_no + 1
+            )
+        })?;
+        if !result.members.contains_key(population) {
+            result.order.push(population.to_owned());
+        }
+        result
+            .members
+            .entry(population.to_owned())
+            .or_default()
+            .insert(sample.to_owned());
+    }
+    Ok(result)
+}
+
+/// Compute pixy-equivalent nucleotide diversity (pi) per population and
+/// between-population divergence (dxy) per population pair, over fixed-size
+/// windows. Handles missing genotypes correctly: at every site only non-missing
+/// gametes are counted, and windowed statistics are ratios of summed pairwise
+/// counts across all sites present (including invariant sites).
+///
+/// Rows are ordered by window (in first-seen order) then by population /
+/// population-pair order.
+pub fn run_pixy(
+    input: &Path,
+    populations: &Path,
+    window_size: u64,
+    out_pi: &Path,
+    out_dxy: &Path,
+) -> Result<()> {
+    if window_size == 0 {
+        bail!("--window-size must be positive");
+    }
+    let pops = read_pixy_populations(populations)?;
+    if pops.order.is_empty() {
+        bail!("populations file must define at least one population");
+    }
+
+    // Unordered pairs of distinct populations, in population order.
+    let pop_pairs: Vec<(usize, usize)> = {
+        let mut pairs = Vec::new();
+        for i in 0..pops.order.len() {
+            for j in (i + 1)..pops.order.len() {
+                pairs.push((i, j));
+            }
+        }
+        pairs
+    };
+
+    // Resolved column indices per population, populated on the first site.
+    let mut pop_indices: Vec<Vec<usize>> = Vec::new();
+    // Windows in first-seen order; one accumulator per population / pair.
+    let mut pi_windows: Vec<Vec<PixyPiWindow>> = Vec::new();
+    let mut dxy_windows: Vec<Vec<PixyDxyWindow>> = Vec::new();
+    // Track the current window per (chrom, start) so all pops share ordering.
+    let mut window_keys: Vec<(String, u64)> = Vec::new();
+
+    let selection = SampleSelection::default();
+    stream_site_summaries_with_samples(input, &selection, |samples, site| {
+        if pop_indices.is_empty() {
+            for pop in &pops.order {
+                let members = pops
+                    .members
+                    .get(pop)
+                    .expect("population present in order must have members");
+                pop_indices.push(population_indices(samples, members)?);
+            }
+        }
+
+        let (start, end) = pixy_window_bounds(site.pos, window_size);
+        // Find or create the window slot for this (chrom, start).
+        let key = (site.chrom.clone(), start);
+        let window_idx = match window_keys.last() {
+            Some(last) if *last == key => window_keys.len() - 1,
+            _ => match window_keys.iter().position(|k| *k == key) {
+                Some(idx) => idx,
+                None => {
+                    window_keys.push(key.clone());
+                    for (pop_idx, _) in pops.order.iter().enumerate() {
+                        let entry = pi_windows.get_mut(pop_idx);
+                        let vec = match entry {
+                            Some(vec) => vec,
+                            None => {
+                                pi_windows.push(Vec::new());
+                                pi_windows.last_mut().unwrap()
+                            }
+                        };
+                        vec.push(PixyPiWindow {
+                            chrom: site.chrom.clone(),
+                            start,
+                            end,
+                            ..Default::default()
+                        });
+                    }
+                    for (pair_idx, _) in pop_pairs.iter().enumerate() {
+                        let vec = match dxy_windows.get_mut(pair_idx) {
+                            Some(vec) => vec,
+                            None => {
+                                dxy_windows.push(Vec::new());
+                                dxy_windows.last_mut().unwrap()
+                            }
+                        };
+                        vec.push(PixyDxyWindow {
+                            chrom: site.chrom.clone(),
+                            start,
+                            end,
+                            ..Default::default()
+                        });
+                    }
+                    window_keys.len() - 1
+                }
+            },
+        };
+
+        // Per-population allele counts at this site (computed once, reused for dxy).
+        let per_pop_counts: Vec<Vec<u64>> = pop_indices
+            .iter()
+            .map(|indices| population_allele_counts(site, indices))
+            .collect();
+
+        for (pop_idx, counts) in per_pop_counts.iter().enumerate() {
+            let n: u64 = counts.iter().sum();
+            let (diffs, comps) = pi_site_counts(counts);
+            let window = &mut pi_windows[pop_idx][window_idx];
+            if n >= 2 {
+                window.no_sites += 1;
+            }
+            window.count_diffs += diffs;
+            window.count_comparisons += comps;
+        }
+
+        for (pair_idx, &(a, b)) in pop_pairs.iter().enumerate() {
+            let counts_a = &per_pop_counts[a];
+            let counts_b = &per_pop_counts[b];
+            let n_a: u64 = counts_a.iter().sum();
+            let n_b: u64 = counts_b.iter().sum();
+            let (diffs, comps) = dxy_site_counts(counts_a, counts_b);
+            let window = &mut dxy_windows[pair_idx][window_idx];
+            if n_a >= 1 && n_b >= 1 {
+                window.no_sites += 1;
+            }
+            window.count_diffs += diffs;
+            window.count_comparisons += comps;
+        }
+
+        Ok(())
+    })?;
+
+    write_pixy_pi(out_pi, &pops.order, &pi_windows)?;
+    write_pixy_dxy(out_dxy, &pops.order, &pop_pairs, &dxy_windows)?;
+    Ok(())
+}
+
+fn write_pixy_pi(
+    out_pi: &Path,
+    order: &[String],
+    pi_windows: &[Vec<PixyPiWindow>],
+) -> Result<()> {
+    let mut writer = BufWriter::new(
+        File::create(out_pi).with_context(|| format!("failed to create {}", out_pi.display()))?,
+    );
+    writeln!(
+        writer,
+        "pop\tchromosome\twindow_pos_1\twindow_pos_2\tavg_pi\tno_sites\tcount_diffs\tcount_comparisons"
+    )?;
+    let window_count = pi_windows.first().map_or(0, Vec::len);
+    // `w` indexes the per-population parallel window vectors; range loop is intentional.
+    #[allow(clippy::needless_range_loop)]
+    for w in 0..window_count {
+        for (pop_idx, pop) in order.iter().enumerate() {
+            let window = &pi_windows[pop_idx][w];
+            writeln!(
+                writer,
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                pop,
+                window.chrom,
+                window.start,
+                window.end,
+                format_pixy_ratio(window.count_diffs, window.count_comparisons),
+                window.no_sites,
+                window.count_diffs,
+                window.count_comparisons,
+            )?;
+        }
+    }
+    writer.flush()?;
+    Ok(())
+}
+
+fn write_pixy_dxy(
+    out_dxy: &Path,
+    order: &[String],
+    pop_pairs: &[(usize, usize)],
+    dxy_windows: &[Vec<PixyDxyWindow>],
+) -> Result<()> {
+    let mut writer = BufWriter::new(
+        File::create(out_dxy).with_context(|| format!("failed to create {}", out_dxy.display()))?,
+    );
+    writeln!(
+        writer,
+        "pop1\tpop2\tchromosome\twindow_pos_1\twindow_pos_2\tavg_dxy\tno_sites\tcount_diffs\tcount_comparisons"
+    )?;
+    let window_count = dxy_windows.first().map_or(0, Vec::len);
+    // `w` indexes the per-pair parallel window vectors; range loop is intentional.
+    #[allow(clippy::needless_range_loop)]
+    for w in 0..window_count {
+        for (pair_idx, &(a, b)) in pop_pairs.iter().enumerate() {
+            let window = &dxy_windows[pair_idx][w];
+            writeln!(
+                writer,
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                order[a],
+                order[b],
+                window.chrom,
+                window.start,
+                window.end,
+                format_pixy_ratio(window.count_diffs, window.count_comparisons),
+                window.no_sites,
+                window.count_diffs,
+                window.count_comparisons,
+            )?;
+        }
+    }
+    writer.flush()?;
+    Ok(())
+}
+
+/// Format an average pi/dxy value as `count_diffs / count_comparisons`, or `NA`
+/// when there are no comparisons (matching pixy's convention for empty windows).
+fn format_pixy_ratio(diffs: u128, comparisons: u128) -> String {
+    if comparisons == 0 {
+        "NA".to_owned()
+    } else {
+        format!("{:.8}", diffs as f64 / comparisons as f64)
+    }
+}
+
 pub fn run_ld(
     input: &Path,
     keep: Option<&Path>,
@@ -1428,9 +1790,10 @@ fn trim_line_end(line: &[u8]) -> &[u8] {
 #[cfg(test)]
 mod tests {
     use super::{
-        MISSING_DOSAGE, PackedDosages, for_each_called_allele, format_ratio, genotype_dosage_r2,
-        genotype_is_missing,
+        MISSING_DOSAGE, PackedDosages, dxy_site_counts, for_each_called_allele, format_ratio,
+        genotype_dosage_r2, genotype_is_missing, pi_site_counts, run_pixy,
     };
+    use std::io::Write;
 
     #[test]
     fn genotype_missing_detects_dot_and_partial_missing_values() {
@@ -1501,5 +1864,158 @@ mod tests {
         let (n, r2) = genotype_dosage_r2(&left, &right).unwrap();
         assert_eq!(n, 3);
         assert!((r2 - 0.75).abs() < 1e-12);
+    }
+
+    #[test]
+    fn pi_site_counts_matches_hand_computed_values() {
+        // counts=[2,2], n=4 -> comps=6, diffs=4
+        assert_eq!(pi_site_counts(&[2, 2]), (4, 6));
+        // counts=[4,0] (invariant), n=4 -> comps=6, diffs=0
+        assert_eq!(pi_site_counts(&[4, 0]), (0, 6));
+        // counts=[3,1], n=4 -> comps=6, diffs=3
+        assert_eq!(pi_site_counts(&[3, 1]), (3, 6));
+        // n < 2 yields no comparisons.
+        assert_eq!(pi_site_counts(&[1, 0]), (0, 0));
+        assert_eq!(pi_site_counts(&[0, 0]), (0, 0));
+        // multiallelic: counts=[2,1,1], n=4 -> comps=6, sum_sq=6, diffs=(16-6)/2=5
+        assert_eq!(pi_site_counts(&[2, 1, 1]), (5, 6));
+    }
+
+    #[test]
+    fn dxy_site_counts_matches_hand_computed_values() {
+        // P=[2,0], Q=[0,2] -> comps=4, diffs=4
+        assert_eq!(dxy_site_counts(&[2, 0], &[0, 2]), (4, 4));
+        // P=[2,0], Q=[2,0] -> comps=4, diffs=0
+        assert_eq!(dxy_site_counts(&[2, 0], &[2, 0]), (0, 4));
+        // P=[1,1], Q=[2,0] -> comps=4, shared=1*2=2, diffs=2
+        assert_eq!(dxy_site_counts(&[1, 1], &[2, 0]), (2, 4));
+        // empty on one side yields no comparisons.
+        assert_eq!(dxy_site_counts(&[0, 0], &[2, 0]), (0, 0));
+    }
+
+    #[test]
+    fn run_pixy_handles_invariant_and_missing_sites_in_one_window() {
+        let dir = tempfile::tempdir().unwrap();
+        let vcf = dir.path().join("allsites.vcf");
+        let pops = dir.path().join("pops.txt");
+        let out_pi = dir.path().join("pi.txt");
+        let out_dxy = dir.path().join("dxy.txt");
+
+        // 4 samples, 2 populations (P1: S1,S2; P2: S3,S4). Single window (size 1000).
+        //
+        // Site 1 (pos 100), variant:   S1=0/1 S2=0/0 S3=1/1 S4=0/1
+        // Site 2 (pos 200), invariant: all 0/0 (ALT ".")
+        // Site 3 (pos 300), missing:   S1=0/1 S2=./. S3=1/1 S4=0/0
+        let mut f = std::fs::File::create(&vcf).unwrap();
+        writeln!(f, "##fileformat=VCFv4.3").unwrap();
+        writeln!(
+            f,
+            "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\tS2\tS3\tS4"
+        )
+        .unwrap();
+        writeln!(f, "1\t100\t.\tA\tG\t.\t.\t.\tGT\t0/1\t0/0\t1/1\t0/1").unwrap();
+        writeln!(f, "1\t200\t.\tA\t.\t.\t.\t.\tGT\t0/0\t0/0\t0/0\t0/0").unwrap();
+        writeln!(f, "1\t300\t.\tA\tG\t.\t.\t.\tGT\t0/1\t./.\t1/1\t0/0").unwrap();
+        f.flush().unwrap();
+        drop(f);
+
+        let mut p = std::fs::File::create(&pops).unwrap();
+        writeln!(p, "S1\tP1").unwrap();
+        writeln!(p, "S2\tP1").unwrap();
+        writeln!(p, "S3\tP2").unwrap();
+        writeln!(p, "S4\tP2").unwrap();
+        p.flush().unwrap();
+        drop(p);
+
+        run_pixy(&vcf, &pops, 1000, &out_pi, &out_dxy).unwrap();
+
+        let pi_text = std::fs::read_to_string(&out_pi).unwrap();
+        let dxy_text = std::fs::read_to_string(&out_dxy).unwrap();
+
+        // --- Hand-computed pi ---
+        //
+        // P1 (S1,S2) allele counts per site (non-missing gametes):
+        //  site1: S1=0/1, S2=0/0 -> counts=[3,1], n=4 -> diffs=3, comps=6, n>=2
+        //  site2: all 0/0        -> counts=[4],   n=4 -> diffs=0, comps=6, n>=2
+        //  site3: S1=0/1, S2=./. -> counts=[1,1], n=2 -> diffs=1, comps=1, n>=2
+        //  total diffs=4, comps=13, no_sites=3, avg_pi = 4/13 = 0.30769231
+        //
+        // P2 (S3,S4):
+        //  site1: S3=1/1, S4=0/1 -> counts=[1,3], n=4 -> diffs=3, comps=6, n>=2
+        //  site2: all 0/0        -> counts=[4],   n=4 -> diffs=0, comps=6, n>=2
+        //  site3: S3=1/1, S4=0/0 -> counts=[2,2], n=4 -> diffs=4, comps=6, n>=2
+        //  total diffs=7, comps=18, no_sites=3, avg_pi = 7/18 = 0.38888889
+        let p1_row = pi_text
+            .lines()
+            .find(|l| l.starts_with("P1\t"))
+            .expect("P1 pi row present");
+        assert_eq!(
+            p1_row,
+            "P1\t1\t1\t1000\t0.30769231\t3\t4\t13",
+            "P1 pi row mismatch"
+        );
+        let p2_row = pi_text
+            .lines()
+            .find(|l| l.starts_with("P2\t"))
+            .expect("P2 pi row present");
+        assert_eq!(
+            p2_row,
+            "P2\t1\t1\t1000\t0.38888889\t3\t7\t18",
+            "P2 pi row mismatch"
+        );
+
+        // --- Hand-computed dxy (P1 vs P2) ---
+        //
+        //  site1: P1=[3,1], P2=[1,3] -> comps=16, shared=3*1+1*3=6, diffs=10, both>=1
+        //  site2: P1=[4],   P2=[4]   -> comps=16, shared=16,        diffs=0,  both>=1
+        //  site3: P1=[1,1], P2=[2,2] -> comps=8,  shared=1*2+1*2=4, diffs=4,  both>=1
+        //  total diffs=14, comps=40, no_sites=3, avg_dxy = 14/40 = 0.35000000
+        let dxy_row = dxy_text
+            .lines()
+            .find(|l| l.starts_with("P1\tP2\t"))
+            .expect("P1/P2 dxy row present");
+        assert_eq!(
+            dxy_row,
+            "P1\tP2\t1\t1\t1000\t0.35000000\t3\t14\t40",
+            "dxy row mismatch"
+        );
+    }
+
+    #[test]
+    fn run_pixy_reports_na_for_empty_windows() {
+        let dir = tempfile::tempdir().unwrap();
+        let vcf = dir.path().join("empty.vcf");
+        let pops = dir.path().join("pops.txt");
+        let out_pi = dir.path().join("pi.txt");
+        let out_dxy = dir.path().join("dxy.txt");
+
+        // Single site fully missing for P1 -> no comparisons -> NA avg_pi.
+        let mut f = std::fs::File::create(&vcf).unwrap();
+        writeln!(f, "##fileformat=VCFv4.3").unwrap();
+        writeln!(
+            f,
+            "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\tS2\tS3\tS4"
+        )
+        .unwrap();
+        writeln!(f, "1\t100\t.\tA\tG\t.\t.\t.\tGT\t./.\t./.\t0/1\t0/1").unwrap();
+        f.flush().unwrap();
+        drop(f);
+
+        let mut p = std::fs::File::create(&pops).unwrap();
+        writeln!(p, "S1\tP1").unwrap();
+        writeln!(p, "S2\tP1").unwrap();
+        writeln!(p, "S3\tP2").unwrap();
+        writeln!(p, "S4\tP2").unwrap();
+        p.flush().unwrap();
+        drop(p);
+
+        run_pixy(&vcf, &pops, 1000, &out_pi, &out_dxy).unwrap();
+
+        let pi_text = std::fs::read_to_string(&out_pi).unwrap();
+        let p1_row = pi_text
+            .lines()
+            .find(|l| l.starts_with("P1\t"))
+            .expect("P1 pi row present");
+        assert_eq!(p1_row, "P1\t1\t1\t1000\tNA\t0\t0\t0", "empty P1 pi row");
     }
 }

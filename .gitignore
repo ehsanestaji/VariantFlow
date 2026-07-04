@@ -6,4 +6,4 @@ __pycache__/
 *.swp
 /paper/paper.pdf
 /paper/jats/
-/.claude/
+.DS_Store

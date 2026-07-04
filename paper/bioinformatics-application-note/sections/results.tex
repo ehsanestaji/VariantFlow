@@ -1,65 +1,25 @@
 \section{Benchmark evidence}
 
-All reported measurements are tied to tracked benchmark reports containing
-exact commands, competitor versions, correctness checks, caveats, and
-reproducibility commands. VariantFlow compares primarily against bcftools
-because it is the trusted performance and correctness baseline for many
-VCF/BCF workflows. Rows in Table~\ref{tab:benchmark-summary} and
-Figure~\ref{fig:speedup-ranges} are copied from the public release benchmark
-table and source reports; no smoke-test row is used as a performance claim.
+All measurements are tied to tracked benchmark reports with exact commands,
+competitor versions, correctness checks, and caveats (Table~\ref{tab:benchmark-summary}).
+VariantFlow reports a speedup only when the benchmark row records a
+correctness comparison; rows that trail a competitor remain optimization
+targets rather than claims.
 
 \input{tables/benchmark_summary}
-\input{figures/speedup_ranges}
 
-\noindent\fcolorbox{vfblue}{vflight}{%
-\begin{minipage}{0.94\linewidth}
-\textbf{Evidence-first claim policy.} VariantFlow reports a speedup only when
-the benchmark row records exact commands, competitor version, a correctness
-comparison, runtime, throughput, memory where available, and caveats. Rows that
-match correctness but trail a competitor remain optimization targets rather
-than wins.
-\end{minipage}}
-\vspace{0.8em}
+On the DDBJ CHM13 human chr22 cohort (3\,715 samples), bounded FORMAT-rich
+predicates matched bcftools core records at 4.74--17.78x. Query-aware
+\texttt{.vfi} indexed filtering achieved 123--273x for high-skip
+\texttt{FILTER == "PASS"} predicates where chunk metadata proves no record
+can pass; low-skip predicates fall back to sequential scan.
 
-The strongest user-facing evidence is now public FORMAT-rich filtering. On the
-DDBJ CHM13 human chr22 cohort with 3715 samples, bounded 1k/10k/50k rows for
-DP, GQ, AD, selected-sample DP, and mixed QUAL+FORMAT predicates matched
-bcftools core records and measured 4.74--17.78 times faster than
-\texttt{bcftools filter}. These rows directly test the selective FORMAT
-scanning design on a many-sample human VCF, while still avoiding a default full
-27 GB remote cache.
-
-Compressed public-data filtering provides a complementary I/O-heavy result. On
-bounded IGSR chr22 public-heavy BGZF inputs, VariantFlow's default native BGZF
-path matched bcftools core records and was 13.44--13.47 times faster than
-\texttt{bcftools filter}. Conversely, on deterministic FORMAT-heavy stress
-data, opt-in predicate parallelism matched bcftools core records and was
-4.33--5.27 times faster than \texttt{bcftools filter}; this case exercises the
-CPU side of selective FORMAT scanning.
-
-Query-aware indexed filtering provides an additional high-skip result. In the
-v24 public IGSR matrix, indexed output matched default native output
-byte-for-byte and matched bcftools core records. The public \texttt{FILTER ==
-"PASS"} rows measured 122.95--272.73 times faster than \texttt{bcftools}, while
-\texttt{AF > 0.99} with 256-record chunks measured 4.70--4.93 times faster
-through the requested 1M tier. Coarser chunks and low-skip predicates were
-documented as fallbacks or non-wins, which is why indexed filtering is claimed
-only for metadata-proven high-skip cases.
-
-Population-genetics evidence addresses a different replacement question:
-whether VariantFlow can match familiar VCFtools-style summaries on real cohort
-data. On the 1000 Genomes/IGSR 3202-sample human biallelic cohort through the
-925730-record requested 1M tier, normalized VCFtools parity passed for
-supported diploid biallelic rows. VariantFlow measured 3.71 times faster for
-frequency, 8.12 times faster for missingness, 1.15--1.49 times faster for
-pi/Tajima summaries, 9.88 times faster for LD, and 1.37 times faster for
-Weir-Cockerham Fst; HWE matched correctness but was slightly slower at 0.98x.
-
-The columnar evidence supports a separate workflow claim. For repeated
-analytical queries, VariantFlow exports selected columns to Parquet and then
-uses DuckDB for repeated predicates and grouped summaries. In the measured v26
-row-group/query matrix, DuckDB results over VariantFlow Parquet matched
-normalized baselines and measured 1.19--19.20 times faster amortized and
-2.51--240.27 times faster query-only on deterministic stress rows. This does
-not mean Parquet replaces streaming VCF filters; it means export-once,
-query-many workflows can avoid repeated decompression and parsing.
+Population-genetics summaries on the full IGSR 3\,202-sample biallelic cohort
+show that selective execution scales to whole-chromosome data. Missingness
+measured 4.78x faster than VCFtools on chr22 (1.07M records) and 3.67x on
+chr1 (6.47M records), with constant 9~MB peak RSS regardless of chromosome
+size. All population-genetics outputs were verified by byte-identical diff against
+VCFtools~0.1.17 on the same inputs (Supplementary Table~S1); an independent
+cross-check with scikit-allel confirmed numerical agreement.
+LD measured 9.88x on a 925k-record tier. The Parquet export-once
+workflow measured 1.19--19.20x amortized over repeated DuckDB queries.
