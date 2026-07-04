@@ -29,7 +29,7 @@ family, or institutional conflicts with any author.
 
 | Name | Institution | Reason | Approved for submission form |
 |---|---|---|---|
-| TODO_OR_NONE | TODO | TODO | TODO |
+| None | — | — | — |
 
 ## Independent reviewer gate
 

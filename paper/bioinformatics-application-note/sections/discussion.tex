@@ -1,25 +1,28 @@
 \section{Discussion}
 
-VariantFlow's evidence supports workflow-specific claims. It is currently best
-positioned for selective native streaming filters over VCF/BGZF inputs,
-high-skip index-assisted filters, supported VCFtools-style population summaries,
-and export-once, query-many analytical workflows through Parquet. These are
-common post-calling tasks in which avoiding unused-field parsing can translate
-into lower wall time and, on compute clusters, fewer CPU-hours spent on repeated
-file scans. VariantFlow follows a pragmatic genomics-tool model: make a focused
-algorithmic improvement, expose it through a small command-line interface,
-compare against trusted software, and state limitations plainly. It does not
-claim universal replacement of bcftools, HTSlib, GATK, or VCFtools; instead, it
-documents where VariantFlow beats, matches, or complements existing tools.
+VariantFlow is best positioned for selective native VCF/BGZF filters, high-skip
+indexed filters, supported VCFtools-style population summaries, and
+export-once, query-many Parquet workflows. It does not claim universal
+replacement of bcftools, HTSlib, GATK, or VCFtools; the release claim matrix
+documents where it beats, matches, or complements existing tools.
 
-Several limitations remain. The current human FORMAT evidence is bounded to
-1k/10k/50k tiers from a remote 27 GB CHM13 source, BCF/region TSV compatibility
-paths are not the primary speed claim, HWE was slightly slower than VCFtools at
-the 1M requested tier, and indexed-filter wins depend on predicates that allow
-safe chunk skipping. Future work will expand full-file public cohort evidence,
-broaden expression compatibility, improve BCF and indexed-region export paths,
-add analytical baselines such as Polars and PyArrow, and tune index build
-amortization. The release claim matrix is intended to keep this boundary
-explicit: a VariantFlow claim should exist only when a linked report shows
-correctness, runtime, throughput, memory where available, exact commands,
-competitor version, and caveats.
+GPU-accelerated pipelines such as NVIDIA Clara Parabricks target variant
+calling and upstream processing with massive parallelism
+\citep{parabricks}. VariantFlow addresses a different bottleneck:
+post-calling field selection on commodity CPU hardware. The two approaches
+are complementary.
+
+If selective execution becomes common in post-calling tools, routine
+workflows on large cohorts may shift from batch to interactive timescales,
+the export-once pattern can reduce redundant I/O, and tool authors may
+re-examine which fields each pipeline stage actually needs.
+
+Correctness is validated by byte-identical output matching against
+VCFtools and cross-checked with scikit-allel \citep{scikitallel}. For
+diversity under missing data, VariantFlow implements the unbiased per-site
+$\pi$ and $d_{XY}$ estimators of pixy \citep{pixy2021}; on an all-sites
+cohort with 15\% missing genotypes its pairwise counts are identical to
+pixy across every window (Supplementary Table~S4), delivered as a compiled
+selective-execution pass. Limitations include bounded FORMAT evidence, HWE
+slightly trailing VCFtools, and BGZF filtering not outperforming bcftools on
+many-sample files. Future work will broaden expression compatibility.

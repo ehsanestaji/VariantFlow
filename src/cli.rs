@@ -90,6 +90,17 @@ enum Command {
         #[arg(short, long)]
         output: PathBuf,
     },
+    Pixy {
+        input: PathBuf,
+        #[arg(long = "populations")]
+        populations: PathBuf,
+        #[arg(long)]
+        window_size: u64,
+        #[arg(long = "out-pi")]
+        out_pi: PathBuf,
+        #[arg(long = "out-dxy")]
+        out_dxy: PathBuf,
+    },
     TajimaD {
         input: PathBuf,
         #[arg(long)]
@@ -206,6 +217,13 @@ pub fn run_with_name(name: &'static str) -> Result<()> {
             window_size,
             &output,
         ),
+        Command::Pixy {
+            input,
+            populations,
+            window_size,
+            out_pi,
+            out_dxy,
+        } => popgen::run_pixy(&input, &populations, window_size, &out_pi, &out_dxy),
         Command::TajimaD {
             input,
             keep,
