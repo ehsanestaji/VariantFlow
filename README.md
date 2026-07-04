@@ -220,8 +220,8 @@ The default build is a line-preserving streaming filter, not the future full col
 
 ## VCFtools-Style Population Summaries
 
-`freq`, `missingness`, `hardy`, `het`, `fst`, `pi`, `tajima-d`, and `ld` are
-the first VCFtools replacement-layer commands. They support optional
+`freq`, `missingness`, `hardy`, `het`, `fst`, `pi`, `tajima-d`, `ld`, and
+`pixy` are the population-summary commands. They support optional
 `--keep samples.txt` or `--remove samples.txt` selection files where applicable,
 preserve input sample order, and stream native `.vcf`/`.vcf.gz` inputs.
 
@@ -235,6 +235,8 @@ variantflow pi input.vcf.gz -o output.sites.pi
 variantflow pi input.vcf.gz --window-size 100000 -o output.windowed.pi
 variantflow tajima-d input.vcf.gz --window-size 100000 -o output.Tajima.D
 variantflow ld input.vcf.gz --max-distance 50000 -o output.geno.ld
+variantflow pixy allsites.vcf.gz --populations pops.txt --window-size 10000 \
+  --out-pi out_pi.tsv --out-dxy out_dxy.tsv
 ```
 
 `freq` writes a VCFtools-style site frequency table:
@@ -250,6 +252,26 @@ CHROM	POS	N_ALLELES	N_CHR	{ALLELE:FREQ}
   `N_GENOTYPE_FILTERED`, `N_MISS`, and `F_MISS`.
 - `output_prefix.imiss`: individual missingness with `INDV`, `N_DATA`,
   `N_GENOTYPE_FILTERED`, `N_MISS`, and `F_MISS`.
+
+### Unbiased diversity under missing data (`pixy`)
+
+The `pixy` command computes windowed nucleotide diversity (pi) and
+between-population divergence (dxy) using the missing-data-aware estimator of
+[pixy](https://pixy.readthedocs.io) (Korunes & Samuk 2021): at each site only
+non-missing pairwise comparisons are counted, and windowed statistics are the
+ratio of summed differences to summed comparisons across all sites (including
+invariant sites). It expects an all-sites VCF and a tab-separated populations
+file with `SampleID<TAB>Population` rows.
+
+```bash
+variantflow pixy allsites.vcf.gz --populations pops.txt --window-size 10000 \
+  --out-pi out_pi.tsv --out-dxy out_dxy.tsv
+```
+
+On an all-sites cohort containing 15% missing genotypes, VariantFlow's integer
+pairwise counts are identical to pixy 2.2.1 across every window; the estimator
+is reproducible with `benchmark/make_pixy_validation_data.py` and
+`benchmark/pixy_crosscheck.py`.
 
 These commands are correctness-focused coverage for common VCFtools workflows.
 The optional `make vcftools-parity` harness checks `freq`, `missingness`,

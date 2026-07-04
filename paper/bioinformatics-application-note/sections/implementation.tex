@@ -1,11 +1,13 @@
 \section{Algorithm and implementation}
 
-VariantFlow is implemented in Rust. The native engine treats each VCF record as
-a borrowed byte-slice view. Site fields, selected INFO values, FORMAT keys, and
-sample values are located by byte scanning rather than by materializing all
-columns as strings. Expression parsing produces a typed predicate tree, and the
-evaluator asks the record view only for fields required by that predicate. This
-keeps the hot path close to the work requested by the user.
+The core design principle is selective execution: a query is compiled to the
+minimal set of fields it touches, and only those fields are decoded. The
+native engine treats each VCF record as a borrowed byte-slice view. Site
+fields, selected INFO values, FORMAT keys, and sample values are located by
+byte scanning rather than by materializing all columns as strings. Expression
+parsing produces a typed predicate tree, and the evaluator asks the record
+view only for fields required by that predicate. This keeps the hot path close
+to the work requested by the user.
 
 For FORMAT-heavy cohort filters, VariantFlow scans the FORMAT schema once per
 record, caches the requested key index, and reads sample values by index. This
@@ -13,34 +15,22 @@ avoids repeatedly scanning \texttt{GT:DP:GQ:AD}-like schemas for every sample.
 Native filtering writes passing records in input order and preserves their
 original text in the line-preserving path.
 
-Compressed input is handled through a native BGZF reader for BGZF
-\texttt{.vcf.gz} files, with auto-capped worker threads enabled by default and
-a single-thread escape hatch for comparison. CPU-heavy predicates, such as
-FORMAT aggregate filters, can use ordered batch evaluation while preserving
-output order. For repeated high-skip filters, VariantFlow can build an explicit
-\texttt{.vfi} sidecar index with chunk metadata for genomic range, QUAL,
-FILTER, and selected INFO summaries; the planner skips chunks only when metadata
-proves no record can pass and otherwise falls back to normal streaming. Optional
-HTSlib-backed paths provide compatibility for BCF input, indexed region reads,
-and BGZF output when ecosystem interoperability is more important than
-byte-for-byte record preservation.
+Compressed input is handled through a native BGZF reader with auto-capped
+worker threads. CPU-heavy predicates use ordered batch evaluation while
+preserving output order. For repeated high-skip filters, an explicit
+\texttt{.vfi} sidecar index stores chunk metadata (genomic range, QUAL,
+FILTER, selected INFO summaries); the planner skips chunks only when metadata
+proves no record can pass. Optional HTSlib-backed paths provide BCF input,
+indexed region reads, and BGZF output.
 
 VariantFlow also provides population-genetics and export workflows. The
 VCFtools-style commands use compact diploid biallelic genotype summaries where
-supported while preserving VCFtools-compatible output formats for frequency,
-missingness, HWE, heterozygosity, nucleotide diversity, Tajima's D, LD, and
-Weir-Cockerham Fst parity checks. TSV output exposes a stable selected
-projection, while Parquet export stores typed POS, nullable QUAL, nullable
-INFO/DP, and lossless string INFO/AF columns for repeated analysis with engines
-such as DuckDB \citep{duckdb,apache_arrow,parquet}.
+supported, preserving VCFtools-compatible output for frequency, missingness,
+HWE, LD, Fst, and related population summaries. Parquet export stores typed
+columns for repeated analysis with DuckDB \citep{duckdb}.
 
-The command-line interface follows the small-tool style common in genomics
-software:
-\begin{quote}
-\small
-\texttt{variantflow filter input.vcf.gz --where "QUAL > 30" -o out.vcf.gz}\\
-\texttt{variantflow filter cohort.vcf.gz --where "ANY(FORMAT/DP > 20)" -o out.vcf}\\
-\texttt{variantflow fst cohort.vcf.gz --pop pop1.txt --pop pop2.txt}\\
-\texttt{\ \ --estimator weir-cockerham -o fst.tsv}\\
-\texttt{variantflow convert input.vcf.gz --to parquet -o variants.parquet}
-\end{quote}
+The CLI follows the small-tool style common in genomics:
+{\small
+\texttt{variantflow filter input.vcf.gz --where "QUAL>30 \&\& ANY(FORMAT/DP>20)"}\\
+\texttt{variantflow fst cohort.vcf.gz --pop pop1.txt --pop pop2.txt -o fst.tsv}
+}

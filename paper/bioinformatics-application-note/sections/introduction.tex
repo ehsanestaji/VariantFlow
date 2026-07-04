@@ -1,39 +1,22 @@
 \section{Introduction}
 
-Variant call format (VCF) files remain the exchange language of post-calling
-genomics workflows \citep{vcftools}. They are easy to inspect, compress, index,
-and stream through tools built on HTSlib and bcftools \citep{bcftools,htslib}.
-This design has been remarkably durable, in the same spirit as SAM/BAM,
-SAMtools, and tabix: small command-line tools and stable formats become the
-infrastructure on which larger pipelines rely \citep{samtools,tabix}. However,
-an exchange format is not always the most efficient execution layout for every
-downstream task.
+Genomic variant data is accumulating rapidly. Population-scale projects now
+routinely produce VCF files with thousands of samples and millions of variant
+sites per chromosome \citep{vcftools}. Post-calling workflows---quality
+filtering, cohort subsetting, population summaries, analytical export---scan
+these files repeatedly, and each pass typically parses the full record even
+when the operation depends on only QUAL, one INFO tag, or a single FORMAT
+key. On a multi-thousand-sample cohort, parsing unused FORMAT vectors and
+sample values can dominate runtime without changing the result.
 
-A typical analysis may scan the same BGZF-compressed cohort VCF many times to
-apply quality filters, evaluate INFO or FORMAT predicates, summarize call sets,
-compare two files, and export selected columns for statistical analysis. In
-many of these steps, the operation depends on only a few fields such as QUAL,
-FILTER, INFO/DP, INFO/AF, or one FORMAT key. Parsing unused INFO annotations,
-FORMAT vectors, and thousands of sample values can therefore dominate runtime
-without changing the result. BGT made a related observation for genotype
-queries across many samples: VCF stores many kinds of information together, so
-queries over a subset of samples or fields can force unnecessary decoding
-\citep{bgt}. VariantFlow targets this same class of inefficiency while keeping
-VCF/BGZF as the default interchange layer.
+Mature tools---bcftools, HTSlib, VCFtools---form the reliable
+infrastructure on which larger pipelines rely
+\citep{bcftools,htslib}. Their breadth is essential, but an exchange
+format optimized for generality is not always the most efficient
+execution layout for every downstream task.
 
-Mature tools such as bcftools and HTSlib provide the compatibility baseline for
-VCF/BCF streaming, BGZF compression, region access, filtering, querying, and
-statistics \citep{bcftools,htslib}. VCFtools remains a familiar reference for
-population summaries such as frequency, missingness, heterozygosity, nucleotide
-diversity, linkage disequilibrium, and Fst. Their breadth is essential: real
-projects need BCF, tabix/CSI indexing, complex expressions, normalization,
-durable interoperability, and trusted statistical outputs. VariantFlow is
-designed to complement this ecosystem rather than replace it universally. Its
-central idea is selective execution: for supported operations, parse only the
-fields required by the current predicate, statistic, or projection; preserve
-original records when possible; and track every performance claim against
-correctness-matched benchmarks. This mirrors the style of focused genomics
-software such as minimap2, which explains the algorithmic reason for speed and
-then evaluates accuracy and runtime on real datasets \citep{minimap2}. For
-bioinformatics practice, this evidence-first position is essential: a speedup is
-useful only when the output remains trustworthy and the limitations are visible.
+VariantFlow targets this through selective execution: parse only the
+fields required by the current predicate, statistic, or projection;
+preserve original records where possible; and track every performance
+claim against correctness-matched benchmarks. It complements bcftools,
+HTSlib, VCFtools, and GATK rather than replacing them.
