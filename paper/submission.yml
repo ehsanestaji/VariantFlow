@@ -23,9 +23,10 @@ authors:
     corresponding: true
 
 release:
-  tag: TODO_RELEASE_TAG
-  source_archive_url: TODO_RELEASE_SOURCE_URL
-  archive_doi: TODO_ARCHIVE_DOI
+  tag: v1.5.0
+  source_archive_url: https://github.com/ehsanestaji/VariantFlow/releases/tag/v1.5.0
+  archive_doi: 10.5281/zenodo.21198171
+  version_doi: 10.5281/zenodo.21198172
 
 submission_docs:
   - docs/submission/journal-fit.md
