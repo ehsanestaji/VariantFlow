@@ -15,7 +15,10 @@ metadata. Fill it before marking the Author Gate as passed.
 
 | Order | Name | Affiliation | ORCID | CRediT roles | Approval |
 |---|---|---|---|---|---|
-| 1 | Ehsan Estaji | Umea Plant Science Center | TODO_ORCID_OR_NONE | Conceptualization; Software; Validation; Investigation; Data curation; Writing - original draft; Writing - review and editing | TODO_APPROVED |
+| 1 | Ehsan Estaji | UPSC, Dept. Plant Physiology, Umeå University | 0009-0005-0838-228X | Conceptualization; Software; Validation; Investigation; Data curation; Writing - original draft; Writing - review and editing | Approved |
+| 2 | Jian-Feng Mao | UPSC, Dept. Plant Physiology, Umeå University | TODO_JFM_ORCID | Supervision; Writing - review and editing | Approved |
+
+Equal contribution: E.E. and J.-F.M. contributed equally to this work.
 
 Author order and CRediT roles must be confirmed before submission. Any
 coauthor added later needs contribution, approval, conflict, and ORCID review
@@ -23,24 +26,19 @@ before the paper is submitted.
 
 ## Corresponding author
 
-- Name: Ehsan Estaji
-- Email: TODO_CONTACT_EMAIL
-- Affiliation: Umea Plant Science Center
-- ORCID: TODO_ORCID_OR_NONE
+- Name: Jian-Feng Mao
+- Email: jianfeng.mao@umu.se
+- Affiliation: Umeå Plant Science Centre, Dept. Plant Physiology, Umeå University
+- ORCID: TODO_JFM_ORCID
 
 ## Funding
 
-TODO_FUNDING_STATEMENT_OR_NONE
-
-If there is no specific funding, replace the placeholder with:
-`No specific funding was received for this work.`
+This work was partially supported by the Wallenberg Initiatives in Forest
+Research (WIFORCE) funded by the Knut and Alice Wallenberg Foundation.
 
 ## Conflict of interest
 
-TODO_CONFLICT_STATEMENT
-
-If there are no conflicts, replace the placeholder with:
-`The author declares no competing interests.`
+The authors declare no competing interests.
 
 ## Acknowledgements
 
@@ -51,10 +49,10 @@ HTSlib, bcftools, VCFtools, Apache Arrow, Parquet, DuckDB, and Bioconda.
 
 ## AI usage disclosure
 
-Codex and related OpenAI systems were used for planning, code-review support,
-test scaffolding, benchmark-report organization, and prose drafting support.
-The human author reviewed and remains responsible for the manuscript, code,
-benchmarks, licensing, and scientific claims.
+AI coding assistants (OpenAI Codex and Anthropic Claude Code) were used for
+planning, code-review support, test scaffolding, benchmark-report organization,
+and prose drafting support. The human author reviewed and remains responsible
+for the manuscript, code, benchmarks, licensing, and scientific claims.
 
 ## Release and archive
 

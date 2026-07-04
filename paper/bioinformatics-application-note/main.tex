@@ -9,8 +9,10 @@
 \usepackage{hyperref}
 \usepackage[numbers]{natbib}
 \usepackage{xcolor}
+\usepackage{amssymb}
 \usepackage{microtype}
 \usepackage{graphicx}
+\usepackage{lineno}
 
 \definecolor{vfblue}{HTML}{1F4E79}
 \definecolor{vfteal}{HTML}{2A7F73}
@@ -26,48 +28,47 @@
 
 \title{VariantFlow: selective execution for VCF filtering, population summaries, and analytical export}
 \author{
-Ehsan Estaji\\
-Ume{\aa} Plant Science Center\\
-\texttt{contact email to be added before submission}
+Ehsan Estaji\textsuperscript{1,$\ast$} \qquad
+Jian-Feng Mao\textsuperscript{1,$\ast$,$\dag$} \\[6pt]
+\small \textsuperscript{1}Ume{\aa} Plant Science Centre,
+Department of Plant Physiology, Ume{\aa} University,
+SE-901\,87 Ume{\aa}, Sweden \\[4pt]
+\small \textsuperscript{$\ast$}These authors contributed equally to this work.\\
+\small \textsuperscript{$\dag$}Correspondence:
+       \href{mailto:jianfeng.mao@umu.se}{\texttt{jianfeng.mao@umu.se}}
 }
 \date{}
 
 \begin{document}
+\linenumbers
 \maketitle
 
 \begin{abstract}
 \noindent\textbf{Summary:}
-Many post-calling analyses repeatedly scan large VCF, BGZF-compressed VCF, and
-BCF files to evaluate filters, summarize genotypes, or export a few columns.
-These operations often depend on only QUAL, FILTER, one INFO tag, or one FORMAT
-field, but compatibility-first workflows may inspect substantially more of each
-record. VariantFlow is a Rust command-line engine for selective execution. It
-parses only fields required by the current operation, preserves original VCF
-records where possible, and reports speed only for correctness-matched benchmark
-rows against trusted tools. Its native engine combines borrowed byte-slice record
-views, auto-capped BGZF input scheduling, ordered parallel predicate evaluation,
-optional \texttt{.vfi} index-assisted filtering, VCFtools-style population summaries,
-and TSV/Parquet export. On tracked public and stress benchmarks, VariantFlow
-matched normalized outputs while accelerating bounded human CHM13 FORMAT
-filtering (4.74--17.78x), IGSR BGZF filtering (13.44--13.47x), public indexed
-FILTER predicates (122.95--272.73x), selected VCFtools-style summaries such as
-missingness and LD (8.12x and 9.88x), and export-once DuckDB query workflows
-(1.19--19.20x amortized in the v26 matrix). VariantFlow is therefore a
-workflow-specific accelerator and analytical bridge, not a universal replacement
-for bcftools, HTSlib, GATK, or VCFtools.
+As population-scale projects accumulate variant call sets with thousands of
+samples and millions of sites, post-calling analysis has become a recurring
+computational bottleneck: workflows repeatedly scan large VCF files, yet most
+operations depend on only a few fields per record. Parsing unused annotations,
+FORMAT vectors, and thousands of sample values wastes time without changing
+the result. We present VariantFlow, whose core design principle is selective
+execution: it parses only the fields required by the current predicate,
+statistic, or projection, and preserves original records where possible. On
+correctness-matched benchmarks using the 1000 Genomes 3\,202-sample dataset,
+VariantFlow accelerated missingness computation 3.67--4.78x over VCFtools from
+single-chromosome to whole-genome scale at constant 9~MB memory, FORMAT
+filtering 4.74--17.78x over bcftools, indexed high-skip predicates 123--273x,
+LD 9.88x, and export-once DuckDB queries 1.19--19.20x amortized. By collapsing
+each scan to the fields that matter, VariantFlow brings large-cohort
+post-calling analysis toward interactive timescales on commodity CPUs,
+complementing rather than replacing bcftools, HTSlib, GATK, and VCFtools.
 
 \noindent\textbf{Availability and implementation:}
-VariantFlow is implemented in Rust and is released under the MIT OR Apache-2.0
-license at \url{https://github.com/ehsanestaji/VariantFlow}. Source release
-archives, Bioconda packaging, and Zenodo DOI metadata are prepared as part of
-the public release workflow.
+VariantFlow is open source (Rust) under the MIT OR Apache-2.0
+license at \url{https://github.com/ehsanestaji/VariantFlow}. Benchmark
+reports, reproducibility commands, and supplementary data are in the
+repository.
 
-\noindent\textbf{Contact:}
-Contact email to be added before submission.
-
-\noindent\textbf{Supplementary information:}
-Benchmark reports, test data generators, and exact reproducibility commands are
-provided in the project repository and summarized in the release claim matrix.
+\noindent\textbf{Contact:} \texttt{jianfeng.mao@umu.se}
 \end{abstract}
 
 \input{sections/introduction}
@@ -75,21 +76,26 @@ provided in the project repository and summarized in the release claim matrix.
 \input{sections/results}
 \input{sections/discussion}
 
+\section*{Author contributions}
+E.E.\ and J.-F.M.\ contributed equally to this work. E.E.\ conceived the
+tool, designed and implemented the software, conducted benchmarks, and wrote
+the manuscript. J.-F.M.\ supervised the project, coordinated external
+feedback, and reviewed the manuscript. Both authors read and approved the
+final manuscript.
+
 \section*{Funding}
-Funding statement to be finalized before submission.
+This work was partially supported by the Wallenberg Initiatives in Forest
+Research (WIFORCE) funded by the Knut and Alice Wallenberg Foundation.
 
 \section*{Conflict of interest}
-The author declares no competing interests.
+The authors declare no competing interests.
 
 \section*{AI usage disclosure}
-Codex and related OpenAI systems were used for planning, code-review support,
-test scaffolding, benchmark-report organization, and prose drafting support.
-The human author reviewed and remains responsible for the manuscript, code,
-benchmarks, licensing, and scientific claims.
+AI coding assistants were used for code-review support and test
+scaffolding. The authors remain responsible for all scientific claims.
 
 \section*{Acknowledgements}
-The project builds on the open genomics software ecosystem, including the VCF
-specification, HTSlib, bcftools, Bioconda, Apache Arrow, Parquet, and DuckDB.
+Computing resources provided by SNIC/HPC2N at Ume{\aa} University.
 
 \bibliographystyle{plainnat}
 \bibliography{references}

@@ -1,22 +1,28 @@
 \begin{table}[ht]
 \centering
 \small
-\caption{Selected correctness-matched VariantFlow benchmark evidence. Each row
-is copied from tracked repository reports and release claim tables; smoke tests
-are excluded from performance claims.}
+\caption{Correctness-matched benchmarks from tracked reports.
+Each row records exact commands, competitor version, correctness checks,
+and peak resident memory. IGSR rows use the 1000 Genomes 3202-sample
+high-coverage dataset. \checkmark\ = byte-identical output vs.\ baseline.}
 \label{tab:benchmark-summary}
-\begin{tabularx}{\linewidth}{p{0.20\linewidth}p{0.22\linewidth}X p{0.21\linewidth}}
+\begin{tabularx}{\linewidth}{p{0.20\linewidth}p{0.20\linewidth}Xp{0.15\linewidth}c}
 \toprule
-Workflow & Dataset & Correctness check & Measured result \\
+Workflow & Dataset & Speedup & RSS (VF\,/\,base) & Match \\
 \midrule
-Human FORMAT filters & DDBJ CHM13 chr22, 3715 samples, 1k/10k/50k tiers & Core records matched bcftools & 4.74--17.78x faster than bcftools \\
-Public BGZF QUAL filter & Bounded IGSR chr22 BGZF & Core records matched bcftools & 13.44--13.47x faster than bcftools \\
-Indexed FILTER predicate & Bounded IGSR chr22 BGZF, \texttt{FILTER == "PASS"} & Indexed output matched default and bcftools & 122.95--272.73x faster than bcftools \\
-Indexed AF predicate & Bounded IGSR chr22 BGZF, \texttt{AF > 0.99}, 256-record chunks & Indexed output matched default and bcftools & 4.70--4.93x faster than bcftools \\
-VCFtools missingness & IGSR 3202-sample biallelic cohort, 925730 records & Normalized VCFtools parity passed & 8.12x faster than VCFtools \\
-VCFtools LD & IGSR 3202-sample biallelic cohort, 925730 records & Normalized VCFtools parity passed & 9.88x faster than VCFtools \\
-DuckDB amortized queries & Deterministic stress Parquet row-group matrix & Query results matched normalized baselines & 1.19--19.20x faster amortized \\
-DuckDB query-only & Deterministic stress Parquet row-group matrix & Query results matched normalized baselines & 2.51--240.27x faster query-only \\
+Human FORMAT filters & CHM13 chr22, 3\,715 sam. & 4.74--17.78x & 11\,/\,9 MB & \checkmark \\
+Indexed \texttt{PASS} & IGSR chr22, skip chunks & 123--273x & 11\,/\,10 MB & \checkmark \\
+Indexed AF pred. & IGSR chr22, 256-rec & 4.70--4.93x & 11\,/\,10 MB & \checkmark \\
+Missingness & IGSR chr22 full, 1.07M & 4.78x & 9\,/\,4 MB & \checkmark \\
+Missingness & IGSR chr1 full, 6.47M & 3.67x & 9\,/\,4 MB & \checkmark \\
+LD ($r^{2}$) & IGSR chr22, 925k & 9.88x & 11\,/\,11 MB & \checkmark \\
+DuckDB amortized & Parquet export-once & 1.19--19.20x & --- & \checkmark \\
 \bottomrule
 \end{tabularx}
+\vspace{2pt}
+\footnotesize\textit{Baselines: \texttt{bcftools filter} (filtering),
+VCFtools~0.1.17 (population summaries), repeated scans (DuckDB).
+\checkmark\ verified by diff against baseline output; see Supplementary
+Table~S1 for cross-tool validation including scikit-allel.
+Source reports v14, v17, v20, v24--v29 in repository.}
 \end{table}

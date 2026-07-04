@@ -30,15 +30,16 @@ version, source archive, and reproducibility materials are available at:
 - Archive DOI: TODO_ARCHIVE_DOI
 - Public benchmark table: `docs/public-benchmark-table.md`
 
-AI usage disclosure: Codex and related OpenAI systems were used for planning,
-code-review support, test scaffolding, benchmark-report organization, and prose
-drafting support. The human author reviewed and remains responsible for the
-manuscript, code, benchmarks, licensing, and scientific claims.
+AI usage disclosure: AI coding assistants (OpenAI Codex and Anthropic Claude
+Code) were used for planning, code-review support, test scaffolding,
+benchmark-report organization, and prose drafting support. The human authors
+reviewed and remain responsible for the manuscript, code, benchmarks,
+licensing, and scientific claims.
 
-All authors have approved this submission and declare the conflicts listed in
-the manuscript.
+All authors have approved this submission and declare no competing interests.
 
 Sincerely,
 
-TODO_CORRESPONDING_AUTHOR_NAME
-TODO_CONTACT_EMAIL
+Ehsan Estaji and Jian-Feng Mao
+Umeå Plant Science Centre, Umeå University
+Correspondence: jianfeng.mao@umu.se
