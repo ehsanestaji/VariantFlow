@@ -1,7 +1,7 @@
 \section{Benchmark evidence}
 
 All measurements are tied to tracked benchmark reports with exact commands,
-competitor versions, correctness checks, and caveats (Table~\ref{tab:benchmark-summary}).
+competitor versions, correctness checks, and caveats (Table~1).
 VariantFlow reports a speedup only when the benchmark row records a
 correctness comparison; rows that trail a competitor remain optimization
 targets rather than claims.
@@ -26,7 +26,7 @@ VariantFlow implements the population-genetics statistics that are computable
 in a single streaming pass over sites or windows---allele frequency,
 missingness, heterozygosity, Hardy--Weinberg, $\pi$, missing-data-aware
 $\pi$/$d_{XY}$, Tajima's $D$, the site-frequency spectrum, $F_{ST}$, and
-LD (Figure~\ref{fig:arch}). The site-frequency spectrum (\texttt{sfs})
+LD (Figure~1). The site-frequency spectrum (\texttt{sfs})
 reproduces scikit-allel's folded and unfolded spectra exactly. Statistics that
 require the full genotype or haplotype matrix in memory---selection scans,
 principal-component analysis, and $D$/$f$-statistics---are outside this
