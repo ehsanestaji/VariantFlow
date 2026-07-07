@@ -6,6 +6,20 @@ export-once, query-many Parquet workflows. It does not claim universal
 replacement of bcftools, HTSlib, GATK, or VCFtools; the release claim matrix
 documents where it beats, matches, or complements existing tools.
 
+These tools occupy complementary niches, and users can choose by task:
+\texttt{bcftools} remains the reference for general filtering, normalization,
+and format conversion; VCFtools for classic population-genetics file
+operations; DuckDB for ad hoc analytical SQL over exported tables; and
+scikit-allel for matrix- and haplotype-based statistics (selection scans,
+principal-component analysis, $D$/$f$-statistics) that require the whole
+genotype matrix in memory. VariantFlow fills the gap between them: fast,
+field-selective filtering and streamable site- and window-wise statistics on
+large cohorts, with export-once handoff to DuckDB and explicit deferral to
+scikit-allel for matrix-wide analyses (Supplementary Table~S5). The practical
+rule is to reach for VariantFlow when interactive turnaround on large VCFs on
+commodity CPUs is the priority, and for the established tools when their full
+generality is required.
+
 GPU-accelerated pipelines such as NVIDIA Clara Parabricks target variant
 calling and upstream processing with massive parallelism
 \citep{parabricks}. VariantFlow addresses a different bottleneck:
@@ -15,7 +29,16 @@ are complementary.
 If selective execution becomes common in post-calling tools, routine
 workflows on large cohorts may shift from batch to interactive timescales,
 the export-once pattern can reduce redundant I/O, and tool authors may
-re-examine which fields each pipeline stage actually needs.
+re-examine which fields each pipeline stage actually needs. We anticipate the
+most immediate value for groups that repeatedly process large cohort VCFs on
+commodity hardware: population and conservation/ecological geneticists
+computing diversity, differentiation, and LD; plant and animal breeding
+programmes screening large panels; large-cohort human-genomics projects
+performing quality control and missingness or allele-frequency summaries; and
+pipeline developers who need a fast, scriptable filtering and export layer. For
+these communities VariantFlow's distinctive value is bringing whole-cohort
+post-calling summaries from batch to interactive timescales without a cluster,
+while preserving exact correctness against established tools.
 
 Correctness is validated by byte-identical output matching against
 VCFtools and cross-checked with scikit-allel \citep{scikitallel}. For

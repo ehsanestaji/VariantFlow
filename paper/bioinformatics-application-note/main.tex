@@ -30,12 +30,11 @@
 
 \title{VariantFlow: selective execution for VCF filtering, population summaries, and analytical export}
 \author{
-Ehsan Estaji\textsuperscript{1,$\ast$} \qquad
-Jian-Feng Mao\textsuperscript{1,$\ast$,$\dag$} \\[6pt]
+Ehsan Estaji\textsuperscript{1} \qquad
+Jian-Feng Mao\textsuperscript{1,$\dag$} \\[6pt]
 \small \textsuperscript{1}Ume{\aa} Plant Science Centre,
 Department of Plant Physiology, Ume{\aa} University,
 SE-901\,87 Ume{\aa}, Sweden \\[4pt]
-\small \textsuperscript{$\ast$}These authors contributed equally to this work.\\
 \small \textsuperscript{$\dag$}Correspondence:
        \href{mailto:jianfeng.mao@umu.se}{\texttt{jianfeng.mao@umu.se}}
 }
@@ -82,11 +81,10 @@ the repository.
 \input{sections/discussion}
 
 \section*{Author contributions}
-E.E.\ and J.-F.M.\ contributed equally to this work. E.E.\ conceived the
-tool, designed and implemented the software, conducted benchmarks, and wrote
-the manuscript. J.-F.M.\ supervised the project, coordinated external
-feedback, and reviewed the manuscript. Both authors read and approved the
-final manuscript.
+E.E.\ conceived the tool, designed and implemented the software, conducted
+benchmarks, and wrote the manuscript. J.-F.M.\ supervised the project,
+coordinated external feedback, and reviewed the manuscript. Both authors read
+and approved the final manuscript.
 
 \section*{Funding}
 This work was partially supported by the Wallenberg Initiatives in Forest
@@ -134,16 +132,19 @@ grouped into filtering/indexing/I-O and population-genetics families; each leaf
 gives the command and a one-line description of its function.
 
 \section*{Supplementary material}
-The supplementary document (\texttt{supplementary.pdf}) contains: Table~S1
-(cross-tool correctness validation against VCFtools and scikit-allel),
-Table~S2 (benchmark system configuration), Table~S3 (full timing and memory),
-Table~S4 (missing-data validation against pixy), Table~S5 (statistics coverage
-relative to scikit-allel, grouped by computational class), and Notes~S1--S2
-(estimator definitions and validation methodology); each item is
-self-contained and begins on its own page. A separate supplementary user guide
-walks a first-year biology graduate student through a complete population-genetics
-analysis of 1000~Genomes chromosome~22, from installation to interpretation; it
-is also available in the repository.
+The supplementary document (\texttt{supplementary.pdf}) contains the following
+items; each is self-contained and begins on its own page:
+
+\begin{itemize}\setlength{\itemsep}{2pt}
+\item Supplementary Table S1 --- cross-tool correctness validation against VCFtools and scikit-allel.
+\item Supplementary Table S2 --- benchmark system configuration.
+\item Supplementary Table S3 --- full benchmark results with timing and memory.
+\item Supplementary Table S4 --- missing-data validation against pixy.
+\item Supplementary Table S5 --- statistics coverage relative to scikit-allel, grouped by computational class.
+\item Supplementary Note S1 --- missing-data-aware $\pi$ and $d_{XY}$.
+\item Supplementary Note S2 --- correctness validation methodology.
+\item Supplementary User Guide --- an end-to-end population-genetics analysis of 1000~Genomes chromosome~22, from installation to interpretation (also available online).
+\end{itemize}
 
 % ======================================================================
 % Display items: title-only, one per page (page break after supplementary list).

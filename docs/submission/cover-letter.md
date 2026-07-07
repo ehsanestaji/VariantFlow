@@ -3,8 +3,8 @@
 Dear Editors,
 
 We are pleased to submit the Application Note manuscript,
-"VariantFlow: selective execution for VCF filtering and analytical export," for
-consideration in Bioinformatics.
+"VariantFlow: selective execution for VCF filtering, population summaries, and
+analytical export," for consideration in Bioinformatics.
 
 VariantFlow is an open-source Rust command-line tool for evidence-tracked
 post-calling variant workflows. It targets a common inefficiency in VCF/BGZF
@@ -21,6 +21,18 @@ filtering, IGSR BGZF filtering, query-aware indexed filtering, VCFtools-style
 population-genetics summaries, and DuckDB/Parquet repeated-query workflows. The
 paper scopes VariantFlow as a measured accelerator and complement to bcftools,
 HTSlib, GATK, and VCFtools under measured conditions.
+
+We expect VariantFlow to be of practical value to research communities that
+repeatedly process large cohort VCFs on commodity hardware: population and
+conservation/ecological genomics (nucleotide diversity, differentiation, and
+linkage disequilibrium), plant and animal breeding (large-panel screening),
+large-cohort human-genomics quality control (missingness and allele-frequency
+summaries), and bioinformatics pipeline development (a fast, scriptable
+filtering and export layer). Its distinctive contribution is bringing
+whole-cohort post-calling summaries from batch to interactive timescales
+without specialized hardware, while preserving exact correctness against
+established tools; a companion online user guide and statistics reference
+lower the barrier to adoption for students and non-specialists.
 
 The software is released under the MIT OR Apache-2.0 license. The submitted
 version, source archive, and reproducibility materials are available at:

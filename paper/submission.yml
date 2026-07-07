@@ -7,19 +7,19 @@ reviewer_gate_status: blocked
 manuscript:
   source: paper/bioinformatics-application-note/main.tex
   pdf: paper/bioinformatics-application-note/build/variantflow-bioinformatics-note.pdf
-  title: "VariantFlow: selective execution for VCF filtering and analytical export"
+  title: "VariantFlow: selective execution for VCF filtering, population summaries, and analytical export"
 
 authors:
   - name: Ehsan Estaji
     affiliation: Umeå Plant Science Centre, Department of Plant Physiology, Umeå University
     email: ehsan.estaji@umu.se
     orcid: 0009-0005-0838-228X
-    equal_contribution: true
+    equal_contribution: false
   - name: Jian-Feng Mao
     affiliation: Umeå Plant Science Centre, Department of Plant Physiology, Umeå University
     email: jianfeng.mao@umu.se
     orcid: 0000-0001-9735-8516
-    equal_contribution: true
+    equal_contribution: false
     corresponding: true
 
 release:
