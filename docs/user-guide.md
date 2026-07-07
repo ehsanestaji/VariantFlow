@@ -38,6 +38,22 @@ By the end of this guide you will have:
 
 Everything is run with one binary, invoked as `variantflow <command>`.
 
+### Who this is for / when to use VariantFlow
+
+This guide (and the tool) is aimed at **population and conservation / ecological
+geneticists**, **plant and animal breeding** programs, **large-cohort human-genomics
+QC**, and **pipeline developers** who want a single dependency-light binary that
+produces VCFtools-compatible output and a fast Parquet export.
+
+Use VariantFlow when you want **interactive turnaround on large VCFs on commodity
+CPUs** — fast field-selective filtering, streamable site/window statistics, and a
+one-time Parquet export. For the full generality of VCF surgery reach for
+**bcftools**; **VCFtools** is the reference baseline VariantFlow's statistics are
+validated against; **DuckDB** runs ad hoc SQL over the exported Parquet; and
+**scikit-allel** handles matrix- and haplotype-wide statistics (selection scans,
+PCA, D/f-statistics) that fall outside VariantFlow's streaming model. See
+[Choosing the right tool](tool-comparison.md) for the full comparison.
+
 ---
 
 ## 2. Installation
