@@ -90,6 +90,17 @@ enum Command {
         #[arg(short, long)]
         output: PathBuf,
     },
+    Sfs {
+        input: PathBuf,
+        #[arg(long)]
+        keep: Option<PathBuf>,
+        #[arg(long)]
+        remove: Option<PathBuf>,
+        #[arg(long, default_value_t = false)]
+        folded: bool,
+        #[arg(short, long)]
+        output: PathBuf,
+    },
     Pixy {
         input: PathBuf,
         #[arg(long = "populations")]
@@ -217,6 +228,13 @@ pub fn run_with_name(name: &'static str) -> Result<()> {
             window_size,
             &output,
         ),
+        Command::Sfs {
+            input,
+            keep,
+            remove,
+            folded,
+            output,
+        } => popgen::run_sfs(&input, keep.as_deref(), remove.as_deref(), folded, &output),
         Command::Pixy {
             input,
             populations,

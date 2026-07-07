@@ -13,6 +13,8 @@
 \usepackage{microtype}
 \usepackage{graphicx}
 \usepackage{lineno}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc}
 
 \definecolor{vfblue}{HTML}{1F4E79}
 \definecolor{vfteal}{HTML}{2A7F73}
@@ -42,6 +44,7 @@ SE-901\,87 Ume{\aa}, Sweden \\[4pt]
 \begin{document}
 \linenumbers
 \maketitle
+\newpage
 
 \begin{abstract}
 \noindent\textbf{Summary:}
@@ -71,6 +74,7 @@ the repository.
 
 \noindent\textbf{Contact:} \texttt{jianfeng.mao@umu.se}
 \end{abstract}
+\newpage
 
 \input{sections/introduction}
 \input{sections/implementation}
@@ -100,5 +104,73 @@ Computing resources provided by SNIC/HPC2N at Ume{\aa} University.
 
 \bibliographystyle{plainnat}
 \bibliography{references}
+
+% ======================================================================
+\clearpage
+\section*{Supplementary material}
+The supplementary document (\texttt{supplementary.pdf}) contains: Table~S1
+(cross-tool correctness validation against VCFtools and scikit-allel),
+Table~S2 (benchmark system configuration), Table~S3 (full timing and memory),
+Table~S4 (missing-data validation against pixy), Table~S5 (statistics coverage
+relative to scikit-allel, grouped by computational class), and Notes~S1--S2
+(estimator definitions and validation methodology); each item is
+self-contained and begins on its own page. A separate supplementary user guide
+walks a first-year biology graduate student through a complete population-genetics
+analysis of 1000~Genomes chromosome~22, from installation to interpretation; it
+is also available in the repository.
+
+% ======================================================================
+% Display items: one per page, after the references.
+\clearpage
+\begin{table}[p]
+\centering
+\small
+\caption{\textbf{Correctness-matched benchmarks from tracked reports.}
+Each row records exact commands, competitor version, correctness checks, and
+peak resident memory. IGSR rows use the 1000~Genomes 3202-sample high-coverage
+dataset. \checkmark\ = byte-identical output vs.\ baseline. Baselines:
+\texttt{bcftools filter} (filtering), VCFtools~0.1.17 (population summaries),
+repeated scans (DuckDB). See Supplementary Table~S1 for cross-tool validation
+including scikit-allel.}
+\label{tab:benchmark-summary}
+\begin{tabularx}{\linewidth}{p{0.20\linewidth}p{0.20\linewidth}Xp{0.15\linewidth}c}
+\toprule
+Workflow & Dataset & Speedup & RSS (VF\,/\,base) & Match \\
+\midrule
+Human FORMAT filters & CHM13 chr22, 3\,715 sam. & 4.74--17.78x & 11\,/\,9 MB & \checkmark \\
+Indexed \texttt{PASS} & IGSR chr22, skip chunks & 123--273x & 11\,/\,10 MB & \checkmark \\
+Indexed AF pred. & IGSR chr22, 256-rec & 4.70--4.93x & 11\,/\,10 MB & \checkmark \\
+Missingness & IGSR chr22 full, 1.07M & 4.78x & 9\,/\,4 MB & \checkmark \\
+Missingness & IGSR chr1 full, 6.47M & 3.67x & 9\,/\,4 MB & \checkmark \\
+LD ($r^{2}$) & IGSR chr22, 925k & 9.88x & 11\,/\,11 MB & \checkmark \\
+DuckDB amortized & Parquet export-once & 1.19--19.20x & --- & \checkmark \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\clearpage
+\begin{figure}[p]
+\centering
+\input{figures/figure1_architecture}
+\caption{\textbf{Selective execution versus conventional full-record parsing.}
+(a) Conventional tools decode every field of every VCF record before applying
+an operation, so most decoded bytes are discarded. (b) VariantFlow compiles
+each query to the minimal set of fields it touches and decodes only those,
+preserving the original record. The lower band lists the population-genetics
+statistics VariantFlow computes in a single streaming pass; matrix-wide and
+haplotype-based statistics are deferred to scikit-allel (Supplementary
+Table~S5).}
+\label{fig:arch}
+\end{figure}
+
+\clearpage
+\begin{figure}[p]
+\centering
+\input{figures/figure2_commandtree}
+\caption{\textbf{The VariantFlow command tree.} Subcommands are grouped into
+filtering/indexing/I-O and population-genetics families; each leaf gives the
+command and a one-line description of its function.}
+\label{fig:tree}
+\end{figure}
 
 \end{document}

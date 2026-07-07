@@ -1,0 +1,78 @@
+% Figure 1: conventional full-record parsing vs. VariantFlow selective execution.
+% Requires in preamble: \usepackage{tikz}
+%   \usetikzlibrary{arrows.meta,positioning,calc}
+% and colors vfblue, vfteal, vflight.
+\begin{tikzpicture}[
+  font=\small,
+  >={Stealth[length=2.2mm]},
+  fld/.style={draw=vfblue!55, minimum height=6mm, minimum width=11mm,
+              inner sep=1pt, font=\scriptsize, align=center},
+  used/.style={fld, fill=vfteal!25, draw=vfteal!80, font=\scriptsize\bfseries},
+  skip/.style={fld, fill=black!5, text=black!45},
+  stage/.style={draw=vfblue!70, fill=vflight, rounded corners=2pt,
+                minimum width=38mm, minimum height=8mm, align=center},
+  op/.style={draw=vfblue!80, fill=vfblue!12, rounded corners=2pt,
+             minimum width=38mm, minimum height=8mm, align=center},
+  hdr/.style={font=\bfseries\small, text=vfblue},
+  note/.style={font=\scriptsize\itshape, text=black!55, align=center},
+]
+
+% ===== column headers =====
+\node[hdr] (hA) at (0,0)   {(a) Conventional full-record parsing};
+\node[hdr] (hB) at (8.4,0) {(b) VariantFlow selective execution};
+
+% ===== (a) conventional =====
+\node[stage] (aq) at (0,-1.0) {Query: \texttt{QUAL > 30}};
+% field strip, decode everything
+\node[fld] (a1) at (-2.75,-2.6) {CHROM};
+\node[fld,right=0.7mm of a1] (a2) {POS};
+\node[fld,right=0.7mm of a2] (a3) {INFO};
+\node[fld,right=0.7mm of a3] (a4) {QUAL};
+\node[fld,right=0.7mm of a4] (a5) {FORMAT};
+\node[fld,right=0.7mm of a5] (a6) {sam.\,$\times N$};
+\node[note,below=0.5mm of a1.south west,anchor=north west] (an) {every field decoded};
+\node[op] (aop) at (0,-4.0) {Apply operation};
+\node[note,below=0.5mm of aop] {most decoded bytes discarded};
+\draw[->] (aq) -- (a4.north);
+\draw[->] (a4.south) -- (aop.north);
+
+% ===== (b) selective =====
+\node[stage] (bq) at (8.4,-1.0) {Query: \texttt{QUAL > 30}};
+\node[stage,below=4mm of bq,minimum height=7mm] (bc) {Compile to fields: \{QUAL\}};
+\node[skip] (b1) at (5.65,-3.35) {CHROM};
+\node[skip,right=0.7mm of b1] (b2) {POS};
+\node[skip,right=0.7mm of b2] (b3) {INFO};
+\node[used,right=0.7mm of b3] (b4) {QUAL};
+\node[skip,right=0.7mm of b4] (b5) {FORMAT};
+\node[skip,right=0.7mm of b5] (b6) {sam.\,$\times N$};
+\node[note,below=0.5mm of b1.south west,anchor=north west] {only \{QUAL\} decoded; record preserved};
+\node[op] (bop) at (8.4,-4.7) {Apply operation};
+\draw[->] (bq) -- (bc);
+\draw[->] (bc) -- (b4.north);
+\draw[->] (b4.south) -- (bop.north);
+
+% ===== statistics band =====
+\node[hdr,anchor=west] at (-2.9,-6.2)
+  {Statistics computable in one streaming pass (Group A; benchmarked)};
+\begin{scope}[chip/.style={draw=vfteal!70, fill=vfteal!12, rounded corners=2pt,
+      font=\scriptsize, minimum height=5.5mm, inner sep=3pt, anchor=west}]
+  % row 1
+  \node[chip] (s1) at (-2.75,-7.05) {\texttt{freq}};
+  \node[chip,right=1.4mm of s1] (s2) {\texttt{missingness}};
+  \node[chip,right=1.4mm of s2] (s3) {\texttt{het}};
+  \node[chip,right=1.4mm of s3] (s4) {\texttt{hardy}};
+  \node[chip,right=1.4mm of s4] (s5) {\texttt{pi}};
+  \node[chip,right=1.4mm of s5] (s6) {\texttt{pixy}};
+  % row 2
+  \node[chip] (s7) at (-2.75,-8.0) {\texttt{tajima-d}};
+  \node[chip,right=1.4mm of s7] (s8) {\texttt{sfs}};
+  \node[chip,right=1.4mm of s8] (s9) {\texttt{fst}};
+  \node[chip,right=1.4mm of s9] (s10) {\texttt{ld}};
+  \node[chip,right=1.4mm of s10] (s11) {\texttt{convert} (Parquet)};
+\end{scope}
+\node[note,anchor=west,text width=15.5cm] at (-2.75,-9.1)
+  {Matrix-wide / haplotype-based statistics (selection scans, PCA,
+   $D$/$f$-statistics) require the full genotype matrix in memory and are
+   deferred to scikit-allel by design (Table~S5).};
+
+\end{tikzpicture}

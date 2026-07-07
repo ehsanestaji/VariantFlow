@@ -1,0 +1,58 @@
+% Figure: VariantFlow command tree (left to right: root -> group -> command + description).
+% Requires: \usepackage{tikz}; \usetikzlibrary{arrows.meta,positioning,calc};
+% colors vfblue, vfteal, vflight.
+\begin{tikzpicture}[
+  font=\small,
+  >={Stealth[length=1.8mm]},
+  root/.style={draw=vfblue!80, fill=vfblue!12, rounded corners=2pt,
+               minimum width=22mm, minimum height=9mm, align=center, font=\ttfamily\small},
+  grp/.style={draw=vfblue!65, fill=vflight, rounded corners=2pt,
+              minimum width=34mm, minimum height=8mm, align=center, font=\bfseries\footnotesize},
+  leaf/.style={anchor=west, font=\footnotesize, inner sep=1.5pt},
+  edge/.style={draw=vfblue!45, rounded corners=2pt},
+]
+
+\def\lx{6.0}   % leaf x (left anchor)
+\newcommand{\leafnode}[3]{\node[leaf] (#1) at (\lx,#2)
+  {\textcolor{vfteal!60!black}{\texttt{\textbf{#3}}}};}
+
+% ---- Group A leaves (Filtering, indexing & I/O) ----
+\leafnode{filter}{0.0}{filter} \node[leaf,right=1mm of filter] {--- expression-based record filtering};
+\leafnode{index}{-0.62}{index} \node[leaf,right=1mm of index] {--- build \texttt{.vfi} chunk-skip index};
+\leafnode{convert}{-1.24}{convert} \node[leaf,right=1mm of convert] {--- export to TSV / Parquet};
+\leafnode{diff}{-1.86}{diff} \node[leaf,right=1mm of diff] {--- compare two VCF/BCF files};
+\leafnode{stats}{-2.48}{stats} \node[leaf,right=1mm of stats] {--- site / allele summary metrics};
+
+% ---- Group B leaves (Population genetics) ----
+\leafnode{freq}{-3.6}{freq} \node[leaf,right=1mm of freq] {--- allele frequencies};
+\leafnode{miss}{-4.22}{missingness} \node[leaf,right=1mm of miss] {--- per-sample / per-site missing rate};
+\leafnode{het}{-4.84}{het} \node[leaf,right=1mm of het] {--- observed / expected heterozygosity};
+\leafnode{hardy}{-5.46}{hardy} \node[leaf,right=1mm of hardy] {--- Hardy--Weinberg equilibrium test};
+\leafnode{pi}{-6.08}{pi} \node[leaf,right=1mm of pi] {--- nucleotide diversity $\pi$ (windowed)};
+\leafnode{pixy}{-6.70}{pixy} \node[leaf,right=1mm of pixy] {--- missing-data-aware $\pi$ and $d_{XY}$};
+\leafnode{taj}{-7.32}{tajima-d} \node[leaf,right=1mm of taj] {--- Tajima's $D$ (and Watterson's $\theta$)};
+\leafnode{ld}{-7.94}{ld} \node[leaf,right=1mm of ld] {--- linkage disequilibrium $r^{2}$};
+\leafnode{fst}{-8.56}{fst} \node[leaf,right=1mm of fst] {--- $F_{ST}$ (Weir--Cockerham, Hudson)};
+\leafnode{sfs}{-9.18}{sfs} \node[leaf,right=1mm of sfs] {--- site frequency spectrum (folded/unfolded)};
+
+% ---- group nodes ----
+\node[grp] (gA) at (2.9,-1.24) {Filtering,\\indexing \& I/O};
+\node[grp] (gB) at (2.9,-6.39) {Population\\genetics};
+
+% ---- root ----
+\node[root] (root) at (-0.3,-3.8) {variantflow};
+
+% ---- edges root -> groups ----
+\draw[edge,->] (root.east) -- (gA.west);
+\draw[edge,->] (root.east) -- (gB.west);
+
+% ---- edges group A -> leaves ----
+\foreach \l in {filter,index,convert,diff,stats}{
+  \draw[edge] (gA.east) -- ($(\l.west)+(-1mm,0)$) -- (\l.west);
+}
+% ---- edges group B -> leaves ----
+\foreach \l in {freq,miss,het,hardy,pi,pixy,taj,ld,fst,sfs}{
+  \draw[edge] (gB.east) -- ($(\l.west)+(-1mm,0)$) -- (\l.west);
+}
+
+\end{tikzpicture}
