@@ -2,7 +2,7 @@
 
 The core design principle is selective execution: a query is compiled to the
 minimal set of fields it touches, and only those fields are decoded
-(Figure~\ref{fig:arch}), in contrast to the conventional approach of decoding
+(Figure~1), in contrast to the conventional approach of decoding
 every field of every record. The
 native engine treats each VCF record as a borrowed byte-slice view. Site
 fields, selected INFO values, FORMAT keys, and sample values are located by
@@ -32,7 +32,7 @@ HWE, LD, Fst, and related population summaries. Parquet export stores typed
 columns for repeated analysis with DuckDB \citep{duckdb}.
 
 The CLI follows the small-tool style common in genomics, organised as a small
-set of composable subcommands (Figure~\ref{fig:tree}):
+set of composable subcommands (Figure~2):
 {\small
 \texttt{variantflow filter input.vcf.gz --where "QUAL>30 \&\& ANY(FORMAT/DP>20)"}\\
 \texttt{variantflow fst cohort.vcf.gz --pop pop1.txt --pop pop2.txt -o fst.tsv}

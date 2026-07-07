@@ -106,7 +106,33 @@ Computing resources provided by SNIC/HPC2N at Ume{\aa} University.
 \bibliography{references}
 
 % ======================================================================
+% Figure/table legends and supplementary list, after the references.
 \clearpage
+\section*{Figure and table legends}
+
+\noindent\textbf{Table~1. Correctness-matched benchmarks from tracked
+reports.} Each row records exact commands, competitor version, correctness
+checks, and peak resident memory. IGSR rows use the 1000~Genomes 3202-sample
+high-coverage dataset. \checkmark~$=$ byte-identical output vs.\ baseline.
+Baselines: \texttt{bcftools filter} (filtering), VCFtools~0.1.17 (population
+summaries), repeated scans (DuckDB). See Supplementary Table~S1 for cross-tool
+validation including scikit-allel.
+
+\vspace{0.9em}
+\noindent\textbf{Figure~1. Selective execution versus conventional
+full-record parsing.} (a) Conventional tools decode every field of every VCF
+record before applying an operation, so most decoded bytes are discarded.
+(b) VariantFlow compiles each query to the minimal set of fields it touches and
+decodes only those, preserving the original record. The lower band lists the
+population-genetics statistics VariantFlow computes in a single streaming pass;
+matrix-wide and haplotype-based statistics are deferred to scikit-allel
+(Supplementary Table~S5).
+
+\vspace{0.9em}
+\noindent\textbf{Figure~2. The VariantFlow command tree.} Subcommands are
+grouped into filtering/indexing/I-O and population-genetics families; each leaf
+gives the command and a one-line description of its function.
+
 \section*{Supplementary material}
 The supplementary document (\texttt{supplementary.pdf}) contains: Table~S1
 (cross-tool correctness validation against VCFtools and scikit-allel),
@@ -120,19 +146,12 @@ analysis of 1000~Genomes chromosome~22, from installation to interpretation; it
 is also available in the repository.
 
 % ======================================================================
-% Display items: one per page, after the references.
+% Display items: title-only, one per page (page break after supplementary list).
 \clearpage
-\begin{table}[p]
-\centering
+\begin{center}\textbf{Table 1}\end{center}
+\vspace{0.5em}
+\begin{center}
 \small
-\caption{\textbf{Correctness-matched benchmarks from tracked reports.}
-Each row records exact commands, competitor version, correctness checks, and
-peak resident memory. IGSR rows use the 1000~Genomes 3202-sample high-coverage
-dataset. \checkmark\ = byte-identical output vs.\ baseline. Baselines:
-\texttt{bcftools filter} (filtering), VCFtools~0.1.17 (population summaries),
-repeated scans (DuckDB). See Supplementary Table~S1 for cross-tool validation
-including scikit-allel.}
-\label{tab:benchmark-summary}
 \begin{tabularx}{\linewidth}{p{0.20\linewidth}p{0.20\linewidth}Xp{0.15\linewidth}c}
 \toprule
 Workflow & Dataset & Speedup & RSS (VF\,/\,base) & Match \\
@@ -146,31 +165,20 @@ LD ($r^{2}$) & IGSR chr22, 925k & 9.88x & 11\,/\,11 MB & \checkmark \\
 DuckDB amortized & Parquet export-once & 1.19--19.20x & --- & \checkmark \\
 \bottomrule
 \end{tabularx}
-\end{table}
+\end{center}
 
 \clearpage
-\begin{figure}[p]
-\centering
+\begin{center}\textbf{Figure 1}\end{center}
+\vspace{0.5em}
+\begin{center}
 \input{figures/figure1_architecture}
-\caption{\textbf{Selective execution versus conventional full-record parsing.}
-(a) Conventional tools decode every field of every VCF record before applying
-an operation, so most decoded bytes are discarded. (b) VariantFlow compiles
-each query to the minimal set of fields it touches and decodes only those,
-preserving the original record. The lower band lists the population-genetics
-statistics VariantFlow computes in a single streaming pass; matrix-wide and
-haplotype-based statistics are deferred to scikit-allel (Supplementary
-Table~S5).}
-\label{fig:arch}
-\end{figure}
+\end{center}
 
 \clearpage
-\begin{figure}[p]
-\centering
+\begin{center}\textbf{Figure 2}\end{center}
+\vspace{0.5em}
+\begin{center}
 \input{figures/figure2_commandtree}
-\caption{\textbf{The VariantFlow command tree.} Subcommands are grouped into
-filtering/indexing/I-O and population-genetics families; each leaf gives the
-command and a one-line description of its function.}
-\label{fig:tree}
-\end{figure}
+\end{center}
 
 \end{document}
