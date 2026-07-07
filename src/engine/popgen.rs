@@ -393,6 +393,101 @@ pub fn run_pi(
     Ok(())
 }
 
+/// Accumulate a site-frequency spectrum (SFS/AFS) from per-site
+/// `(alt_count, allele_number)` pairs over biallelic sites.
+///
+/// Mirrors scikit-allel exactly:
+/// - Unfolded (`folded == false`): a histogram indexed by the derived (alt)
+///   allele count `ac`, where bin `k` counts biallelic sites whose alt allele
+///   count equals `k`. Length is `max_ac + 1` (matching `allel.sfs`, which
+///   histograms integer derived-allele counts across sites without normalising
+///   by per-site sample size).
+/// - Folded (`folded == true`): a histogram indexed by the minor allele count
+///   `min(ac, an - ac)`. Length is `floor(max_an / 2) + 1` (matching
+///   `allel.sfs_folded`).
+///
+/// Sites with `an == 0` are ignored. Callers are responsible for restricting
+/// input to biallelic sites; this helper does not re-check ploidy.
+fn accumulate_sfs(counts_per_site: &[(u64, u64)], folded: bool) -> Vec<u64> {
+    if folded {
+        let max_an = counts_per_site
+            .iter()
+            .filter(|(_, an)| *an > 0)
+            .map(|(_, an)| *an)
+            .max()
+            .unwrap_or(0);
+        let len = (max_an / 2 + 1) as usize;
+        let mut spectrum = vec![0_u64; len];
+        for &(ac, an) in counts_per_site {
+            if an == 0 {
+                continue;
+            }
+            let minor = ac.min(an - ac);
+            spectrum[minor as usize] += 1;
+        }
+        spectrum
+    } else {
+        let max_ac = counts_per_site
+            .iter()
+            .filter(|(_, an)| *an > 0)
+            .map(|(ac, _)| *ac)
+            .max()
+            .unwrap_or(0);
+        let len = (max_ac + 1) as usize;
+        let mut spectrum = vec![0_u64; len];
+        for &(ac, an) in counts_per_site {
+            if an == 0 {
+                continue;
+            }
+            spectrum[ac as usize] += 1;
+        }
+        spectrum
+    }
+}
+
+/// Compute the site-frequency spectrum (SFS/AFS) over biallelic sites, matching
+/// scikit-allel's `allel.sfs` (unfolded) and `allel.sfs_folded` (folded).
+///
+/// For each biallelic site, using only non-missing genotypes: the alt allele
+/// count is `allele_counts[1]` and the allele number `an` is the sum of the
+/// per-allele non-missing counts. Non-biallelic sites and sites with `an == 0`
+/// are skipped. When `folded` is set the folded spectrum is emitted, otherwise
+/// the unfolded spectrum. Output is a TSV with header `ALLELE_COUNT\tN_SITES`,
+/// one row per bin.
+pub fn run_sfs(
+    input: &Path,
+    keep: Option<&Path>,
+    remove: Option<&Path>,
+    folded: bool,
+    output: &Path,
+) -> Result<()> {
+    let selection = SampleSelection::from_files(keep, remove)?;
+    let mut counts_per_site: Vec<(u64, u64)> = Vec::new();
+    stream_site_summaries(input, &selection, |site| {
+        if site.allele_counts.len() != 2 {
+            return Ok(());
+        }
+        let an = site.allele_counts[0] + site.allele_counts[1];
+        if an == 0 {
+            return Ok(());
+        }
+        counts_per_site.push((site.allele_counts[1], an));
+        Ok(())
+    })?;
+
+    let spectrum = accumulate_sfs(&counts_per_site, folded);
+
+    let mut writer = BufWriter::new(
+        File::create(output).with_context(|| format!("failed to create {}", output.display()))?,
+    );
+    writeln!(writer, "ALLELE_COUNT\tN_SITES")?;
+    for (allele_count, n_sites) in spectrum.iter().enumerate() {
+        writeln!(writer, "{allele_count}\t{n_sites}")?;
+    }
+    writer.flush()?;
+    Ok(())
+}
+
 pub fn run_tajima_d(
     input: &Path,
     keep: Option<&Path>,
@@ -1789,8 +1884,8 @@ fn trim_line_end(line: &[u8]) -> &[u8] {
 #[cfg(test)]
 mod tests {
     use super::{
-        MISSING_DOSAGE, PackedDosages, dxy_site_counts, for_each_called_allele, format_ratio,
-        genotype_dosage_r2, genotype_is_missing, pi_site_counts, run_pixy,
+        MISSING_DOSAGE, PackedDosages, accumulate_sfs, dxy_site_counts, for_each_called_allele,
+        format_ratio, genotype_dosage_r2, genotype_is_missing, pi_site_counts, run_pixy, run_sfs,
     };
     use std::io::Write;
 
@@ -2013,5 +2108,93 @@ mod tests {
             .find(|l| l.starts_with("P1\t"))
             .expect("P1 pi row present");
         assert_eq!(p1_row, "P1\t1\t1\t1000\tNA\t0\t0\t0", "empty P1 pi row");
+    }
+
+    #[test]
+    fn accumulate_sfs_unfolded_histograms_derived_allele_counts() {
+        // (ac, an) per biallelic site; all an=4.
+        let sites = [(0, 4), (1, 4), (1, 4), (2, 4), (3, 4), (4, 4)];
+        // Unfolded: bin k = number of sites with alt count == k. max_ac=4 -> len 5.
+        // ac 0->1, 1->2, 2->1, 3->1, 4->1.
+        assert_eq!(accumulate_sfs(&sites, false), vec![1, 2, 1, 1, 1]);
+    }
+
+    #[test]
+    fn accumulate_sfs_folded_histograms_minor_allele_counts() {
+        let sites = [(0, 4), (1, 4), (1, 4), (2, 4), (3, 4), (4, 4)];
+        // Folded: minor = min(ac, an-ac). For an=4:
+        //   ac 0->0, 1->1, 1->1, 2->2, 3->1, 4->0. max_an=4 -> len floor(4/2)+1 = 3.
+        //   bin0 = {ac0, ac4} = 2; bin1 = {ac1, ac1, ac3} = 3; bin2 = {ac2} = 1.
+        assert_eq!(accumulate_sfs(&sites, true), vec![2, 3, 1]);
+    }
+
+    #[test]
+    fn accumulate_sfs_skips_sites_with_zero_allele_number() {
+        // A site with an=0 must not contribute to any bin nor extend length.
+        let sites = [(0, 0), (2, 4)];
+        assert_eq!(accumulate_sfs(&sites, false), vec![0, 0, 1]);
+        assert_eq!(accumulate_sfs(&sites, true), vec![0, 0, 1]);
+    }
+
+    #[test]
+    fn accumulate_sfs_empty_input_yields_single_zero_bin() {
+        assert_eq!(accumulate_sfs(&[], false), vec![0]);
+        assert_eq!(accumulate_sfs(&[], true), vec![0]);
+    }
+
+    fn write_sfs_fixture(vcf: &std::path::Path) {
+        // 3 samples. Missing genotype at site 2 makes `an` vary across sites.
+        //
+        //   pos 100: S1=0/0 S2=0/1 S3=0/0 -> ref=5 alt=1  an=6 ac=1
+        //   pos 200: S1=0/1 S2=1/1 S3=./. -> ref=1 alt=3  an=4 ac=3
+        //   pos 300: S1=1/1 S2=1/1 S3=1/1 -> ref=0 alt=6  an=6 ac=6
+        //   pos 400: S1=0/0 S2=0/0 S3=0/0 -> ref=6 alt=0  an=6 ac=0 (biallelic, ALT=G)
+        let mut f = std::fs::File::create(vcf).unwrap();
+        writeln!(f, "##fileformat=VCFv4.3").unwrap();
+        writeln!(
+            f,
+            "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\tS2\tS3"
+        )
+        .unwrap();
+        writeln!(f, "1\t100\t.\tA\tG\t.\t.\t.\tGT\t0/0\t0/1\t0/0").unwrap();
+        writeln!(f, "1\t200\t.\tA\tG\t.\t.\t.\tGT\t0/1\t1/1\t./.").unwrap();
+        writeln!(f, "1\t300\t.\tA\tG\t.\t.\t.\tGT\t1/1\t1/1\t1/1").unwrap();
+        writeln!(f, "1\t400\t.\tA\tG\t.\t.\t.\tGT\t0/0\t0/0\t0/0").unwrap();
+        f.flush().unwrap();
+        drop(f);
+    }
+
+    #[test]
+    fn run_sfs_unfolded_matches_hand_computed_bins() {
+        let dir = tempfile::tempdir().unwrap();
+        let vcf = dir.path().join("sfs.vcf");
+        let out = dir.path().join("sfs.tsv");
+        write_sfs_fixture(&vcf);
+
+        run_sfs(&vcf, None, None, false, &out).unwrap();
+
+        // ac per site = {1, 3, 6, 0}; max_ac=6 -> len 7.
+        //   bin0=1 (ac0), bin1=1 (ac1), bin3=1 (ac3), bin6=1 (ac6), rest 0.
+        let text = std::fs::read_to_string(&out).unwrap();
+        let expected = "ALLELE_COUNT\tN_SITES\n\
+                        0\t1\n1\t1\n2\t0\n3\t1\n4\t0\n5\t0\n6\t1\n";
+        assert_eq!(text, expected, "unfolded SFS mismatch");
+    }
+
+    #[test]
+    fn run_sfs_folded_matches_hand_computed_bins() {
+        let dir = tempfile::tempdir().unwrap();
+        let vcf = dir.path().join("sfs.vcf");
+        let out = dir.path().join("sfs.tsv");
+        write_sfs_fixture(&vcf);
+
+        run_sfs(&vcf, None, None, true, &out).unwrap();
+
+        // (ac, an) per site = {(1,6),(3,4),(6,6),(0,6)}; max_an=6 -> len floor(6/2)+1 = 4.
+        //   minor: (1,6)->1, (3,4)->1, (6,6)->0, (0,6)->0.
+        //   bin0=2, bin1=2, bin2=0, bin3=0.
+        let text = std::fs::read_to_string(&out).unwrap();
+        let expected = "ALLELE_COUNT\tN_SITES\n0\t2\n1\t2\n2\t0\n3\t0\n";
+        assert_eq!(text, expected, "folded SFS mismatch");
     }
 }

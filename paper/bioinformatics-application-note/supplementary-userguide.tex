@@ -1,0 +1,448 @@
+\documentclass[11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  urlcolor=blue,
+  citecolor=blue
+}
+
+% Code listing style for copy-pasteable shell commands
+\definecolor{codebg}{rgb}{0.96,0.96,0.96}
+\lstdefinestyle{shell}{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{codebg},
+  breaklines=true,
+  breakatwhitespace=false,
+  columns=fullflexible,
+  frame=single,
+  framesep=4pt,
+  showstringspaces=false,
+  keepspaces=true,
+  xleftmargin=2pt,
+  xrightmargin=2pt
+}
+\lstset{style=shell}
+
+\title{Supplementary User Guide: an end-to-end population-genetics analysis of
+1000 Genomes chromosome 22 with VariantFlow}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent This supplementary note is a beginner-friendly, end-to-end walkthrough
+of a population-genetics analysis of human chromosome~22 from the 1000 Genomes
+Project using \textsf{VariantFlow}, a command-line tool for post-calling VCF
+operations. It is written for a reader with basic command-line familiarity but no
+prior bioinformatics experience. Every command is copy-pasteable; each step
+explains what it does and why. Slow steps include a small-region shortcut so the
+analysis can be reproduced quickly.
+\end{abstract}
+
+\section{Introduction}
+A \textbf{VCF} (Variant Call Format) file is the standard text table of genetic
+variants: each row is a genomic position where individuals differ, and each column
+after the fixed fields is one sample's genotype. \textsf{VariantFlow} performs
+\emph{post-calling} VCF operations---the analyses that happen after variants have
+been called. Its guiding idea is \textbf{selective execution}: it reads and
+computes only the parts of the file a query needs, which keeps filtering and
+per-site statistics fast on large files. It reproduces the numbers of established
+tools (VCFtools, pixy, scikit-allel) from a single self-contained binary.
+
+By the end of this guide you will have downloaded and indexed a real 1000 Genomes
+chromosome-22 VCF, reduced it to clean biallelic SNPs, and computed allele
+frequencies, missingness, heterozygosity, Hardy--Weinberg tests, nucleotide
+diversity ($\pi$), Tajima's~D, linkage disequilibrium, and Fst between two human
+populations---and read what those numbers mean, cautiously. All commands are run
+as \texttt{variantflow <command>}.
+
+\paragraph{Time and disk warning.} The full chromosome-22 file is several
+gigabytes and some computations take a while. Wherever a step is slow, this guide
+offers a small-region shortcut (a ${\sim}1$~Mb slice) so you can follow along in
+minutes. Do the small-region version first; scale up once comfortable.
+
+\section{Installation}
+
+\subsection{Build VariantFlow from source}
+\textsf{VariantFlow} is written in Rust. You need the Rust toolchain
+(\texttt{cargo}); if you do not have it:
+\begin{lstlisting}[language=bash]
+# Install the Rust toolchain (rustup); accept defaults.
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
+rustc --version
+cargo --version
+\end{lstlisting}
+
+Build the release binary from the repository root:
+\begin{lstlisting}[language=bash]
+# Standard build (pure-Rust VCF/BCF text path)
+cargo build --release
+./target/release/variantflow --version
+\end{lstlisting}
+
+For BCF input or region-based queries backed by HTSlib (e.g.\
+\texttt{--region chr22:1-1000000} on a \texttt{.bcf}), build with the HTSlib
+feature:
+\begin{lstlisting}[language=bash]
+cargo build --release --features htslib-static
+\end{lstlisting}
+
+Confirm the tool and list the subcommands:
+\begin{lstlisting}[language=bash]
+./target/release/variantflow --help
+\end{lstlisting}
+You should see: \texttt{filter}, \texttt{stats}, \texttt{freq},
+\texttt{missingness}, \texttt{hardy}, \texttt{het}, \texttt{fst}, \texttt{pi},
+\texttt{pixy}, \texttt{tajima-d}, \texttt{ld}, \texttt{index}, \texttt{diff},
+\texttt{convert}. For readability, the rest of this guide writes
+\texttt{variantflow}; either add the binary to \texttt{PATH}
+(\texttt{export PATH="\$PWD/target/release:\$PATH"}) or type the full path.
+
+\subsection{Companion tools and dependencies}
+A few standard tools do the jobs VariantFlow deliberately does not (downloading,
+indexing, and heavy VCF surgery). The easiest route is Bioconda:
+\begin{lstlisting}[language=bash]
+# One-time channel setup (order matters)
+conda config --add channels bioconda
+conda config --add channels conda-forge
+
+# Companions in a fresh environment
+conda create -n popgen -c bioconda -c conda-forge \
+  bcftools htslib vcftools wget
+conda activate popgen
+\end{lstlisting}
+Here \texttt{bcftools}/\texttt{htslib} provide \texttt{tabix} and \texttt{bgzip}
+(indexing, subsetting, slicing), \texttt{vcftools} enables optional cross-checks,
+and \texttt{wget} downloads data. Version-check everything:
+\begin{lstlisting}[language=bash]
+bcftools --version
+tabix --version
+bgzip  --version
+vcftools --version
+wget --version | head -n1
+\end{lstlisting}
+
+\section{Getting the data}
+We use the 1000 Genomes Project 30$\times$ high-coverage phased panel (3202
+samples) aligned to GRCh38, hosted by IGSR/EBI on EBI's public FTP. This file is
+\textbf{large} (several GB); Section~\ref{sec:slice} shows a 1~Mb slice for quick
+work.
+
+\subsection{Download the full chromosome-22 panel}
+\begin{lstlisting}[language=bash]
+mkdir -p data && cd data
+
+BASE="https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000G_2504_high_coverage/working/20220422_3202_phased_SNV_INDEL_SV"
+FILE="1kGP_high_coverage_Illumina.chr22.filtered.SNV_INDEL_SV_phased_panel.vcf.gz"
+
+# VCF and its tabix index (.tbi); -c resumes partial downloads
+wget -c "${BASE}/${FILE}"
+wget -c "${BASE}/${FILE}.tbi"
+\end{lstlisting}
+If the \texttt{.tbi} is absent, build it and check the file opens:
+\begin{lstlisting}[language=bash]
+tabix -p vcf "${FILE}"
+variantflow stats "${FILE}"
+\end{lstlisting}
+
+\subsection{Small-region shortcut (recommended first)}
+\label{sec:slice}
+Slicing a 1~Mb window with \texttt{tabix} yields a small file that runs every
+downstream step in seconds (needs the \texttt{.tbi} index):
+\begin{lstlisting}[language=bash]
+# Extract chr22:20,000,000-21,000,000
+tabix -h "${FILE}" chr22:20000000-21000000 | bgzip > chr22.slice.vcf.gz
+tabix -p vcf chr22.slice.vcf.gz
+variantflow stats chr22.slice.vcf.gz
+\end{lstlisting}
+
+\paragraph{Chromosome naming.} These files use \texttt{chr22} (with the
+\texttt{chr} prefix). If a region query returns nothing, check whether your file
+uses \texttt{22} instead and adjust (e.g.\ \texttt{22:20000000-21000000}).
+Set one variable so you can switch between the slice and the full file:
+\begin{lstlisting}[language=bash]
+# Follow along fast with the slice:
+VCF=chr22.slice.vcf.gz
+# ...or run the full analysis:
+# VCF="1kGP_high_coverage_Illumina.chr22.filtered.SNV_INDEL_SV_phased_panel.vcf.gz"
+\end{lstlisting}
+
+\section{Preprocessing}
+Raw call sets contain multiallelic sites, indels, and structural variants; most
+classic statistics assume \textbf{biallelic SNPs}.
+
+\subsection{Reduce to biallelic SNPs (bcftools)}
+\begin{lstlisting}[language=bash]
+bcftools view -m2 -M2 -v snps "$VCF" -Oz -o chr22.snps.vcf.gz
+tabix -p vcf chr22.snps.vcf.gz
+\end{lstlisting}
+Here \texttt{-m2 -M2} keeps sites with exactly two alleles (biallelic),
+\texttt{-v snps} keeps SNPs only, \texttt{-Oz} writes bgzip output, and
+\texttt{tabix} indexes it.
+
+\subsection{Optional: select a subset of samples}
+Per-sample commands accept a plain-text file, \textbf{one sample ID per line}
+(blank lines and \texttt{\#} comments ignored), via \texttt{--keep} (use only
+these) or \texttt{--remove} (drop these):
+\begin{lstlisting}[language=bash]
+cat > keep.txt <<'EOF'
+# one sample ID per line
+HG00096
+HG00097
+HG00099
+EOF
+\end{lstlisting}
+
+\subsection{Quality filtering with \texttt{filter}}
+\texttt{variantflow filter} selects records with a predicate passed to
+\texttt{--where}. The expression language understands \texttt{CHROM},
+\texttt{POS}, \texttt{QUAL}, \texttt{FILTER}, \texttt{INFO/<TAG>} (with array
+indexing like \texttt{INFO/AF[1]}), and \texttt{FORMAT/<TAG>}, plus the aggregate
+\texttt{N\_PASS(...)}.
+\begin{lstlisting}[language=bash]
+# Keep only PASS sites with a decent quality score
+variantflow filter chr22.snps.vcf.gz \
+  --where 'QUAL > 30 && FILTER == "PASS"' \
+  -o chr22.clean.vcf.gz
+tabix -p vcf chr22.clean.vcf.gz
+
+# Common variants only (alt-allele frequency above 5%)
+variantflow filter chr22.snps.vcf.gz \
+  --where 'INFO/AF[0] > 0.05' -o chr22.common.vcf.gz
+
+# Restrict to a region while filtering (needs an index)
+variantflow filter chr22.snps.vcf.gz \
+  --region chr22:20000000-21000000 --where 'QUAL > 30' -o chr22.region.vcf.gz
+
+# Require >=2 samples with a well-covered alternate allele
+variantflow filter chr22.snps.vcf.gz \
+  --where 'N_PASS(FORMAT/AD[1] > 10) >= 2' -o chr22.cohort.vcf.gz
+\end{lstlisting}
+
+\paragraph{Note on this dataset.} The 1000 Genomes high-coverage panel is already
+a filtered, phased release, so most sites are \texttt{PASS} and \texttt{QUAL} is
+not always informative. The filter step matters more on your own freshly called
+data; here it mainly demonstrates the syntax. The important cleanup is the
+biallelic-SNP reduction. From here on, set:
+\begin{lstlisting}[language=bash]
+SNPS=chr22.snps.vcf.gz
+\end{lstlisting}
+
+\section{Population-genetics calculations}
+Each subsection gives \emph{what it measures}, \emph{the command}, and \emph{how
+to read the output}. Outputs are tab-separated tables.
+
+\subsection{Allele frequency (\texttt{freq})}
+\textbf{What it measures.} How common each allele is at every site---the building
+block for almost everything else.
+\begin{lstlisting}[language=bash]
+variantflow freq "$SNPS" -o chr22.frq
+\end{lstlisting}
+Columns: \texttt{CHROM POS N\_ALLELES N\_CHR \{ALLELE:FREQ\}}. \texttt{N\_CHR} is
+the number of chromosomes with data (twice the number of genotyped diploid
+samples). Restrict to a group with \texttt{--keep} / \texttt{--remove}.
+
+\subsection{Missingness (\texttt{missingness})}
+\textbf{What it measures.} How much genotype data is absent, per site and per
+individual. High missingness biases every other statistic.
+\begin{lstlisting}[language=bash]
+variantflow missingness "$SNPS" -o chr22.miss
+\end{lstlisting}
+This writes \texttt{chr22.miss.lmiss} (per-site) and \texttt{chr22.miss.imiss}
+(per-individual). \texttt{F\_MISS} is the fraction missing (0 = complete). On the
+phased panel it is essentially 0---a useful sanity check.
+
+\subsection{Individual heterozygosity (\texttt{het})}
+\textbf{What it measures.} Per-sample observed vs.\ expected homozygosity,
+summarised as an inbreeding coefficient $F$.
+\begin{lstlisting}[language=bash]
+variantflow het "$SNPS" -o chr22.het
+\end{lstlisting}
+Columns: \texttt{INDV O\_HOM E\_HOM N\_SITES F}. $F\approx 0$ matches
+Hardy--Weinberg expectation; $F>0$ means fewer heterozygotes than expected
+(possible inbreeding or pooled structure); $F<0$ means more (possible
+contamination or mixing groups).
+
+\subsection{Hardy--Weinberg equilibrium (\texttt{hardy})}
+\textbf{What it measures.} Whether observed genotype counts match Hardy--Weinberg
+proportions, with a chi-square test.
+\begin{lstlisting}[language=bash]
+variantflow hardy "$SNPS" -o chr22.hwe
+\end{lstlisting}
+Columns include \texttt{OBS\_HOM\_REF OBS\_HET OBS\_HOM\_ALT} and
+\texttt{CHISQ\_HWE}. In a pooled multi-population sample, apparent departures are
+often \emph{population structure} (the Wahlund effect), not genotyping error.
+
+\subsection{Nucleotide diversity $\pi$ (\texttt{pi}, windowed)}
+\textbf{What it measures.} Average nucleotide differences per site between two
+random sequences---a core measure of within-population diversity, reported in
+windows.
+\begin{lstlisting}[language=bash]
+variantflow pi "$SNPS" --window-size 100000 -o chr22.windowed.pi
+\end{lstlisting}
+Higher $\pi$ means a more diverse region. Use \texttt{--keep} to compute $\pi$
+within a single population; $\pi$ mixed across populations is inflated by
+between-group differences.
+
+\subsection{Tajima's D (\texttt{tajima-d})}
+\textbf{What it measures.} Compares two diversity estimates to detect departures
+from neutral, constant-size evolution, per window.
+\begin{lstlisting}[language=bash]
+variantflow tajima-d "$SNPS" --window-size 100000 -o chr22.tajimaD.tsv
+\end{lstlisting}
+$D\approx 0$ is consistent with neutrality; $D<0$ (excess rare variants) with
+expansion or selection; $D>0$ (excess intermediate-frequency variants) with
+balancing selection or a bottleneck. A value alone never proves selection.
+
+\subsection{Linkage disequilibrium (\texttt{ld})}
+\textbf{What it measures.} Non-random association between alleles at nearby
+sites, as a function of distance.
+\begin{lstlisting}[language=bash]
+variantflow ld "$SNPS" --max-distance 50000 -o chr22.geno.ld
+\end{lstlisting}
+LD generally decays with distance. Keep \texttt{--max-distance} modest: the number
+of site pairs (and runtime) grows quickly.
+
+\subsection{Fst between two populations (\texttt{fst})}
+\textbf{What it measures.} Genetic differentiation between two populations: 0 =
+identical allele frequencies, higher = more differentiated.
+
+First build two population files from the 1000 Genomes sample panel, which maps
+each sample to its population:
+\begin{lstlisting}[language=bash]
+PED="https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000G_2504_high_coverage/20130606_g1k_3202_samples_ped_population.txt"
+wget -c "$PED" -O samples.panel
+head -n1 samples.panel   # inspect columns first!
+
+# Extract two population lists (one sample ID per line).
+# Adjust the awk field number to match the sample-ID column.
+awk 'NR>1 && $0 ~ /GBR/ {print $2}' samples.panel > GBR.txt   # British
+awk 'NR>1 && $0 ~ /YRI/ {print $2}' samples.panel > YRI.txt   # Yoruba
+wc -l GBR.txt YRI.txt
+\end{lstlisting}
+Different panel files order columns differently; inspect the header and set the
+\texttt{awk} fields so each output is a plain list of sample IDs, one per line.
+Then compute Fst (Hudson estimator by default; \texttt{--estimator weir-cockerham}
+is also available):
+\begin{lstlisting}[language=bash]
+variantflow fst "$SNPS" --pop GBR.txt --pop YRI.txt -o chr22.GBR_YRI.fst
+\end{lstlisting}
+Output columns: \texttt{CHROM POS HUDSON\_FST} (per site). Fst${}\approx 0$ means
+near-identical frequencies; human continental comparisons are often ${\sim}0.1$;
+high-Fst sites are selection candidates, not conclusions. Sites monomorphic in
+both groups return \texttt{nan} (undefined)---expected, not an error.
+
+\subsection{Missing-data-aware $\pi$ and dxy (\texttt{pixy})}
+\textbf{What it measures.} Windowed within-population diversity ($\pi$) and
+between-population divergence (dxy) using the pixy estimator, which stays
+unbiased under missing data by counting only non-missing pairwise comparisons.
+
+\textbf{Key requirement:} \texttt{pixy} needs an \textbf{all-sites VCF}---one that
+includes invariant (monomorphic) sites, not just variant sites---because correct
+$\pi$/dxy is the ratio of differences to comparisons over all callable sites. The
+standard 1000 Genomes panel is variant-only, so this command targets an all-sites
+call set (e.g.\ produced with \texttt{bcftools mpileup}/\texttt{call} emitting all
+sites).
+\begin{lstlisting}[language=bash]
+# populations file: two whitespace/tab separated columns per line:
+#   SampleID    PopulationName
+#   HG00096   GBR
+#   NA18486   YRI
+variantflow pixy allsites.vcf.gz \
+  --populations pops.txt \
+  --window-size 10000 \
+  --out-pi   chr22.pixy_pi.tsv \
+  --out-dxy  chr22.pixy_dxy.tsv
+\end{lstlisting}
+Note that \texttt{pixy} takes the input as a \textbf{positional} argument (not
+\texttt{--input}), and writes outputs to \texttt{--out-pi} and \texttt{--out-dxy}
+(there is no \texttt{-o}). Read \texttt{chr22.pixy\_pi.tsv} (per-population $\pi$
+per window) and \texttt{chr22.pixy\_dxy.tsv} (per-pair dxy per window) as in the
+$\pi$ and Fst sections, with missing data handled correctly.
+
+\subsection{Site-frequency spectrum (\texttt{sfs}) --- new / unverified}
+\paragraph{Verification note.} The \texttt{sfs} subcommand is present in the
+current source tree but \textbf{not} in the prebuilt release binary used to verify
+this guide, so the commands below could not be run as-is. Rebuild from source
+(\texttt{cargo build --release}) to obtain it; treat the exact flags as
+provisional.
+
+\textbf{What it measures.} The site-frequency spectrum (SFS/AFS): a histogram of
+how many variant sites have each allele count---the raw signal behind Tajima's~D
+and demographic inference.
+\begin{lstlisting}[language=bash]
+# Unfolded (derived-allele) spectrum
+variantflow sfs "$SNPS" -o chr22.sfs.tsv
+
+# Folded (minor-allele) spectrum, when the ancestral allele is unknown
+variantflow sfs "$SNPS" --folded -o chr22.sfs_folded.tsv
+\end{lstlisting}
+Use \texttt{--folded} when alleles cannot be polarised into ancestral/derived. The
+unfolded output matches \texttt{scikit-allel}'s \texttt{allel.sfs}; the folded
+output matches \texttt{allel.sfs\_folded}.
+
+\section{Interpretation}
+A cautious reading of what typical values suggest---none is proof on its own.
+\begin{itemize}[leftmargin=*]
+  \item \textbf{High $\pi$} means high local diversity. African samples (e.g.\
+  YRI) typically show higher $\pi$ than non-African samples, reflecting the older,
+  larger ancestral African population and the out-of-Africa bottleneck.
+  \item \textbf{Negative Tajima's D} genome-wide is common in humans and
+  consistent with population expansion; localised strongly negative D can hint at
+  a recent sweep, but confirm independently.
+  \item \textbf{Positive Tajima's D} suggests an excess of intermediate-frequency
+  variants (balancing selection or a bottleneck).
+  \item \textbf{Fst} between human continental groups is usually modest (often
+  ${\sim}0.1$): most human variation is within rather than between populations.
+  \item \textbf{LD decaying with distance} is the expected baseline; extended LD
+  can flag low recombination or selection.
+  \item \textbf{Missingness near zero} and \textbf{$F$ near zero} on this curated
+  panel are healthy sanity checks; large deviations on your own data usually mean
+  a data-quality problem to fix before interpreting anything else.
+\end{itemize}
+
+\section{Conclusion}
+Starting from a raw 1000 Genomes chromosome-22 VCF, you downloaded and indexed the
+data, reduced it to clean biallelic SNPs, and computed a full suite of
+population-genetics statistics---allele frequency, missingness, heterozygosity,
+Hardy--Weinberg, nucleotide diversity, Tajima's~D, linkage disequilibrium, Fst
+between two human populations, and (on an all-sites file) the missing-data-aware
+pixy estimates---with a single tool and standard companions. The results reproduce
+those of established tools and point toward the classic story of human genetic
+variation: high diversity, modest between-population differentiation, and
+signatures of past demographic change. Use them as a starting point for careful,
+hypothesis-driven analysis rather than as final claims.
+
+\begin{thebibliography}{9}
+\bibitem{byrska2022} Byrska-Bishop M, Evani US, Zhao X, et al.
+  High-coverage whole-genome sequencing of the expanded 1000 Genomes Project
+  cohort including 602 trios. \textit{Cell} 185(18):3426--3440 (2022).
+  doi:10.1016/j.cell.2022.08.004
+\bibitem{vcftools2011} Danecek P, Auton A, Abecasis G, et al.
+  The variant call format and VCFtools. \textit{Bioinformatics}
+  27(15):2156--2158 (2011). doi:10.1093/bioinformatics/btr330
+\bibitem{bcftools2021} Danecek P, Bonfield JK, Liddle J, et al.
+  Twelve years of SAMtools and BCFtools. \textit{GigaScience} 10(2):giab008
+  (2021). doi:10.1093/gigascience/giab008
+\bibitem{pixy2021} Korunes KL, Samuk K. pixy: Unbiased estimation of nucleotide
+  diversity and divergence in the presence of missing data.
+  \textit{Molecular Ecology Resources} 21(4):1359--1368 (2021).
+  doi:10.1111/1755-0998.13326
+\bibitem{scikitallel} Miles A, et al. scikit-allel: Explore and analyse genetic
+  variation. Zenodo software package.
+  \url{https://github.com/cggh/scikit-allel}
+\end{thebibliography}
+
+\end{document}

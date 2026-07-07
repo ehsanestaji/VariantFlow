@@ -6,8 +6,6 @@ VariantFlow reports a speedup only when the benchmark row records a
 correctness comparison; rows that trail a competitor remain optimization
 targets rather than claims.
 
-\input{tables/benchmark_summary}
-
 On the DDBJ CHM13 human chr22 cohort (3\,715 samples), bounded FORMAT-rich
 predicates matched bcftools core records at 4.74--17.78x. Query-aware
 \texttt{.vfi} indexed filtering achieved 123--273x for high-skip
@@ -23,3 +21,14 @@ VCFtools~0.1.17 on the same inputs (Supplementary Table~S1); an independent
 cross-check with scikit-allel confirmed numerical agreement.
 LD measured 9.88x on a 925k-record tier. The Parquet export-once
 workflow measured 1.19--19.20x amortized over repeated DuckDB queries.
+
+VariantFlow implements the population-genetics statistics that are computable
+in a single streaming pass over sites or windows---allele frequency,
+missingness, heterozygosity, Hardy--Weinberg, $\pi$, missing-data-aware
+$\pi$/$d_{XY}$, Tajima's $D$, the site-frequency spectrum, $F_{ST}$, and
+LD (Figure~\ref{fig:arch}). The site-frequency spectrum (\texttt{sfs})
+reproduces scikit-allel's folded and unfolded spectra exactly. Statistics that
+require the full genotype or haplotype matrix in memory---selection scans,
+principal-component analysis, and $D$/$f$-statistics---are outside this
+streaming scope and are deferred to scikit-allel; Supplementary Table~S5 maps
+the full correspondence.
