@@ -1,9 +1,9 @@
 # Response To Reviewers Template
 
-Manuscript: VariantFlow: selective execution for VCF filtering and analytical
-export
+Manuscript: VariantFlow: a selective-execution engine for efficient
+population genomic computation on large variant datasets
 
-Journal: Bioinformatics
+Journal: Molecular Ecology Resources
 
 Decision: TODO_DECISION
 

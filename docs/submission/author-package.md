@@ -1,13 +1,13 @@
 # VariantFlow Author Package
 
-This file is the author-party source of truth for Bioinformatics submission
-metadata. Fill it before marking the Author Gate as passed.
+This file is the author-party source of truth for Molecular Ecology Resources
+submission metadata. Fill it before marking the Author Gate as passed.
 
 ## Target manuscript
 
-- Journal: Bioinformatics
-- Article type: Application Note
-- Title: VariantFlow: selective execution for VCF filtering and analytical export
+- Journal: Molecular Ecology Resources
+- Article type: Computer Programs
+- Title: VariantFlow: a selective-execution engine for efficient population genomic computation on large variant datasets
 - Manuscript source: `paper/bioinformatics-application-note/main.tex`
 - Intended submission state: submission-ready package, not immediate submission
 
@@ -45,7 +45,16 @@ The authors declare no competing interests.
 Current planned acknowledgement:
 
 VariantFlow builds on the open genomics software ecosystem, including VCF,
-HTSlib, bcftools, VCFtools, Apache Arrow, Parquet, DuckDB, and Bioconda.
+HTSlib, bcftools, VCFtools, Parquet, and DuckDB.
+
+## Data Accessibility and Benefit-Sharing Statement
+
+Included in the manuscript beneath the references, per Molecular Ecology
+Resources policy. Data Accessibility: source, build instructions, and
+reproducibility materials at the GitHub repository and Zenodo archive below;
+no new sequence data generated; all benchmarks reuse public 1000 Genomes
+Project data. Benefit-Sharing: not applicable (no new specimens, field
+sampling, or community engagement).
 
 ## AI usage disclosure
 

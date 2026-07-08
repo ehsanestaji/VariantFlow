@@ -9,7 +9,8 @@ package for author discussion and journal submission forms.
 Suggested reviewers should have expertise in at least one of:
 
 - VCF/BCF, HTSlib, `bcftools`, or variant-processing infrastructure;
-- population-genetics command-line workflows, especially VCFtools-style stats;
+- population and conservation/ecological genomics, especially VCFtools- or
+  pixy-style diversity, differentiation, and missing-data-aware statistics;
 - high-performance bioinformatics software, Rust/C/C++, compression, or
   columnar analytics;
 - reproducible benchmarking for genomics tools.
