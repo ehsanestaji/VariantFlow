@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it using the metadata below."
-title: "VariantFlow: selective execution for VCF filtering, population summaries, and analytical export"
+title: "VariantFlow: a selective-execution engine for efficient population genomic computation on large variant datasets"
 type: software
 authors:
   - family-names: Estaji

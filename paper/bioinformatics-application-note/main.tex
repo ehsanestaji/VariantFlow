@@ -7,7 +7,7 @@
 \usepackage{array}
 \usepackage{tabularx}
 \usepackage{hyperref}
-\usepackage[numbers]{natbib}
+\usepackage{natbib}
 \usepackage{xcolor}
 \usepackage{amssymb}
 \usepackage{microtype}
@@ -28,7 +28,7 @@
 }
 \setlength{\emergencystretch}{2em}
 
-\title{VariantFlow: selective execution for VCF filtering, population summaries, and analytical export}
+\title{VariantFlow: a selective-execution engine for efficient population genomic computation on large variant datasets}
 \author{
 Ehsan Estaji\textsuperscript{1} \qquad
 Jian-Feng Mao\textsuperscript{1,$\dag$} \\[6pt]
@@ -46,7 +46,7 @@ SE-901\,87 Ume{\aa}, Sweden \\[4pt]
 \newpage
 
 \begin{abstract}
-\noindent\textbf{Summary:}
+\noindent
 As population-scale projects accumulate variant call sets with thousands of
 samples and millions of sites, post-calling analysis has become a recurring
 computational bottleneck: workflows repeatedly scan large VCF files, yet most
@@ -63,15 +63,19 @@ LD 9.88x, and export-once DuckDB queries 1.19--19.20x amortized. By collapsing
 each scan to the fields that matter, VariantFlow brings large-cohort
 post-calling analysis toward interactive timescales on commodity CPUs,
 complementing rather than replacing bcftools, HTSlib, GATK, and VCFtools.
+VariantFlow is open source (Rust, MIT OR Apache-2.0) at
+\url{https://github.com/ehsanestaji/VariantFlow}, archived at
+\href{https://doi.org/10.5281/zenodo.21198171}{doi:10.5281/zenodo.21198171};
+we anticipate it will be of immediate value to population and conservation
+genomics, plant and animal breeding, large-cohort human genomics, and
+bioinformatics pipeline development, bringing whole-cohort population
+genomic summaries within reach of interactive, exploratory analysis on
+commodity hardware.
 
-\noindent\textbf{Availability and implementation:}
-VariantFlow is open source (Rust) under the MIT OR Apache-2.0
-license at \url{https://github.com/ehsanestaji/VariantFlow} and archived at
-\href{https://doi.org/10.5281/zenodo.21198171}{doi:10.5281/zenodo.21198171}.
-Benchmark reports, reproducibility commands, and supplementary data are in
-the repository.
-
-\noindent\textbf{Contact:} \texttt{jianfeng.mao@umu.se}
+\vspace{0.6em}
+\noindent\textbf{Keywords:} population genomics, variant call format,
+selective execution, missing data, nucleotide diversity, bioinformatics
+software, Rust
 \end{abstract}
 \newpage
 
@@ -100,8 +104,30 @@ scaffolding. The authors remain responsible for all scientific claims.
 \section*{Acknowledgements}
 Computing resources provided by SNIC/HPC2N at Ume{\aa} University.
 
-\bibliographystyle{plainnat}
+\bibliographystyle{apalike}
 \bibliography{references}
+
+% ======================================================================
+\section*{Data Accessibility and Benefit-Sharing Statement}
+
+\noindent\textbf{Data Accessibility Statement.} VariantFlow's source code,
+build instructions, and all reproducibility materials (exact commands,
+benchmark reports, and correctness-validation scripts) are openly available
+at \url{https://github.com/ehsanestaji/VariantFlow} under the MIT OR
+Apache-2.0 license, and the version described in this manuscript (v1.5.0) is
+permanently archived at Zenodo, \href{https://doi.org/10.5281/zenodo.21198171}{doi:10.5281/zenodo.21198171}.
+No new biological samples or sequence data were generated for this study.
+All benchmarks reuse publicly available, previously deposited variant call
+sets from the 1000 Genomes Project high-coverage release
+(International Genome Sample Resource), used under their existing public
+data-access terms.
+
+\vspace{0.6em}
+\noindent\textbf{Benefit-Sharing Statement.} This study did not involve the
+collection of new biological specimens, field sampling, or engagement with
+Indigenous or local communities; it reuses previously published, de-identified
+public human genomic datasets. Benefit-sharing provisions are therefore not
+applicable to this work.
 
 % ======================================================================
 % Figure/table legends and supplementary list, after the references.
@@ -153,9 +179,9 @@ items; each is self-contained and begins on its own page:
 \vspace{0.5em}
 \begin{center}
 \small
-\begin{tabularx}{\linewidth}{p{0.20\linewidth}p{0.20\linewidth}Xp{0.15\linewidth}c}
+\begin{tabularx}{\linewidth}{p{0.18\linewidth}p{0.18\linewidth}Xp{0.20\linewidth}c}
 \toprule
-Workflow & Dataset & Speedup & RSS (VF\,/\,base) & Match \\
+Workflow & Dataset & Speedup & RSS, VariantFlow\,/\,baseline & Match \\
 \midrule
 Human FORMAT filters & CHM13 chr22, 3\,715 sam. & 4.74--17.78x & 11\,/\,9 MB & \checkmark \\
 Indexed \texttt{PASS} & IGSR chr22, skip chunks & 123--273x & 11\,/\,10 MB & \checkmark \\

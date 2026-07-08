@@ -1,5 +1,5 @@
-target_journal: Bioinformatics
-article_type: Application Note
+target_journal: Molecular Ecology Resources
+article_type: Computer Programs
 submission_status: blocked
 author_gate_status: blocked
 reviewer_gate_status: blocked
@@ -7,7 +7,7 @@ reviewer_gate_status: blocked
 manuscript:
   source: paper/bioinformatics-application-note/main.tex
   pdf: paper/bioinformatics-application-note/build/variantflow-bioinformatics-note.pdf
-  title: "VariantFlow: selective execution for VCF filtering, population summaries, and analytical export"
+  title: "VariantFlow: a selective-execution engine for efficient population genomic computation on large variant datasets"
 
 authors:
   - name: Ehsan Estaji

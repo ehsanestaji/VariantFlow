@@ -1,6 +1,6 @@
 {
-  "title": "VariantFlow: selective execution for VCF filtering, population summaries, and analytical export",
-  "description": "VariantFlow is a selective-execution engine for post-calling VCF/BCF operations, including filtering, VCFtools-style population summaries, and Parquet export. It parses only the fields each query requires, preserves original records where possible, and tracks every performance claim against correctness-matched benchmarks. It includes a pixy-equivalent, missing-data-aware nucleotide diversity and divergence estimator validated to exact integer-count agreement with pixy. This release accompanies the VariantFlow Bioinformatics Application Note.",
+  "title": "VariantFlow: a selective-execution engine for efficient population genomic computation on large variant datasets",
+  "description": "VariantFlow is a selective-execution engine for post-calling VCF/BCF operations, including filtering, VCFtools-style population summaries, and Parquet export. It parses only the fields each query requires, preserves original records where possible, and tracks every performance claim against correctness-matched benchmarks. It includes a pixy-equivalent, missing-data-aware nucleotide diversity and divergence estimator validated to exact integer-count agreement with pixy. This release accompanies the VariantFlow manuscript submitted to Molecular Ecology Resources.",
   "upload_type": "software",
   "access_right": "open",
   "license": "MIT",

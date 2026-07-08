@@ -15,10 +15,10 @@ reproducibility, and submission readiness.
 - [ ] Release tag recorded.
 - [ ] Source archive URL recorded.
 - [ ] Software archive DOI recorded.
-- [ ] Availability statement matches release/archive state.
-- [ ] Bioinformatics manuscript PDF compiles.
-- [ ] Bioinformatics manuscript is condensed to the journal's Application Note
-      length target.
+- [ ] Data Accessibility and Benefit-Sharing Statement matches release/archive state.
+- [x] Manuscript PDF compiles.
+- [x] Manuscript is within Molecular Ecology Resources' 8,000-word Computer
+      Programs length target.
 - [ ] Figures and tables approved by the author party.
 
 ## Reviewer Gate

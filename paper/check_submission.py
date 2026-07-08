@@ -79,8 +79,8 @@ def main() -> int:
         "paper/submission.yml",
         manifest,
         (
-            "target_journal: Bioinformatics",
-            "article_type: Application Note",
+            "target_journal: Molecular Ecology Resources",
+            "article_type: Computer Programs",
             "submission_status: blocked",
             "author_gate_status: blocked",
             "reviewer_gate_status: blocked",
@@ -112,8 +112,8 @@ def main() -> int:
         (
             "Author Gate",
             "Reviewer Gate",
-            "Bioinformatics",
-            "Application Note",
+            "Molecular Ecology Resources",
+            "Computer Programs",
             "AI usage disclosure",
             "Release tag",
             "Archive DOI",
@@ -121,11 +121,12 @@ def main() -> int:
         ),
     )
     errors += require_tokens(
-        "Bioinformatics manuscript",
+        "Molecular Ecology Resources manuscript",
         manuscript,
         (
             "\\begin{abstract}",
-            "Availability and implementation",
+            "Keywords",
+            "Data Accessibility and Benefit-Sharing Statement",
             "AI usage disclosure",
             "Funding",
             "Conflict of interest",

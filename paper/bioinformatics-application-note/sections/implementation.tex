@@ -28,8 +28,8 @@ indexed region reads, and BGZF output.
 VariantFlow also provides population-genetics and export workflows. The
 VCFtools-style commands use compact diploid biallelic genotype summaries where
 supported, preserving VCFtools-compatible output for frequency, missingness,
-HWE, LD, Fst, and related population summaries. Parquet export stores typed
-columns for repeated analysis with DuckDB \citep{duckdb}.
+HWE, LD, Fst, and related population summaries. Parquet~\citep{parquet} export
+stores typed columns for repeated analysis with DuckDB \citep{duckdb}.
 
 The CLI follows the small-tool style common in genomics, organised as a small
 set of composable subcommands (Figure~2):
