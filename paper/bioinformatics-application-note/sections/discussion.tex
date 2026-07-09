@@ -1,51 +1,86 @@
 \section{Discussion}
 
-VariantFlow is best positioned for selective native VCF/BGZF filters, high-skip
-indexed filters, supported VCFtools-style population summaries, and
-export-once, query-many Parquet workflows. It does not claim universal
-replacement of bcftools, HTSlib, GATK, or VCFtools; the release claim matrix
-documents where it beats, matches, or complements existing tools.
+For a molecular ecologist, the value of VariantFlow is simple to state: the
+routine questions you ask of a large cohort VCF---how much missing data per
+site? which sites pass a quality cut? what are diversity and differentiation
+across windows?---come back while you are still at the keyboard rather than
+after a coffee break or an overnight batch job, and they come back with exactly
+the answer the established tools would have given. The reason is the book image
+that runs through this paper: VariantFlow reads your question first, opens only
+the labelled sections of each record that could hold the answer, and leaves the
+rest closed---so it touches a fraction of the ink and returns the very same
+number a tool that read every field would have produced, with the skimmed-past
+records handed back untouched. That is why the wait
+shrinks without the science changing: this field-selective, single-pass
+approach (``selective execution'') does less redundant reading, never a corner
+cut on the answer.
 
-These tools occupy complementary niches, and users can choose by task:
-\texttt{bcftools} remains the reference for general filtering, normalization,
-and format conversion; VCFtools for classic population-genetics file
-operations; DuckDB for ad hoc analytical SQL over exported tables; and
-scikit-allel for matrix- and haplotype-based statistics (selection scans,
-principal-component analysis, $D$/$f$-statistics) that require the whole
-genotype matrix in memory. VariantFlow fills the gap between them: fast,
+VariantFlow is a companion to the mature tools, not a replacement for them, and
+it helps most on a specific shelf of tasks: reading through native VCF and its
+compressed form (BGZF, the \texttt{.vcf.gz} files you already work with) to
+apply selective filters; filters that use the file's index---the book's table
+of contents---to jump straight to the relevant region and skip most of the
+file; the population summaries VCFtools already supports; and the
+export-once, query-many pattern that writes a compact table once (in a compact
+table format called Parquet) and then answers many questions from it. It does
+not claim universal replacement of bcftools, HTSlib, GATK, or VCFtools; a
+summary table shipped with the software lists where it beats, matches, or
+complements each existing tool.
+
+These tools occupy complementary niches, and you can choose by the job in front
+of you: \texttt{bcftools} remains the reference for general filtering,
+normalization, and format conversion; VCFtools for classic population-genetics
+file operations; DuckDB (a lightweight database) for free-form questions in SQL
+(a query language) over tables you have already written out; and scikit-allel
+for matrix- and haplotype-based statistics (selection scans, principal-component
+analysis, $D$/$f$-statistics) that need every sample's genotypes loaded into the
+computer's working memory simultaneously---every section of every book open
+together, which is exactly what VariantFlow deliberately avoids. VariantFlow fills the gap between them: fast,
 field-selective filtering and streamable site- and window-wise statistics on
 large cohorts, with export-once handoff to DuckDB and explicit deferral to
 scikit-allel for matrix-wide analyses (Supplementary Table~S5). The practical
 rule is to reach for VariantFlow when interactive turnaround on large VCFs on
-commodity CPUs is the priority, and for the established tools when their full
-generality is required.
+ordinary desktop and laptop CPUs is the priority, and for the established tools
+when their full generality is required.
 
 GPU-accelerated pipelines such as NVIDIA Clara Parabricks target variant
-calling and upstream processing with massive parallelism
-\citep{parabricks}. VariantFlow addresses a different bottleneck:
-post-calling field selection on commodity CPU hardware. The two approaches
-are complementary.
+calling and the upstream processing that produces a VCF in the first place,
+using massive parallelism \citep{parabricks}. VariantFlow addresses a different
+bottleneck: the post-calling step of selecting fields on the ordinary desktop
+and laptop CPUs most labs already have. The two approaches are complementary---one
+speeds up making the books, the other speeds up reading only the passages you
+need from them.
 
-If selective execution becomes common in post-calling tools, routine
-workflows on large cohorts may shift from batch to interactive timescales,
-the export-once pattern can reduce redundant I/O, and tool authors may
-re-examine which fields each pipeline stage actually needs. We anticipate the
-most immediate value for groups that repeatedly process large cohort VCFs on
-commodity hardware: population and conservation/ecological geneticists
-computing diversity, differentiation, and LD; plant and animal breeding
-programmes screening large panels; large-cohort human-genomics projects
-performing quality control and missingness or allele-frequency summaries; and
-pipeline developers who need a fast, scriptable filtering and export layer. For
-these communities VariantFlow's distinctive value is bringing whole-cohort
-post-calling summaries from batch to interactive timescales without a cluster,
-while preserving exact correctness against established tools.
+If reading only the sections a question names becomes common in post-calling
+tools, routine workflows on large cohorts may shift from batch to interactive
+timescales, the export-once pattern can reduce redundant reading and rewriting
+of data, and tool authors may re-examine which fields each pipeline stage
+actually needs to open. We anticipate the most immediate value for groups that
+repeatedly process large cohort VCFs on ordinary hardware: population and
+conservation/ecological geneticists computing diversity, differentiation, and
+linkage disequilibrium (LD); plant and animal breeding programmes screening
+large panels; large-cohort
+human-genomics projects performing quality control and missingness or
+allele-frequency summaries; and pipeline developers who need a fast, scriptable
+filtering and export layer. For these communities VariantFlow's distinctive
+value is bringing whole-cohort post-calling summaries from batch to interactive
+timescales without a cluster, while preserving exact correctness against
+established tools.
 
-Correctness is validated by byte-identical output matching against
-VCFtools and cross-checked with scikit-allel \citep{scikitallel}. For
-diversity under missing data, VariantFlow implements the unbiased per-site
-$\pi$ and $d_{XY}$ estimators of pixy \citep{pixy2021}; on an all-sites
-cohort with 15\% missing genotypes its pairwise counts are identical to
-pixy across every window (Supplementary Table~S4), delivered as a compiled
-selective-execution pass. Limitations include bounded FORMAT evidence, HWE
-slightly trailing VCFtools, and BGZF filtering not outperforming bcftools on
-many-sample files. Future work will broaden expression compatibility.
+Because the whole promise rests on getting the same answer, correctness is
+checked directly rather than assumed. VariantFlow's output is validated by
+byte-identical matching against VCFtools---the result agrees to the last
+character---and cross-checked with scikit-allel \citep{scikitallel}. Missing
+data is the case where a diversity estimate can quietly go wrong, so it is
+tested explicitly: for diversity under missing data, VariantFlow implements the
+unbiased per-site $\pi$ and $d_{XY}$ estimators of pixy \citep{pixy2021}; on an
+all-sites cohort with 15\% missing genotypes its pairwise counts are identical
+to pixy across every window (Supplementary Table~S4), delivered as a compiled
+selective-execution pass that opens only the sections those estimators depend
+on. We are equally plain about where VariantFlow does not lead: it reads only a
+limited set of per-sample FORMAT fields, so questions that depend on FORMAT keys
+it does not yet open must still go to the established tools; its
+Hardy--Weinberg equilibrium (HWE)
+calculation slightly trails VCFtools, and its BGZF filtering does not outperform
+bcftools on many-sample files. Future work will broaden expression
+compatibility.

@@ -3,20 +3,67 @@
 Genomic variant data is accumulating rapidly. Population-scale projects now
 routinely produce VCF files with thousands of samples and millions of variant
 sites per chromosome \citep{vcftools}. Post-calling workflows---quality
-filtering, cohort subsetting, population summaries, analytical export---scan
-these files repeatedly, and each pass typically parses the full record even
-when the operation depends on only QUAL, one INFO tag, or a single FORMAT
-key. On a multi-thousand-sample cohort, parsing unused FORMAT vectors and
-sample values can dominate runtime without changing the result.
+filtering, cohort subsetting, population summaries, exporting a table for
+downstream analysis---scan these files repeatedly, and each pass typically
+parses the full record even when the operation depends on only QUAL (the
+site's quality score), one INFO tag (one site-level annotation), or a single
+FORMAT key (one per-sample value such as a genotype or a read depth). On a
+multi-thousand-sample cohort, parsing unused FORMAT vectors---the per-sample
+genotype-and-depth entries---and sample values can dominate runtime without
+changing the result.
 
 Mature tools---bcftools, HTSlib, VCFtools---form the reliable
 infrastructure on which larger pipelines rely
-\citep{bcftools,htslib}. Their breadth is essential, but an exchange
-format optimized for generality is not always the most efficient
-execution layout for every downstream task.
+\citep{bcftools,htslib}. The VCF is an exchange format, and it is worth
+being concrete about what that means for the biologist at the keyboard. A
+single VCF record is one long text row that packs together every property of
+one variant: its genomic position, its quality score, its filter status, and
+then, for every sample in the cohort, that sample's genotype, read depths,
+and a long list of annotations. Everything about the site is written out
+side by side in the same row. That is a deliberate strength---the format was
+built so any program doing any analysis can find whatever it might need, which
+is exactly why VCF is the shared currency of variant data. But it carries a
+hidden tax. Because every property sits in the same row, a program that opens
+the file must read past all of it even to answer a question about one column;
+on a cohort with thousands of samples, that means megabytes of unwanted
+genotype and depth text are decoded for every question asked. When your actual
+question is narrow---``keep sites where QUAL $>$ 30,'' or ``how much missing
+data per site?''---the conventional tool still transcribes every record in
+full, sample by sample, before it can answer, and on a
+multi-thousand-sample cohort that transcription of unread sections---not the
+biology---is what dominates the wait. This is nobody's mistake: an exchange
+format built to hold everything for everyone is not always the fastest way to
+lay out the data for the one task in front of you.
 
-VariantFlow targets this through selective execution: parse only the
-fields required by the current predicate, statistic, or projection;
-preserve original records where possible; and track every performance
-claim against correctness-matched benchmarks. It complements bcftools,
-HTSlib, VCFtools, and GATK~\citep{gatk} rather than replacing them.
+Consider how you read a reference book when you already know your question:
+instead of copying out every page in full, you read your question first, work
+out the few passages that could hold the answer, turn only to those, and read
+only the words you need on each. Every variant record is like a still-closed
+book with many labelled sections---QUAL, each INFO tag, and, for every one of
+thousands of samples, a FORMAT entry such as GT:DP:GQ:AD (the genotype, its
+read depth, its genotype quality, and the per-allele depths); a conventional
+tool copies out every section of every book before it can answer, whereas
+VariantFlow reads only the sections your question names and leaves the rest
+closed. This is what \emph{selective execution} means. In honest terms that
+mirror the implementation: VariantFlow first reads your query---a filter, a
+population statistic, or an export---and compiles it into a checklist built
+from your question of exactly which fields the answer could possibly depend
+on---organised by field type so the tool knows how to read each one (in the
+implementation, a typed predicate tree); then, going record by record and
+reading through each record only once (a single streaming pass), it scans
+straight to just the fields on the checklist---reading the labels where they
+sit in the file rather than first copying the whole record out into memory (it
+reads the raw bytes in place, a borrowed view rather than a copy); it reads
+only those fields and skips everything else, and, where the task allows, hands
+the original record text back unchanged.
+This removes the exact pain point named above: the wait came from
+transcribing unread sections, so reading only the sections and words your
+question needs removes the wait without touching the answer. The fields it
+skips are, by construction, ones the answer never depended on, so the number
+you get is exactly the same as if it had copied out every page---it just
+touched a fraction of the ink. Concretely, VariantFlow parses only the fields
+required by the current filter, statistic, or exported selection of columns
+(predicate, statistic, or projection); preserves original records where
+possible; and tracks every performance claim against
+correctness-matched benchmarks. It complements bcftools, HTSlib, VCFtools,
+and GATK~\citep{gatk} rather than replacing them.
