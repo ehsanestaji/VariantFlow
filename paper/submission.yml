@@ -6,7 +6,7 @@ reviewer_gate_status: blocked
 
 manuscript:
   source: paper/bioinformatics-application-note/main.tex
-  pdf: paper/bioinformatics-application-note/build/variantflow-bioinformatics-note.pdf
+  pdf: paper/bioinformatics-application-note/build/main.pdf
   title: "VariantFlow: a selective-execution engine for efficient population genomic computation on large variant datasets"
 
 authors:
