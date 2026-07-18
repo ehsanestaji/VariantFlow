@@ -267,7 +267,20 @@ missingness, allele frequency, and the site frequency spectrum from the
 genotype matrix and compare against VariantFlow's output. This provides a
 third-party validation independent of both VariantFlow and VCFtools codebases.
 
-\bibliographystyle{apalike}
-\bibliography{references}
+% Self-contained bibliography: the two works cited above are embedded directly
+% so this document compiles correctly on its own (no bibtex/references.bib needed).
+\begin{thebibliography}{}
+\bibitem[Korunes and Samuk(2021)]{pixy2021}
+Korunes, K.~L. and Samuk, K. (2021).
+\newblock pixy: Unbiased estimation of nucleotide diversity and divergence in
+  the presence of missing data.
+\newblock \emph{Molecular Ecology Resources}, 21:1359--1368.
+
+\bibitem[Miles et~al.(2024)]{scikitallel}
+Miles, A. et~al. (2024).
+\newblock scikit-allel: a {P}ython package for exploring and analysing genetic
+  variation data.
+\newblock \url{https://github.com/cggh/scikit-allel}.
+\end{thebibliography}
 
 \end{document}
