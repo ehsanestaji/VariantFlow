@@ -1,71 +1,55 @@
 \section{Benchmark evidence}
 
-Recall the book image that motivates the tool: VariantFlow opens only the
-labelled sections of a record its question names, and leaves the rest closed.
-The measurements below ask a plain empirical question about that strategy: when
-VariantFlow opens fewer sections, how much time does a working biologist get
-back, and is the answer still exactly the one a tool that read every field
-would have produced?
+All comparisons are drawn from tracked benchmark reports that record the exact
+commands, competitor versions, and correctness checks used (Table~1). VariantFlow
+reports a speedup only for an operation whose output has first been verified
+against a reference tool; operations that trail a competitor are treated as
+optimisation targets rather than claims. The benchmark system configuration is
+given in Supplementary Table~S2 and the complete per-workflow timings and
+memory measurements in Supplementary Table~S3.
 
-All measurements are tied to tracked benchmark reports with exact commands,
-competitor versions, correctness checks, and caveats (Table~1).
-VariantFlow reports a speedup only when the benchmark row records a
-correctness comparison; rows that trail a competitor remain optimization
-targets rather than claims. In book terms, a number is only claimed once we have
-confirmed that reading fewer sections returned the same answer as reading them
-all.
+On the DDBJ CHM13 chromosome~22 cohort (3\,715 samples), filters over
+FORMAT-rich predicates produced the same records as bcftools while running
+4.74--17.78x faster. Query-aware indexing with the \texttt{.vfi} sidecar gave
+the largest gains where most blocks can be excluded in advance. A
+$\mathtt{FILTER}=\mathtt{PASS}$ predicate, for which block metadata proves that
+no record in a skipped block can pass, ran 123--273x faster, and a block-level
+allele-frequency threshold predicate ran 4.70--4.93x faster. When few blocks can
+be excluded, VariantFlow falls back to a sequential scan and its advantage is
+correspondingly smaller.
 
-On the DDBJ CHM13 human chr22 cohort (3\,715 samples), when the question names
-per-sample FORMAT sections, VariantFlow turns only to those sections and still
-reaches the same records bcftools does, at 4.74--17.78x faster on bounded
-record tiers (a FORMAT-rich \emph{predicate} is the checklist of fields
-VariantFlow builds from your question). A companion index (a \texttt{.vfi} file) records, for each block
-of records, whether any record in it could possibly match---so VariantFlow can
-skip whole runs of books unopened. For \texttt{FILTER == "PASS"} queries where
-most blocks can be ruled out in advance (high-skip predicates, where the block
-metadata proves no record can pass), this reached 123--273x; when few blocks can
-be ruled out, VariantFlow simply reads through every record one by one
-(low-skip predicates fall back to a sequential scan). Here the biggest
-gains come exactly where the book image predicts them: when the index can prove
-in advance that a whole run of records cannot answer your question, those books
-are never opened at all, and a filtering pass that touched every record collapses
-to one that skips past most of them.
+Population-genetic summaries on the full 1000 Genomes 3\,202-sample
+high-coverage cohort (International Genome Sample Resource) confirm that
+selective execution scales to whole-chromosome data. Missingness computation ran
+4.78x faster than VCFtools on chromosome~22 (1,073,369 records) and 3.67x faster
+on chromosome~1 (6,468,094 records), at a peak resident memory of 8.5~MB that
+was independent of chromosome size. Linkage disequilibrium ($r^{2}$) ran 9.88x
+faster on a 925,000-record dataset. Exporting the data once to Parquet and
+issuing repeated queries through DuckDB was 1.19--19.20x faster than repeated
+scans of the source file, amortised over the query workload.
 
-Population-genetics summaries on the full IGSR 3\,202-sample biallelic cohort
-show that selective execution scales to whole-chromosome data. Missingness
-measured 4.78x faster than VCFtools on chr22 (1.07M records) and 3.67x on
-chr1 (6.47M records), with a constant 9~MB peak memory footprint (peak RSS)
-regardless of chromosome
-size. In everyday terms, a per-site missing-data summary returns several times
-faster than VCFtools, and the constant 9~MB peak RSS
-means a whole-chromosome scan runs on a laptop rather than demanding a
-large-memory node---the wait shrinks because VariantFlow reads only the one
-section each site's answer depends on and streams past the genotype vectors it
-would otherwise transcribe and discard. All population-genetics outputs were
-verified by byte-identical diff against
-VCFtools~0.1.17 on the same inputs (Supplementary Table~S1); an independent
-cross-check with scikit-allel confirmed numerical agreement---the same answer,
-verified byte-identical, not merely a close one.
-Linkage disequilibrium (LD)---which sites are inherited together---measured
-9.88x on a 925{,}000-record dataset (925k-record tier). VariantFlow can also
-rewrite the file once into a column-organised layout (Parquet) so later questions
-read straight to their column---and querying that with a fast query engine
-(DuckDB) measured 1.19--19.20x, averaged over many repeated queries (amortized):
-you pay once to turn the pages into a columnar layout, then every later question
-reads straight to its column instead of reopening the whole book.
+Correctness was verified for every reported statistic, because the value of a
+faster tool depends on its returning the established answer. All
+population-genetic outputs were byte-identical to VCFtools~0.1.17 on the same
+inputs (Supplementary Table~S1). An independent reimplementation in scikit-allel
+\citep{scikitallel} reproduced per-individual missingness and allele frequency
+to machine precision, and VariantFlow's site-frequency spectrum matched
+scikit-allel's folded and unfolded spectra exactly. Missing data is the regime
+in which diversity estimators are most likely to become biased, so it was tested
+directly. VariantFlow implements the unbiased per-site estimators of nucleotide
+diversity ($\pi$) and divergence ($d_{XY}$) introduced by pixy \citep{pixy2021};
+on an all-sites cohort with 15\% of genotypes set to missing, its per-window
+$\pi$ and $d_{XY}$ pairwise counts were identical to pixy across every window
+(Supplementary Table~S4). The full validation procedure is described in
+Supplementary Note~S2.
 
-VariantFlow implements the population-genetics statistics that are computable
-in a single streaming pass over sites or windows---that is, the questions that
-can be answered by reading through the book once, turning only to the sections
-each one names---allele frequency,
-missingness, heterozygosity, Hardy--Weinberg, $\pi$, missing-data-aware
-$\pi$/$d_{XY}$, Tajima's $D$, the site-frequency spectrum, $F_{ST}$, and
-LD (Figure~1). The site-frequency spectrum (\texttt{sfs})
-reproduces scikit-allel's folded and unfolded spectra exactly. Statistics that
-require the full genotype or haplotype matrix in memory---selection scans,
-principal-component analysis, and $D$/$f$-statistics---need every section of
-every book open at once, are outside this
-streaming scope, and are deferred to scikit-allel; Supplementary Table~S5 maps
-the full correspondence. VariantFlow is a companion that opens fewer sections
-for the questions it covers, not a replacement for the mature tools that hold
-everything for everyone.
+VariantFlow implements the population-genetic statistics that can be computed in
+a single streaming pass over sites or windows: allele frequency, missingness,
+heterozygosity, Hardy--Weinberg equilibrium, $\pi$, the missing-data-aware
+$\pi$ and $d_{XY}$ estimators, Tajima's $D$, the site-frequency spectrum,
+$F_{ST}$, and linkage disequilibrium (Figure~1; estimator definitions in
+Supplementary Note~S1). Statistics that require the full genotype or haplotype
+matrix to be resident in memory, including selection scans, principal-component
+analysis, and $D$- and $f$-statistics, fall outside this streaming scope and are
+deferred to matrix-oriented libraries such as scikit-allel; Supplementary
+Table~S5 maps the full correspondence.

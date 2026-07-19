@@ -1,72 +1,47 @@
 \section{Algorithm and implementation}
 
-Start with the wait you already know. You have a chr22 cohort with thousands of
-samples, and you only want to keep the sites where the quality score
-(\texttt{QUAL}) is above 30. A conventional tool still reads out every genotype
-and read-depth value for every sample at every site---faithfully
-re-transcribing millions of numbers it will immediately throw away---before it
-can answer your one narrow question. On a multi-thousand-sample cohort, that
-transcription of data you never asked for, not the biology, is what you wait
-for.
+Selective execution is the central design principle of VariantFlow. Each query,
+whether a filter expression, a population-genetic statistic, or a column
+projection, is compiled into a typed predicate tree that identifies the specific
+fields on which the result depends (Figure~1). VariantFlow then streams once
+through the file and, for each record, decodes only those fields. Rather than
+materialising the whole record as strings, it treats each record as a borrowed
+byte-slice view and locates the required site, INFO, and FORMAT fields by
+scanning the raw bytes in place. Because the skipped fields cannot, by
+construction, affect the result, the output is identical to that of a tool that
+decodes every field; this equivalence is verified empirically in Section~3.
 
-VariantFlow removes that wait by turning only to the sections your question
-names and reading only the words it needs on each---the reference-book strategy
-of the Introduction, now made concrete. In implementation terms, this is the
-core design principle of selective execution: a query is compiled to the
-minimal set of fields it touches, and only those fields are decoded, that is,
-opened (Figure~1), in contrast to the conventional approach of decoding every
-field of every record. It reads each record where it already sits, glancing at
-the raw text without first copying the whole record into memory---what the
-engine calls treating each VCF record as a borrowed byte-slice view (reading the
-label without copying the book out). Site fields, selected INFO values, FORMAT
-keys, and sample values are found by scanning to just the labelled sections the
-question names, rather than first turning every column of every record into text
-it may never use (byte scanning rather than materializing all columns as
-strings). To know which sections to open, VariantFlow first turns your query
-into a plain checklist of exactly which fields the answer could depend on---a
-typed predicate tree---and then asks each record only for the fields on that
-checklist (the plain-language ``condition to check,'' such as \texttt{QUAL>30}).
-Because the sections it skips are, by construction, ones the answer never
-depended on, the number you get is identical to a tool that read every
-field---verified here as byte-identical against VCFtools~0.1.17, and
-cross-checked against scikit-allel and pixy. The speed comes from doing less
-redundant reading, never from cutting a corner on the science.
+For filters over per-sample FORMAT fields, VariantFlow parses the FORMAT schema
+once per record, caches the index of the requested key such as \texttt{DP}, and
+reads that value by position across all samples, avoiding a repeated scan of the
+\texttt{GT:DP:GQ:AD} layout for every sample. In its line-preserving mode,
+records that pass a filter are written in input order with their original text
+unchanged.
 
-For a filter that touches many samples, VariantFlow reads the label
-\texttt{GT:DP:GQ:AD} once, notes where the single key it needs (say
-\texttt{DP}, read depth) sits, and then reads just that one column by its
-position across every sample---instead of re-reading the whole label for each of
-the thousands of samples. In implementation terms, it scans the FORMAT schema
-once per record, caches the requested key index, and reads sample values by
-index. In the mode that keeps each record's original text, the records it skims
-past pass through unchanged: native filtering writes passing records in input
-order and preserves their original text in the line-preserving path.
+Compressed input is read through a native block-gzip (BGZF) reader with a
+worker-thread count capped automatically to the host. CPU-bound predicates are
+evaluated in ordered batches so that output order is preserved. For filters that
+are applied repeatedly and reject most records, an optional \texttt{.vfi}
+sidecar index stores per-block metadata (genomic range, \texttt{QUAL},
+\texttt{FILTER}, and selected INFO summaries); the query planner skips an entire
+block whenever this metadata proves that no record within it can satisfy the
+filter. Through an optional HTSlib backend \citep{htslib}, VariantFlow
+additionally reads BCF (the binary encoding of VCF), restricts reading to a
+single indexed region, and writes BGZF output.
 
-The same read-only-what-you-need idea reaches down to the plumbing. Compressed
-files are read through a native reader for the standard compressed VCF format
-(BGZF), using parallel workers capped automatically to the machine (auto-capped
-worker threads). When a condition is expensive to check, records are checked in
-ordered batches so the output still comes back in the original order (ordered
-batch evaluation preserving output order). For a filter run again and again that
-rejects most records, VariantFlow can read a short table of contents written
-alongside the file---a \texttt{.vfi} sidecar index---that summarises each block
-of records (its genomic range, QUAL, FILTER, and selected INFO summaries), so it
-can leave an entire block closed whenever that summary proves no record inside it
-could possibly pass the filter. Where available, optional paths through the
-standard genomics C library HTSlib add reading of BCF (the binary form of VCF),
-reading only an indexed region of the file, and BGZF output.
+For population-genetic analysis, the VCFtools-compatible subcommands operate on
+compact diploid biallelic genotype summaries and reproduce VCFtools output for
+allele frequency, missingness, heterozygosity, Hardy--Weinberg equilibrium,
+nucleotide diversity, Tajima's $D$, linkage disequilibrium, and $F_{ST}$. For
+repeated analytical queries, VariantFlow exports typed columns in the Parquet
+format \citep{parquet}, which columnar engines such as DuckDB \citep{duckdb} can
+query efficiently without re-parsing the VCF.
 
-VariantFlow also reads and writes for population-genetics and export workflows.
-Where the data are two-copy, two-allele genotypes, the VCFtools-style commands
-work from compact summaries of those genotypes (compact diploid biallelic
-genotype summaries), preserving VCFtools-compatible output for frequency,
-missingness, HWE, LD, Fst, and related population summaries. Parquet
-\citep{parquet} export writes the data as typed columns---a layout that lets
-tools such as DuckDB \citep{duckdb} re-run many analyses over the same data
-quickly.
-
-The command-line interface follows the small-tool style common in genomics,
-organised as a small set of composable subcommands (Figure~2):
+The command-line interface follows the compositional, single-purpose style
+common in genomics, exposing the operations as a small tree of filtering,
+indexing, input/output, and population-genetic subcommands (Figure~2). Two
+representative invocations, a FORMAT-aware filter and a two-population $F_{ST}$
+computation, are
 {\small
 \texttt{variantflow filter input.vcf.gz --where "QUAL>30 \&\& ANY(FORMAT/DP>20)"}\\
 \texttt{variantflow fst cohort.vcf.gz --pop pop1.txt --pop pop2.txt -o fst.tsv}
