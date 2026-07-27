@@ -36,6 +36,20 @@ reproducibility, and submission readiness.
 
 ## Current status
 
-- Author Gate: BLOCKED by release/archive DOI and human metadata placeholders.
-- Reviewer Gate: BLOCKED by reviewer metadata placeholders and final claim audit.
-- Submission: BLOCKED until both gates pass.
+Updated 2026-07-27 after the full certification audit.
+
+- Author Gate: **PASS**. Release v1.5.0 is tagged (`d3b9f6a`) and published on
+  GitHub (2026-07-04); the Zenodo version DOI for v1.5.0 is
+  10.5281/zenodo.21198172 (concept DOI 10.5281/zenodo.21198171), both now cited
+  correctly in the manuscript; both author ORCIDs and CRediT roles are present in
+  `main.tex`.
+- Claim audit: **PASS**. Every quantitative claim traces to a git-tracked report
+  (v20, v24, v26, v29, v30). Table 1 memory figures corrected against v20/v24,
+  the FORMAT-filter record tiers disclosed, the multi-host benchmark provenance
+  stated in Table S2, and the superseded v25 population-genetics values marked
+  SUPERSEDED wherever they were still published. No broad "best VCF tool" claim
+  is present.
+- Reviewer Gate: **BLOCKED** — suggested reviewers are still placeholders in
+  `reviewer-package.md` and require author conflict-of-interest judgement. This
+  is the only remaining blocker.
+- Submission: BLOCKED solely on the Reviewer Gate.

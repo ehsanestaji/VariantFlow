@@ -134,7 +134,7 @@ def main() -> int:
         ),
     )
 
-    paper_claim_numbers = ("17.78", "13.47", "272.73", "9.88", "19.20")
+    paper_claim_numbers = ("17.78", "273", "5.86", "8.49", "19.20")
     for number in paper_claim_numbers:
         if number in manuscript and number not in public_table:
             errors.append(

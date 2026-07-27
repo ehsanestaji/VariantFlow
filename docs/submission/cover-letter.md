@@ -8,31 +8,23 @@ for consideration in Molecular Ecology Resources as a Computer Programs
 submission.
 
 VariantFlow is an open-source Rust command-line tool that accelerates
-post-calling variant analysis — that is, the analysis of variant call sets
-after the variants have already been identified. To see the problem it solves,
-picture a task you have lived: you have a chr22 cohort with thousands of
-samples, and your question is narrow — "keep sites where QUAL > 30," or "how
-much missing data per site?" A VCF file carries the full account of every
-sample at every site — every genotype, depth, and quality value. That
-generality is exactly why VCF is the shared currency of variant data; it is a
-feature, not a defect. But when your question is narrow, a conventional tool
-still copies out the entire record, every genotype and depth value for every one
-of thousands of samples, before it can answer — and on a large cohort that
-copying of values you never asked for, not the biology, is what you wait for.
+post-calling analysis of variant call sets. Population-scale projects now
+produce call sets with thousands of samples and millions of sites, and because
+the Variant Call Format stores every field of every record together, a tool
+answering a field-limited question still parses the unused annotations, FORMAT
+blocks, and per-sample values. That cost is incurred without changing the
+result, and on large cohorts it dominates the wait.
 
-VariantFlow's guiding design principle, selective execution, is the cure for
-that wait. In plain terms, it reads a VCF file the way you read a reference book
-when you already know your question: it reads your question first, works out the
-few passages that could hold the answer, turns only to those, and reads only the
-words it needs on each. Concretely, it reads only the labelled sections of a
-record (the "fields") that a given filter, population-genetics statistic, or
-export actually requires — it opens only the sections your question names —
-rather than decoding (reading out) every field of every VCF record. This
-plain-language on-ramp is added above, not in place of, the field-selective,
-streaming, byte-scanning detail reviewers need to trust the method: VariantFlow
-reads fewer fields, never fewer records, and never approximates or samples, so
-the answer is the same, verified byte-identical — the same answer down to the
-last character.
+The manuscript's central contribution is selective execution. Each query,
+whether a filter expression, a population-genetic statistic, or a column
+projection, is compiled into a typed predicate tree identifying the fields on
+which the result depends; VariantFlow then streams once through the file and
+decodes only those fields, treating each record as a borrowed byte-slice view
+rather than materialising it as strings. Because the skipped fields cannot by
+construction affect the result, the output is identical to that of a tool that
+decodes every field. VariantFlow reads fewer fields, never fewer records, and
+neither approximates nor samples; this equivalence is verified empirically
+against established tools rather than asserted.
 
 On that foundation, VariantFlow implements a suite of population-genetics
 statistics that can be computed in a single read-through of the file, without
@@ -45,34 +37,28 @@ summaries it offers three data-handling features: selective VCF/BGZF filtering
 optional index that skips straight to the matching sites), and Parquet export (a
 columnar table format that makes repeated analytical queries fast).
 
-**Writing for the Molecular Ecology Resources readership.** We have written and
-revised this manuscript for the broad readership of the journal, many of whom
-are biologists without a computational-biology or computer-science background,
-as well as for editors and reviewers reading from that vantage. Above the
-technical detail that reviewers need to trust the method, the paper adds a
-plain-language layer that motivates the problem, explains the core idea, and
-states the practical value, in line with what the Computer Programs category
-expects: a clear statement of need, the design rationale, a plain description of
-function, usage, and output, and a performance evaluation against existing
-software. Throughout, each technical passage leads with the plain book image and
-then gives the precise term, so the plain layer is always an added on-ramp, never
-a replacement for the underlying rigor.
+The manuscript follows the Computer Programs category: a statement of need, the
+design rationale, a description of function, usage, and output, and a
+performance evaluation against existing software. It is written for the
+journal's readership of practising biologists, in direct declarative prose that
+defines technical terms at first use without assuming a computer-science
+background.
 
 The manuscript reports only correctness-matched benchmark evidence from tracked
 repository reports, each independently validated against VCFtools and, where
 applicable, pixy and scikit-allel. On the 1000 Genomes 3,202-sample
 high-coverage dataset, VariantFlow accelerated missingness computation
-3.67–4.78x over VCFtools at constant 9 MB memory — a memory footprint that stays
-flat no matter how many samples are in the cohort, so the work fits comfortably
-on a laptop — and other supported statistics 1.2–273x, while producing output
-that is byte-identical (the same answer down to the last character), or
-numerically identical within machine epsilon (the finest precision a computer
-can represent), to the established tool it was validated against. The paper
+8.0–8.5x over VCFtools at a constant 8.6 MB peak resident set that is
+independent of chromosome size, and other supported statistics by 1.1–273x
+depending on how much of each record the operation must decode. Population-genetic
+outputs are byte-identical to VCFtools; per-individual missingness and the
+site-frequency spectrum match scikit-allel exactly; and the missing-data-aware
+π and d_XY estimators reproduce pixy's pairwise counts in every window. The paper
 positions VariantFlow as a measured accelerator and complement to bcftools,
 HTSlib, GATK, VCFtools, DuckDB, and scikit-allel, not a universal replacement;
-Table S5 explicitly delineates the statistics it computes from those that require
-the entire table of every sample's genotypes to be held in memory at once (a full
-genotype/haplotype matrix) and are better served by scikit-allel.
+Table S5 delineates the statistics it computes from those requiring a full
+genotype or haplotype matrix resident in memory, which are better served by
+scikit-allel.
 
 We expect VariantFlow to be of practical value to the readership of Molecular
 Ecology Resources: population and conservation/ecological genomics (nucleotide
@@ -81,7 +67,7 @@ and animal breeding programmes (large-panel screening), large-cohort
 human-genomics quality control (missingness and allele-frequency summaries), and
 bioinformatics pipeline development (a fast, scriptable filtering and export
 layer). Its distinctive contribution is bringing whole-cohort population genomic
-summaries from batch to interactive timescales on commodity hardware, while
+summaries from batch to interactive timescales on a single workstation, while
 preserving exact correctness against established tools; a companion online user
 guide and statistics reference lower the barrier to adoption for students and
 non-specialists.
@@ -91,12 +77,17 @@ version, source archive, and reproducibility materials are available at:
 
 - Repository: https://github.com/ehsanestaji/VariantFlow
 - Release tag: v1.5.0
-- Archive DOI: 10.5281/zenodo.21198171
+- Archive DOI (v1.5.0 version DOI): 10.5281/zenodo.21198172
+- Concept DOI (all versions): 10.5281/zenodo.21198171
 - Public benchmark table: `docs/public-benchmark-table.md`
 
-No new biological specimens or sequence data were generated for this study; all
-benchmarks reuse publicly available, previously deposited 1000 Genomes Project
-variant call sets under their existing data-access terms. A Data Accessibility
+No new biological specimens or sequence data were generated for this study. The
+benchmarks reuse publicly available data: the 1000 Genomes Project high-coverage
+release for the population-genetic and indexed-filter results, and a 3,715-sample
+chromosome 22 joint call set aligned to the T2T-CHM13 reference, distributed by
+DDBJ, for the FORMAT-filter results; the Parquet/DuckDB results use a
+deterministic synthetic call set generated by a script in the repository. All are
+used under their existing data-access terms. A Data Accessibility
 and Benefit-Sharing Statement is included in the manuscript, beneath the
 references, as required by journal policy.
 
