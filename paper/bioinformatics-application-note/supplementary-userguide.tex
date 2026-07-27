@@ -372,12 +372,13 @@ Note that \texttt{pixy} takes the input as a \textbf{positional} argument (not
 per window) and \texttt{chr22.pixy\_dxy.tsv} (per-pair dxy per window) as in the
 $\pi$ and Fst sections, with missing data handled correctly.
 
-\subsection{Site-frequency spectrum (\texttt{sfs}) --- new / unverified}
+\subsection{Site-frequency spectrum (\texttt{sfs})}
 \paragraph{Verification note.} The \texttt{sfs} subcommand is present in the
-current source tree but \textbf{not} in the prebuilt release binary used to verify
-this guide, so the commands below could not be run as-is. Rebuild from source
-(\texttt{cargo build --release}) to obtain it; treat the exact flags as
-provisional.
+VariantFlow~1.5.0 release binary. Its folded and unfolded spectra were validated
+against scikit-allel~1.3.13 and match bin for bin (maximum absolute difference
+zero); see \texttt{benchmark/reports/v30-correctness-crosschecks.md}. An earlier
+note stating that \texttt{sfs} was absent from the prebuilt binary referred to a
+pre-1.5.0 build and no longer applies.
 
 \textbf{What it measures.} The site-frequency spectrum (SFS/AFS): a histogram of
 how many variant sites have each allele count---the raw signal behind Tajima's~D

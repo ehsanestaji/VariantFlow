@@ -5,10 +5,10 @@ sequencing projects now routinely produce Variant Call Format (VCF) files that
 describe thousands of samples and millions of variant sites per chromosome
 \citep{vcftools}. Once variants have been called, these files are scanned
 repeatedly for quality filtering, cohort subsetting, population-genetic
-summaries, and conversion to downstream formats. Each scan accounts for a
-substantial share of analysis time, and each is typically carried out by a tool
-that parses the entire record even when the operation depends on only one or two
-of its fields.
+summaries, and conversion to downstream formats. These repeated scans are a
+recurring cost in post-calling analysis, and each is typically carried out by a
+tool that parses the entire record even when the operation depends on only one or
+two of its fields.
 
 This inefficiency follows directly from the VCF design. A VCF record stores
 every property of a variant on a single line, beginning with the site-level
@@ -20,14 +20,24 @@ downstream program can read, which is why it has become the standard
 representation for variant data. It also means that a program answering a
 field-limited question, such as retaining sites with $\mathtt{QUAL}>30$ or
 measuring per-site missingness, must still decode the full record, including the
-per-sample values it will not use. On cohorts of thousands of samples, decoding
-these unused fields dominates the running time of the operation.
+per-sample values it will not use. On cohorts of thousands of samples, where the
+per-sample FORMAT block is by far the largest part of each record, decoding these
+unused fields typically dominates the running time of the operation.
 
-The mature tools that anchor most pipelines, bcftools and HTSlib
-\citep{bcftools,htslib} and VCFtools \citep{vcftools}, decode complete records
-because they are built to support the full range of downstream analyses. That
-generality is essential, but it is not the most efficient execution strategy for
-a single task that touches only a few fields.
+Established tools take different routes to this problem. VCFtools
+\citep{vcftools} parses the full text record. bcftools with HTSlib
+\citep{bcftools,htslib} unpacks BCF fields in tiers and, given a tabix or CSI
+coordinate index \citep{tabix}, restricts reading to requested genomic regions,
+so it avoids decoding data it does not need for site-level BCF queries. Fast
+parsing libraries such as cyvcf2 \citep{cyvcf2} likewise provide lazy access to
+individual fields, and dedicated engines re-encode genotypes into
+query-optimised stores for fast field- or sample-limited access, including GQT
+\citep{gqt} and the fixed-schema binary genotypes of PLINK \citep{plink2}. These
+approaches are effective within their scope, but none provides predicate-driven
+decoding of unmodified VCF text---where the single-line layout otherwise forces a
+full parse---combined with block-level skipping keyed on non-positional
+predicates, such as filter status or allele-frequency thresholds, that a
+coordinate index cannot exploit.
 
 VariantFlow addresses this inefficiency through selective execution. For each
 filter, statistic, or projection, it determines the minimal set of fields on

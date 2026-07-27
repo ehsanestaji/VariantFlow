@@ -14,13 +14,19 @@ normalisation, and format conversion; VCFtools for established population-geneti
 file operations; DuckDB for ad hoc analytical queries over exported tables; and
 scikit-allel for matrix- and haplotype-based statistics such as selection scans,
 principal-component analysis, and $D$- and $f$-statistics, which require every
-sample's genotypes to be held in memory simultaneously. VariantFlow occupies the
+sample's genotypes to be held in memory simultaneously. PLINK \citep{plink2}
+remains the reference for genome-wide association and matrix statistics computed
+on fixed-schema binary genotypes, and the cyvcf2 library \citep{cyvcf2} provides
+fast lazy VCF parsing for custom analyses in Python; VariantFlow differs in
+operating directly on VCF/BCF with query-driven field selection and byte-exact
+VCFtools-compatible output from a standalone command-line tool. VariantFlow
+occupies the
 gap between these, providing fast field-selective filtering and streamable
 per-site and per-window statistics on large cohorts, with export-once handoff to
 DuckDB and explicit deferral to scikit-allel for matrix-wide analyses
 (Supplementary Table~S5). In practice, VariantFlow is the appropriate choice
-when interactive turnaround on large VCF files using commodity hardware is the
-priority, and an established tool when its full generality is required.
+when interactive turnaround on large VCF files using a single workstation is
+the priority, and an established tool when its full generality is required.
 
 GPU-accelerated pipelines such as NVIDIA Clara Parabricks target variant calling
 and the upstream processing that produces a VCF, using massive parallelism
@@ -43,8 +49,8 @@ while remaining exactly consistent with the established tools.
 
 VariantFlow has clear limits. It decodes only a defined subset of per-sample
 FORMAT fields, so analyses that depend on FORMAT keys it does not yet parse must
-use the established tools; its Hardy--Weinberg equilibrium computation is
-slightly slower than VCFtools; and its BGZF filtering does not outperform
-bcftools on files with many samples, where the cost of reading full records
-dominates. Extending the expression language and the set of supported FORMAT
+use the established tools. Its index-assisted allele-frequency path trades
+memory for speed, reaching a 66~MB peak resident set at the one-million-record
+tier against bcftools' 4.4~MB, and on datasets where few blocks can be excluded
+in advance the index confers no advantage over a sequential scan. Extending the expression language and the set of supported FORMAT
 fields is the principal direction of future work.
