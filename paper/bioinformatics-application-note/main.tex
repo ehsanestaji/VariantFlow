@@ -182,8 +182,13 @@ deferred to scikit-allel (Supplementary Table~S5).
 
 \vspace{0.9em}
 \noindent\textbf{Figure~2. The VariantFlow command tree.} Subcommands are
-grouped into filtering/indexing/I-O and population-genetics families; each leaf
-gives the command and a one-line description of its function.
+grouped into two families that reflect the two ways selective execution is
+applied. The filtering, indexing, and input/output commands select records and
+fields, and return VCF, BCF, or Parquet; the population-genetics commands
+consume the same selective reader but return per-site or per-window statistics
+as tab-separated tables. The split matters in use because the first family
+composes with established tools in a pipeline, while the second terminates it.
+Each leaf gives the command and a one-line description of its function.
 
 \section*{Supplementary material}
 The supplementary document (\texttt{supplementary.pdf}) contains the following

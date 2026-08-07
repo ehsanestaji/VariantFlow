@@ -111,3 +111,20 @@ VariantFlow is written in Rust and builds from source with Cargo on Linux and
 macOS; prebuilt binaries and a container image are distributed with each release.
 The optional HTSlib backend is enabled at compile time and is not required for
 any result reported here.
+
+\subsection{Benchmark and validation protocol}
+
+All comparisons reported here are drawn from benchmark reports tracked in the
+repository, each recording the exact commands, the competitor version, and the
+correctness check applied. A speedup is reported only for an operation whose
+output has first been verified against a reference tool (Supplementary
+Table~S1); operations that trail a competitor are treated as optimisation
+targets rather than claims, and are reported as measured.
+
+Population-genetic benchmarks were run on an Apple M5 Max workstation and the
+index-assisted and columnar benchmarks on a Docker/Linux host. Within every
+comparison both tools were run on the same host, so no ratio spans machines. The
+full system configuration, tool versions, and dataset shapes are given in
+Supplementary Table~S2. Timing is single-threaded wall-clock; memory is peak
+resident set size, and correctness was assessed by normalising both outputs and
+comparing them field by field.
