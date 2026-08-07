@@ -8,12 +8,12 @@
     {
       "name": "Estaji, Ehsan",
       "orcid": "0009-0005-0838-228X",
-      "affiliation": "Umeå Plant Science Centre, Department of Plant Physiology, Umeå University"
+      "affiliation": "Ume\u00e5 Plant Science Centre, Department of Plant Physiology, Ume\u00e5 University"
     },
     {
       "name": "Mao, Jian-Feng",
       "orcid": "0000-0001-9735-8516",
-      "affiliation": "Umeå Plant Science Centre, Department of Plant Physiology, Umeå University"
+      "affiliation": "Ume\u00e5 Plant Science Centre, Department of Plant Physiology, Ume\u00e5 University"
     }
   ],
   "keywords": [
@@ -22,5 +22,6 @@
     "population genetics",
     "nucleotide diversity",
     "variant calling"
-  ]
+  ],
+  "notes": "Dual-licensed under MIT OR Apache-2.0; see LICENSE, LICENSE-MIT and LICENSE-APACHE in the repository. Zenodo's single-value license field cannot express the dual licence, so MIT is recorded there."
 }
