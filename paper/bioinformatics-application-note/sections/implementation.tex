@@ -1,48 +1,113 @@
-\section{Algorithm and implementation}
+\section{Materials and Methods}
 
-Selective execution is the central design principle of VariantFlow. Each query,
-whether a filter expression, a population-genetic statistic, or a column
-projection, is compiled into a typed predicate tree that identifies the specific
-fields on which the result depends (Figure~1). VariantFlow then streams once
-through the file and, for each record, decodes only those fields. Rather than
-materialising the whole record as strings, it treats each record as a borrowed
-byte-slice view and locates the required site, INFO, and FORMAT fields by
-scanning the raw bytes in place. Because the skipped fields cannot, by
+\subsection{Selective execution}
+
+Selective execution is the central design principle of VariantFlow. A VCF record
+stores every field for every sample on a single line, so a conventional parser
+must walk the whole line before it can return any part of it. Most analyses,
+however, depend on a small fraction of that line: a quality filter needs
+\texttt{QUAL}, a missingness summary needs only the genotype of each sample, and
+an allele-frequency calculation needs neither read depths nor genotype
+qualities. The remaining bytes are decoded and discarded.
+
+Each query, whether a filter expression, a population-genetic statistic, or a
+column projection, is therefore compiled into a typed predicate tree that
+identifies the specific fields on which the result depends (Figure~1).
+VariantFlow then streams once through the file and, for each record, decodes only
+those fields. Rather than materialising the whole record as strings, it treats
+each record as a borrowed byte-slice view and locates the required site, INFO,
+and FORMAT fields by scanning the raw bytes in place, so no allocation is made
+for a field that is never read. Because the skipped fields cannot, by
 construction, affect the result, the output is identical to that of a tool that
-decodes every field; this equivalence is verified empirically in Section~3.
+decodes every field. That equivalence is a design property rather than an
+approximation: VariantFlow reads fewer fields, never fewer records, and never
+samples or estimates. It is verified empirically in the Results.
 
-For filters over per-sample FORMAT fields, VariantFlow parses the FORMAT schema
-once per record, caches the index of the requested key such as \texttt{DP}, and
-reads that value by position across all samples, avoiding a repeated scan of the
-\texttt{GT:DP:GQ:AD} layout for every sample. In its line-preserving mode,
-records that pass a filter are written in input order with their original text
-unchanged.
+\subsection{Field-selective parsing of per-sample data}
+
+The cost that selective execution avoids grows with cohort size, because the
+per-sample block is the part of a VCF record that scales. In a 3\,202-sample
+cohort each record carries thousands of \texttt{GT:DP:GQ:AD} entries, and a
+filter on read depth alone must otherwise traverse all of them. VariantFlow
+parses the FORMAT schema once per record, caches the position of the requested
+key such as \texttt{DP}, and reads that value by offset across all samples,
+avoiding a repeated scan of the layout for every sample. In its line-preserving
+mode, records that pass a filter are written in input order with their original
+text unchanged, so a filtered file remains byte-comparable with its source.
+
+\subsection{Compressed input, parallelism, and query-aware indexing}
 
 Compressed input is read through a native block-gzip (BGZF) reader with a
 worker-thread count capped automatically to the host. CPU-bound predicates are
-evaluated in ordered batches so that output order is preserved. For filters that
-are applied repeatedly and reject most records, an optional \texttt{.vfi}
-sidecar index stores per-block metadata (genomic range, \texttt{QUAL},
-\texttt{FILTER}, and selected INFO summaries); the query planner skips an entire
-block whenever this metadata proves that no record within it can satisfy the
-filter. Through an optional HTSlib backend \citep{htslib}, VariantFlow
-additionally reads BCF (the binary encoding of VCF), restricts reading to a
-single indexed region, and writes BGZF output.
+evaluated in ordered batches so that output order is preserved regardless of the
+number of threads.
+
+For filters that are applied repeatedly and reject most records, an optional
+\texttt{.vfi} sidecar index stores per-block metadata: the genomic range,
+\texttt{QUAL} bounds, the set of \texttt{FILTER} values present, and summaries of
+selected INFO fields. The query planner consults this metadata and skips an
+entire compressed block whenever it proves that no record within it can satisfy
+the filter. The distinction from a coordinate index such as tabix
+\citep{tabix} is that the skipping criterion need not be positional. A tabix or
+CSI index answers ``which blocks overlap this region''; it cannot answer ``which
+blocks contain a record whose \texttt{FILTER} is \texttt{PASS}'' or ``whose
+allele frequency exceeds a threshold'', because those properties are not
+functions of genomic position. Storing per-block summaries of exactly the fields
+that predicates reference is what makes non-positional skipping possible, and it
+is the reason the largest speedups in this study arise for predicates that
+exclude most of the file. When few blocks can be excluded, the planner falls back
+to a sequential scan.
+
+Through an optional HTSlib backend \citep{htslib}, VariantFlow additionally reads
+BCF (the binary encoding of VCF), restricts reading to a single indexed region,
+and writes BGZF output.
+
+\subsection{Population-genetic statistics and columnar export}
 
 For population-genetic analysis, the VCFtools-compatible subcommands operate on
 compact diploid biallelic genotype summaries and reproduce VCFtools output for
 allele frequency, missingness, heterozygosity, Hardy--Weinberg equilibrium,
-nucleotide diversity, Tajima's $D$, linkage disequilibrium, and $F_{ST}$. For
-repeated analytical queries, VariantFlow exports typed columns in the Parquet
-format \citep{parquet}, which columnar engines such as DuckDB \citep{duckdb} can
-query efficiently without re-parsing the VCF.
+nucleotide diversity, Tajima's $D$, linkage disequilibrium, and $F_{ST}$. Each is
+computed in a single streaming pass over sites or windows, so peak memory is set
+by the number of samples rather than the number of records. For repeated
+analytical queries, VariantFlow exports typed columns in the Parquet format
+\citep{parquet}, which columnar engines such as DuckDB \citep{duckdb} can query
+efficiently without re-parsing the VCF.
 
-The command-line interface follows the compositional, single-purpose style
-common in genomics, exposing the operations as a small tree of filtering,
-indexing, input/output, and population-genetic subcommands (Figure~2). Two
-representative invocations, a FORMAT-aware filter and a two-population $F_{ST}$
-computation, are
+\subsection{Interface and usage}
+
+The command-line interface follows the compositional, single-purpose style common
+in genomics, exposing the operations as a small tree of filtering, indexing,
+input/output, and population-genetic subcommands (Figure~2).
+
+A representative FORMAT-aware filter keeps sites that pass a quality threshold
+and have at least one sample sequenced to sufficient depth:
+
 {\small
-\texttt{variantflow filter input.vcf.gz --where "QUAL>30 \&\& ANY(FORMAT/DP>20)"}\\
-\texttt{variantflow fst cohort.vcf.gz --pop pop1.txt --pop pop2.txt -o fst.tsv}
+\texttt{variantflow filter chr22.vcf.gz \textbackslash}\\
+\texttt{~~--where "QUAL > 30 \&\& ANY(FORMAT/DP > 20)" -o chr22.filtered.vcf}
 }
+
+\noindent
+The output is a VCF whose passing records are byte-identical to the
+corresponding input lines. A two-population $F_{ST}$ computation takes two files
+of sample identifiers and writes a tab-separated table:
+
+{\small
+\texttt{variantflow fst chr22.vcf.gz --pop AFR.txt --pop EUR.txt -o fst.tsv}
+}
+
+\noindent
+Each row of \texttt{fst.tsv} gives the chromosome, position, and the
+Weir--Cockerham estimate for that site, so a value of, for example, $0.31$ at a
+given position indicates that roughly a third of the genetic variance there is
+partitioned between the two populations rather than within them. The same
+invocation pattern applies to the other summaries, which differ only in the
+statistic named and the options it requires. A worked end-to-end analysis of
+1000~Genomes chromosome~22, from installation through interpretation, is provided
+as a supplementary user guide.
+
+VariantFlow is written in Rust and builds from source with Cargo on Linux and
+macOS; prebuilt binaries and a container image are distributed with each release.
+The optional HTSlib backend is enabled at compile time and is not required for
+any result reported here.

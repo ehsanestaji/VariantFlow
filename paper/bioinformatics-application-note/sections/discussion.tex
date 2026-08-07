@@ -44,13 +44,32 @@ breeding programmes that screen large panels; large-cohort human-genomics
 quality control based on missingness and allele-frequency summaries; and
 developers who build scriptable filtering and export steps into pipelines. For
 these users the distinctive contribution of VariantFlow is that whole-cohort
-post-calling summaries become feasible interactively, without a compute cluster,
-while remaining exactly consistent with the established tools.
+post-calling summaries become tractable on the hardware they already have: a
+whole-chromosome missingness summary that takes VCFtools 1031~s on
+chromosome~1 completes in 128~s on the same workstation, with byte-identical
+output.
 
 VariantFlow has clear limits. It decodes only a defined subset of per-sample
 FORMAT fields, so analyses that depend on FORMAT keys it does not yet parse must
 use the established tools. Its index-assisted allele-frequency path trades
 memory for speed, reaching a 66~MB peak resident set at the one-million-record
 tier against bcftools' 4.4~MB, and on datasets where few blocks can be excluded
-in advance the index confers no advantage over a sequential scan. Extending the expression language and the set of supported FORMAT
-fields is the principal direction of future work.
+in advance the index confers no advantage over a sequential scan.
+
+\section{Conclusions}
+
+VariantFlow shows that deriving the decode set from the query itself, rather than
+parsing every field of every record, is sufficient to move whole-cohort
+post-calling analysis onto a single workstation while leaving results unchanged.
+The gains follow the mechanism rather than the implementation language: they are
+large where a query touches few fields or where block metadata excludes most of
+a file, and small where nearly every genotype must be read regardless. Reporting
+both regimes is what allows the principle to be judged rather than merely
+asserted.
+
+For practitioners the immediate consequence is that summaries which previously
+ran as batch jobs can be run repeatedly while a question is still being
+formulated, without a compute cluster and without departing from the outputs
+established tools produce. Extending the expression language and the set of
+supported FORMAT fields is the principal direction of future work, as is
+broadening the per-block summaries that make non-positional skipping possible.

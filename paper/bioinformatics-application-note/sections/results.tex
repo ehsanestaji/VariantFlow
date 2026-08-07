@@ -1,4 +1,6 @@
-\section{Benchmark evidence}
+\section{Results}
+
+\subsection{Benchmark protocol}
 
 All comparisons are drawn from tracked benchmark reports that record the exact
 commands, competitor versions, and correctness checks used (Table~1). VariantFlow
@@ -7,7 +9,12 @@ against a reference tool (Supplementary Table~S1); operations that trail a
 competitor are treated as optimisation targets rather than claims. The benchmark
 system configuration is given in Supplementary Table~S2, and the per-workflow
 timings and memory for the streaming population-genetics and repeated-query
-workflows in Supplementary Table~S3.
+workflows in Supplementary Table~S3. Population-genetic benchmarks were run on
+an Apple M5 Max workstation and the index-assisted and columnar benchmarks on a
+Docker/Linux host; within every comparison both tools were run on the same host,
+so no ratio spans machines.
+
+\subsection{Selective filtering and query-aware indexing}
 
 On a 3\,715-sample chromosome~22 call set aligned to the T2T-CHM13 reference
 \citep{t2tchm13} and distributed by DDBJ, filters over FORMAT-rich predicates produced the same records as bcftools
@@ -19,33 +26,42 @@ Query-aware indexing with the \texttt{.vfi}
 sidecar gave the largest gains where most blocks can be excluded in advance. On
 the 1000~Genomes chromosome~22 data, a
 $\mathtt{FILTER}=\mathtt{PASS}$ predicate, for which block metadata proves that
-no record in a skipped block can pass, ran 123--273x faster, and a block-level
-allele-frequency threshold predicate ran 4.70--4.93x faster. The
+no record in a skipped block can pass, ran 123--273x faster (0.213~s versus
+58.03~s at the one-million-record tier), and a block-level allele-frequency
+threshold predicate ran 4.70--4.93x faster. The
 allele-frequency path trades memory for speed, reaching a 66.1~MB peak resident
 set at the one-million-record tier against bcftools' 4.4~MB. When few blocks can
 be excluded, VariantFlow falls back to a sequential scan and the index confers
 no advantage; on synthetic datasets in which the planner cannot exclude blocks,
 the indexed path is slower than the unindexed one.
 
+\subsection{Population-genetic summaries at whole-chromosome scale}
+
 Population-genetic summaries on the full 1000 Genomes 3\,202-sample
 high-coverage cohort \citep{tgp_highcov} confirm that
 selective execution scales to whole-chromosome data. Missingness computation, for which
 VariantFlow emits per-site and per-individual rates in a single pass, ran
-8.49x faster than VCFtools on chromosome~22 (1,073,369 records) and 8.04x faster
-on chromosome~1 (6,468,094 records), at a peak resident memory of 8.6~MB that
-was independent of chromosome size. Bounded-distance linkage disequilibrium
-($r^{2}$, \texttt{--max-distance 500}) ran 5.9x faster on a 925,730-record
-dataset. The remaining VCFtools-compatible summaries were faster by smaller
+8.49x faster than VCFtools on chromosome~22 (1,073,369 records; 23.75~s versus
+201.67~s) and 8.04x faster on chromosome~1 (6,468,094 records; 128.27~s versus
+1031.13~s), at a peak resident memory of 8.6~MB that was independent of
+chromosome size. The chromosome~1 summary therefore completes in about two
+minutes where VCFtools requires about seventeen. Bounded-distance linkage
+disequilibrium ($r^{2}$, \texttt{--max-distance 500}) ran 5.9x faster on a
+925,730-record dataset (75.9~s versus 444.9~s). The remaining VCFtools-compatible summaries were faster by smaller
 margins on the same cohort: allele frequency 3.68x, heterozygosity 1.46x,
 Tajima's $D$ 1.27x, Hardy--Weinberg equilibrium 1.23x, Weir--Cockerham $F_{ST}$
 1.09x, and per-site $\pi$ 1.08x. Selective execution therefore yields large
 gains where field selectivity is high and modest ones where nearly every
 genotype must be read regardless.
 
+\subsection{Columnar export for repeated queries}
+
 On a separate deterministic synthetic call set, exporting the data once to
 Parquet and issuing repeated queries through DuckDB was 1.19--19.20x faster than
 repeated scans of the source file, amortised over the query workload
 (Supplementary Table~S3).
+
+\subsection{Correctness against established tools}
 
 Correctness was verified for every reported statistic, because the value of a
 faster tool depends on its returning the established answer. Allele frequency,
@@ -65,6 +81,8 @@ defined in Supplementary Note~S1; on an all-sites cohort with 15\% of genotypes
 set to missing, its per-window $\pi$ and $d_{XY}$ pairwise counts were identical
 to pixy across every window (Supplementary Table~S4). The full validation
 procedure is described in Supplementary Note~S2.
+
+\subsection{Scope of the implemented statistics}
 
 VariantFlow implements the population-genetic statistics that can be computed in
 a single streaming pass over sites or windows: allele frequency, missingness,

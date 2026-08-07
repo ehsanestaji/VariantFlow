@@ -49,36 +49,32 @@ SE-901\,87 Ume{\aa}, Sweden \\[4pt]
 
 \begin{abstract}
 \noindent
-Population-scale sequencing projects now produce variant call sets with
-thousands of samples and millions of sites, and post-calling analysis of these
-files has become a recurring computational bottleneck. Because the Variant Call
-Format stores every field of every record together, a tool answering a
-field-limited question still parses the unused annotations, FORMAT blocks, and
-per-sample values, which costs time without changing the result. We present
-VariantFlow, a command-line engine whose central design principle is selective
-execution, decoding only the fields required by the current filter, statistic,
-or projection and preserving original records where possible. On
-correctness-matched benchmarks, VariantFlow computed missingness on the
-1000 Genomes 3\,202-sample high-coverage dataset 8.0--8.5x faster than VCFtools
-across chromosomes~22 and~1 at a constant 8.6~MB of memory, evaluated an
-index-assisted $\mathtt{FILTER}=\mathtt{PASS}$ predicate 123--273x faster than
-bcftools where block metadata excludes most of the file, and computed
-bounded-distance linkage disequilibrium 5.9x faster. It filtered FORMAT-rich
-predicates 4.74--17.78x faster than bcftools on subsets of 1\,000 to 50\,000
-records streamed from a 3\,715-sample chromosome~22 call set. Exporting once to
-Parquet served repeated DuckDB queries 1.19--19.20x faster than repeated scans. The
-core population-genetic outputs were byte-identical to VCFtools, per-individual
-missingness and the site-frequency spectrum matched scikit-allel exactly, and
-the missing-data-aware $\pi$ and $d_{XY}$ estimators reproduced pixy's pairwise
-counts in every window. By decoding only the fields
-each operation requires, VariantFlow brings large-cohort post-calling analysis
-within reach of interactive, exploratory work on a single workstation. It
-complements rather than replaces bcftools, HTSlib, GATK, and VCFtools, and we
-expect it to be of immediate value in population and conservation genomics,
-plant and animal breeding, large-cohort human-genomics quality control, and
-bioinformatics pipeline development. VariantFlow is open source (Rust,
-MIT OR Apache-2.0) at \url{https://github.com/ehsanestaji/VariantFlow}, and
-version~1.5.0 is archived at
+Population-scale sequencing now produces variant call sets with thousands of
+samples and millions of sites, making post-calling analysis a recurring
+bottleneck. Because the Variant Call Format stores every field of every record
+together, a tool answering a field-limited question still parses the unused
+annotations, FORMAT blocks, and per-sample values, which costs time without
+changing the result. We present VariantFlow, a command-line engine built on
+selective execution: it decodes only the fields the current filter, statistic,
+or projection requires, preserving original records where possible. On
+correctness-matched benchmarks on the 1000 Genomes 3\,202-sample high-coverage
+dataset, VariantFlow computed whole-chromosome missingness 8.0--8.5x faster than
+VCFtools at a constant 8.6~MB of memory, the chromosome~1 summary taking 128~s
+against 1031~s. An index-assisted $\mathtt{FILTER}=\mathtt{PASS}$ predicate ran
+123--273x faster than bcftools where block metadata excludes most of the file.
+Further gains, reported in Table~1, cover FORMAT-rich filtering on record
+subsets, linkage disequilibrium, and export-once Parquet queries served through
+DuckDB. Core population-genetic outputs were byte-identical to VCFtools,
+per-individual missingness and the site-frequency spectrum matched scikit-allel
+exactly, and the missing-data-aware $\pi$ and $d_{XY}$ estimators reproduced
+pixy's pairwise counts in every window. By decoding only the fields each
+operation requires, VariantFlow brings large-cohort post-calling analysis within
+reach of exploratory work on a single workstation. It complements rather than
+replaces bcftools, HTSlib, GATK, and VCFtools, and should be of value wherever
+large cohort VCFs are repeatedly summarised, filtered, or exported. VariantFlow
+is open source (Rust, MIT OR
+Apache-2.0) at \url{https://github.com/ehsanestaji/VariantFlow}; version~1.5.0
+is archived at
 \href{https://doi.org/10.5281/zenodo.21198172}{doi:10.5281/zenodo.21198172}.
 
 \vspace{0.6em}
@@ -212,18 +208,19 @@ from installation to interpretation) is provided in the software repository.
 \begin{center}\textbf{Table 1}\end{center}
 \vspace{0.5em}
 \begin{center}
-\small
-\begin{tabularx}{\linewidth}{p{0.18\linewidth}p{0.18\linewidth}Xp{0.20\linewidth}c}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabularx}{\linewidth}{p{0.14\linewidth}p{0.15\linewidth}Xp{0.13\linewidth}p{0.16\linewidth}c}
 \toprule
-Workflow & Dataset & Speedup & RSS, VariantFlow\,/\,baseline & Match \\
+Workflow & Dataset & Time, VariantFlow\,/\,baseline (s) & Speedup & RSS, VariantFlow\,/\,baseline & Match \\
 \midrule
-Human FORMAT filters & CHM13 chr22, 3\,715 sam., 1k--50k rec. & 4.74--17.78x & 8.1--9.0\,/\,11.6--15.1 MB & \checkmark \\
-Indexed \texttt{PASS} & IGSR chr22, 100k--1M & 123--273x & 4.5--6.1\,/\,4.2--4.4 MB & \checkmark \\
-Indexed AF pred. & IGSR chr22, 100k--1M, 256-rec & 4.70--4.93x & 9.9--66.1\,/\,4.4 MB & \checkmark \\
-Missingness & IGSR chr22 full, 1.07M & 8.49x & 8.6\,/\,4.1 MB & \checkmark \\
-Missingness & IGSR chr1 full, 6.47M & 8.04x & 8.7\,/\,4.1 MB & \checkmark \\
-LD ($r^{2}$) & IGSR chr22, 925k & 5.86x & 9.0\,/\,4.2 MB & \checkmark \\
-DuckDB amortized & Parquet export-once & 1.19--19.20x & --- & \checkmark \\
+Human FORMAT filters & CHM13 chr22, 3\,715 sam., 1k--50k rec. & 0.031--2.81\,/\,0.40--25.02 & 4.74--17.78x & 8.1--9.0\,/\,11.6--15.1 MB & \checkmark \\
+Indexed \texttt{PASS} & IGSR chr22, 100k--1M & 0.029--0.213\,/\,3.52--58.03 & 123--273x & 4.5--6.1\,/\,4.2--4.4 MB & \checkmark \\
+Indexed AF pred. & IGSR chr22, 100k--1M, 256-rec & 0.72--7.24\,/\,3.56--34.04 & 4.70--4.93x & 9.9--66.1\,/\,4.4 MB & \checkmark \\
+Missingness & IGSR chr22 full, 1.07M & 23.75\,/\,201.67 & 8.49x & 8.6\,/\,4.1 MB & \checkmark \\
+Missingness & IGSR chr1 full, 6.47M & 128.27\,/\,1031.13 & 8.04x & 8.7\,/\,4.1 MB & \checkmark \\
+LD ($r^{2}$) & IGSR chr22, 925k & 75.9\,/\,444.9 & 5.86x & 9.0\,/\,4.2 MB & \checkmark \\
+DuckDB amortized & Synthetic, 1M & 0.82\,/\,15.69 & 1.19--19.20x & --- & \checkmark \\
 \bottomrule
 \end{tabularx}
 \end{center}
