@@ -32,12 +32,22 @@ so it avoids decoding data it does not need for site-level BCF queries. Fast
 parsing libraries such as cyvcf2 \citep{cyvcf2} likewise provide lazy access to
 individual fields, and dedicated engines re-encode genotypes into
 query-optimised stores for fast field- or sample-limited access, including GQT
-\citep{gqt} and the fixed-schema binary genotypes of PLINK \citep{plink2}. These
-approaches are effective within their scope, but none provides predicate-driven
-decoding of unmodified VCF text---where the single-line layout otherwise forces a
-full parse---combined with block-level skipping keyed on non-positional
-predicates, such as filter status or allele-frequency thresholds, that a
-coordinate index cannot exploit.
+\citep{gqt} and the fixed-schema binary genotypes of PLINK \citep{plink2}.
+Closest to the present work are expression-driven filters that evaluate
+user-written predicates directly against VCF and BCF records, including vembrane
+\citep{vembrane} and vcfexpress \citep{vcfexpress}, the latter also implemented
+in Rust. These tools show that a compact expression language can express most
+filtering intent without bespoke code, and they establish the interface
+convention VariantFlow adopts.
+
+What remains open is what the engine does with that expression once it has it.
+In the tools above the predicate selects records; it does not determine how much
+of each record is decoded, nor which parts of the file are read at all.
+VariantFlow derives both from the predicate: the set of fields decoded per record
+is the set the predicate references, and per-block summaries of those same fields
+allow whole compressed blocks to be skipped on non-positional criteria such as
+filter status or an allele-frequency threshold, which a coordinate index cannot
+evaluate.
 
 VariantFlow addresses this inefficiency through selective execution. For each
 filter, statistic, or projection, it determines the minimal set of fields on
