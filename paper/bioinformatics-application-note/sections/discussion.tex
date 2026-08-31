@@ -44,7 +44,7 @@ breeding programmes that screen large panels; large-cohort human-genomics
 quality control based on missingness and allele-frequency summaries; and
 developers who build scriptable filtering and export steps into pipelines. For
 these users the distinctive contribution of VariantFlow is that whole-cohort
-post-calling summaries become tractable on the hardware they already have: a
+post-calling summaries become tractable on the hardware they already have. A
 whole-chromosome missingness summary that takes VCFtools 1031~s on
 chromosome~1 completes in 128~s on the same workstation, with byte-identical
 output.
@@ -61,7 +61,7 @@ in advance the index confers no advantage over a sequential scan.
 VariantFlow shows that deriving the decode set from the query itself, rather than
 parsing every field of every record, is sufficient to move whole-cohort
 post-calling analysis onto a single workstation while leaving results unchanged.
-The gains follow the mechanism rather than the implementation language: they are
+The gains follow the mechanism rather than the implementation language. They are
 large where a query touches few fields or where block metadata excludes most of
 a file, and small where nearly every genotype must be read regardless. Reporting
 both regimes is what allows the principle to be judged rather than merely

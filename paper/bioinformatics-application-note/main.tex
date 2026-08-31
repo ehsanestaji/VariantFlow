@@ -55,8 +55,8 @@ bottleneck. Because the Variant Call Format stores every field of every record
 together, a tool answering a field-limited question still parses the unused
 annotations, FORMAT blocks, and per-sample values, which costs time without
 changing the result. We present VariantFlow, a command-line engine built on
-selective execution: it decodes only the fields the current filter, statistic,
-or projection requires, preserving original records where possible. On
+selective execution, decoding only the fields the current filter, statistic,
+or projection requires and preserving original records where possible. On
 correctness-matched benchmarks on the 1000 Genomes 3\,202-sample high-coverage
 dataset, VariantFlow computed whole-chromosome missingness 8.0--8.5x faster than
 VCFtools at a constant 8.6~MB of memory, the chromosome~1 summary taking 128~s
