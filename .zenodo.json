@@ -8,12 +8,12 @@
     {
       "name": "Estaji, Ehsan",
       "orcid": "0009-0005-0838-228X",
-      "affiliation": "Ume\u00e5 Plant Science Centre, Department of Plant Physiology, Ume\u00e5 University"
+      "affiliation": "Umeå Plant Science Centre, Department of Plant Physiology, Umeå University"
     },
     {
       "name": "Mao, Jian-Feng",
       "orcid": "0000-0001-9735-8516",
-      "affiliation": "Ume\u00e5 Plant Science Centre, Department of Plant Physiology, Ume\u00e5 University"
+      "affiliation": "Umeå Plant Science Centre, Department of Plant Physiology, Umeå University"
     }
   ],
   "keywords": [
@@ -23,5 +23,5 @@
     "nucleotide diversity",
     "variant calling"
   ],
-  "notes": "Dual-licensed under MIT OR Apache-2.0; see LICENSE, LICENSE-MIT and LICENSE-APACHE in the repository. Zenodo's single-value license field cannot express the dual licence, so MIT is recorded there."
+  "notes": "Dual-licensed under MIT OR Apache-2.0. Both licence texts are in the repository as LICENSE-MIT and LICENSE-APACHE, and the dual licence is stated in Cargo.toml, CITATION.cff and the README. Zenodo's legacy .zenodo.json license field accepts a single SPDX identifier, so MIT is recorded there; the record's own metadata lists both licences."
 }
