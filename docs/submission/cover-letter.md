@@ -53,7 +53,7 @@ independent of chromosome size, and other supported statistics by 1.1–273x
 depending on how much of each record the operation must decode. Population-genetic
 outputs are byte-identical to VCFtools; per-individual missingness and the
 site-frequency spectrum match scikit-allel exactly; and the missing-data-aware
-π and d_XY estimators reproduce pixy's pairwise counts in every window. The paper
+pi and dxy estimators reproduce pixy's pairwise counts in every window. The paper
 positions VariantFlow as a measured accelerator and complement to bcftools,
 HTSlib, GATK, VCFtools, DuckDB, and scikit-allel, not a universal replacement;
 Table S5 delineates the statistics it computes from those requiring a full
