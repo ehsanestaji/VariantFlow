@@ -104,4 +104,4 @@ Sincerely,
 
 Ehsan Estaji and Jian-Feng Mao
 Umeå Plant Science Centre, Umeå University
-Correspondence: jianfeng.mao@umu.se
+Correspondence: ehsan.estaji@umu.se

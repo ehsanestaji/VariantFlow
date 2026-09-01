@@ -46,6 +46,12 @@ cargo build --release
 # binary at ./target/release/variantflow
 ```
 
+Confirm the build:
+
+```bash
+./target/release/variantflow --version
+```
+
 Optional HTSlib-backed paths (BCF input, indexed region reads, BGZF output):
 
 ```bash
@@ -142,6 +148,16 @@ benchmark reports live under [`benchmark/reports/`](benchmark/reports) and
 - **End-to-end tutorial** (chr22 1000 Genomes): [`docs/user-guide.md`](docs/user-guide.md)
 - **Statistics reference:** [`docs/statistics.md`](docs/statistics.md)
 - **Tool comparison:** [`docs/tool-comparison.md`](docs/tool-comparison.md)
+- **Release notes:** [`CHANGELOG.md`](CHANGELOG.md) and
+  [`docs/release.md`](docs/release.md)
+
+## Naming
+
+The command-line binary is `variantflow`. The Cargo package is still published
+under its original name, `vcf-fast`, so `cargo install vcf-fast` installs the
+`variantflow` binary. Earlier releases were distributed under the VCF-Fast name;
+see [`docs/rename-plan.md`](docs/rename-plan.md) for the transition and the
+compatibility alias.
 
 ## Citation
 

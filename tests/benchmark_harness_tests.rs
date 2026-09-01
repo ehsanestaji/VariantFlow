@@ -1046,7 +1046,8 @@ fn v14_public_parallel_scale_tracks_auto_bgzf_policy_and_modes() {
     let report =
         fs::read_to_string(root.join("benchmark/reports/v14-public-parallel-scale-benchmark.md"))
             .unwrap();
-    let readme = fs::read_to_string(root.join("README.md")).unwrap();
+    let contribution_map = fs::read_to_string(root.join("docs/contribution-map.md")).unwrap();
+    let workflows = fs::read_to_string(root.join("docs/bioinformatics-workflows.md")).unwrap();
 
     for required in [
         "DEFAULT_AUTO_BGZF_THREAD_CAP",
@@ -1093,16 +1094,18 @@ fn v14_public_parallel_scale_tracks_auto_bgzf_policy_and_modes() {
         );
     }
 
-    assert!(readme.contains("VCF_FAST_NATIVE_BGZF_THREADS=auto"));
-    assert!(readme.contains("VCF_FAST_NATIVE_BGZF_THREADS=1"));
-    assert!(readme.contains("make bench-v14"));
+    // The BGZF thread policy and the benchmark entry point are documented under
+    // docs/, not in the public README, which covers user-facing usage only.
+    assert!(contribution_map.contains("VCF_FAST_NATIVE_BGZF_THREADS"));
+    assert!(contribution_map.contains("`auto` requests that policy explicitly"));
+    assert!(contribution_map.contains("`1` forces the single-thread fallback"));
+    assert!(workflows.contains("make bench-v14"));
 }
 
 #[test]
 fn release_todo_tracks_bioconda_and_professional_rename() {
     let root = repo_root();
     let todo = fs::read_to_string(root.join("TODO.md")).unwrap();
-    let readme = fs::read_to_string(root.join("README.md")).unwrap();
     let release_docs = fs::read_to_string(root.join("docs/release.md")).unwrap();
     let rename_plan = fs::read_to_string(root.join("docs/rename-plan.md")).unwrap();
 
@@ -1133,10 +1136,16 @@ fn release_todo_tracks_bioconda_and_professional_rename() {
         );
     }
 
-    assert!(readme.contains("VariantFlow, formerly VCF-Fast"));
-    assert!(readme.contains("variantflow --version"));
-    assert!(readme.contains("Bioconda release planning"));
-    assert!(readme.contains("TODO.md"));
+    // Rename provenance, the version-check command, and Bioconda planning live in
+    // docs/ and TODO.md. The README is the user-facing entry point and no longer
+    // carries internal release-process detail.
+    let installation = fs::read_to_string(root.join("docs/installation.md")).unwrap();
+    let bioconda = fs::read_to_string(root.join("docs/bioconda-packaging.md")).unwrap();
+
+    assert!(release_docs.contains("VariantFlow, formerly VCF-Fast"));
+    assert!(installation.contains("variantflow --version"));
+    assert!(bioconda.contains("VariantFlow Bioconda Packaging"));
+    assert!(release_docs.contains("TODO.md"));
     assert!(release_docs.contains("Distribution And Naming TODO"));
 }
 

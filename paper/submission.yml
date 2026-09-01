@@ -15,12 +15,12 @@ authors:
     email: ehsan.estaji@umu.se
     orcid: 0009-0005-0838-228X
     equal_contribution: false
+    corresponding: true
   - name: Jian-Feng Mao
     affiliation: Umeå Plant Science Centre, Department of Plant Physiology, Umeå University
     email: jianfeng.mao@umu.se
     orcid: 0000-0001-9735-8516
     equal_contribution: false
-    corresponding: true
 
 release:
   tag: v1.5.0

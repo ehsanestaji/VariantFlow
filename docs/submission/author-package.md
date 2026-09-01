@@ -18,7 +18,7 @@ submission metadata. Fill it before marking the Author Gate as passed.
 | 1 | Ehsan Estaji | UPSC, Dept. Plant Physiology, Umeå University | 0009-0005-0838-228X | Conceptualization; Software; Validation; Investigation; Data curation; Writing - original draft; Writing - review and editing | Approved |
 | 2 | Jian-Feng Mao | UPSC, Dept. Plant Physiology, Umeå University | 0000-0001-9735-8516 | Supervision; Writing - review and editing | Approved |
 
-First author: E.E. (sole). Corresponding author: J.-F.M.
+First author: E.E. (sole). Corresponding author: E.E.
 
 Author order and CRediT roles must be confirmed before submission. Any
 coauthor added later needs contribution, approval, conflict, and ORCID review
@@ -26,8 +26,8 @@ before the paper is submitted.
 
 ## Corresponding author
 
-- Name: Jian-Feng Mao
-- Email: jianfeng.mao@umu.se
+- Name: Ehsan Estaji
+- Email: ehsan.estaji@umu.se
 - Affiliation: Umeå Plant Science Centre, Dept. Plant Physiology, Umeå University
 - ORCID: 0000-0001-9735-8516
 
