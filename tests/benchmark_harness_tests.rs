@@ -1153,9 +1153,9 @@ fn release_todo_tracks_bioconda_and_professional_rename() {
 fn bioconda_packaging_prep_tracks_recipe_template_and_release_blockers() {
     let root = repo_root();
     let cargo_toml = fs::read_to_string(root.join("Cargo.toml")).unwrap();
-    let license = fs::read_to_string(root.join("LICENSE")).unwrap();
     let license_mit = fs::read_to_string(root.join("LICENSE-MIT")).unwrap();
     let license_apache = fs::read_to_string(root.join("LICENSE-APACHE")).unwrap();
+    let readme_license = fs::read_to_string(root.join("README.md")).unwrap();
     let makefile = fs::read_to_string(root.join("Makefile")).unwrap();
     let meta = fs::read_to_string(root.join("packaging/bioconda/variantflow/meta.yaml")).unwrap();
     let build = fs::read_to_string(root.join("packaging/bioconda/variantflow/build.sh")).unwrap();
@@ -1167,7 +1167,16 @@ fn bioconda_packaging_prep_tracks_recipe_template_and_release_blockers() {
     assert!(makefile.contains("bioconda-recipe-check:"));
     assert!(makefile.contains("packaging/check_bioconda_recipe.py"));
     assert!(cargo_toml.contains("license = \"MIT OR Apache-2.0\""));
-    assert!(license.contains("MIT OR Apache-2.0"));
+    // The dual licence is declared in Cargo.toml and stated canonically in the
+    // README. There is deliberately no top-level LICENSE chooser file: a custom
+    // one prevents GitHub from detecting the MIT OR Apache-2.0 dual licence.
+    assert!(readme_license.contains("Dual-licensed under either of"));
+    assert!(readme_license.contains("[LICENSE-MIT](LICENSE-MIT)"));
+    assert!(readme_license.contains("[LICENSE-APACHE](LICENSE-APACHE)"));
+    assert!(
+        !root.join("LICENSE").exists(),
+        "a top-level LICENSE file blocks GitHub's dual-licence detection"
+    );
     assert!(license_mit.contains("MIT License"));
     assert!(license_apache.contains("Apache License"));
 
