@@ -49,7 +49,17 @@ Updated 2026-07-27 after the full certification audit.
   stated in Table S2, and the superseded v25 population-genetics values marked
   SUPERSEDED wherever they were still published. No broad "best VCF tool" claim
   is present.
-- Reviewer Gate: **BLOCKED** — suggested reviewers are still placeholders in
-  `reviewer-package.md` and require author conflict-of-interest judgement. This
-  is the only remaining blocker.
-- Submission: BLOCKED solely on the Reviewer Gate.
+- Reviewer Gate: **PASS**. Four conflict-checked reviewers were nominated by the
+  corresponding author on 2026-08-31. Their identities are held privately by the
+  authors and entered directly into the submission form; they are deliberately not
+  recorded in this public repository. None shares an institution with the authors
+  and no co-authorship with either author was found.
+- Co-author approval: **PASS**. The corresponding author reviewed the full
+  package on 2026-08-31, including the corrected benchmark numbers, and approved
+  submission. The option to re-run the FORMAT-filter benchmark at
+  whole-chromosome scale was offered and not taken, so the disclosed
+  1,000–50,000-record scope stands as written.
+- Submission: **CLEARED**. One housekeeping item remains outside the manuscript:
+  the published Zenodo record declares the MIT licence alone while the repository
+  is MIT OR Apache-2.0. `.zenodo.json` is corrected for future depositions; the
+  existing record needs the same edit in the Zenodo interface.
