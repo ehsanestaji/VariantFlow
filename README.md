@@ -3,7 +3,7 @@
 [![CI](https://github.com/ehsanestaji/VariantFlow/actions/workflows/ci.yml/badge.svg)](https://github.com/ehsanestaji/VariantFlow/actions/workflows/ci.yml)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21198171.svg)](https://doi.org/10.5281/zenodo.21198171)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
-[![Docs](https://img.shields.io/badge/docs-ehsanestaji.com-2A7F73.svg)](https://ehsanestaji.com/software/variantflow)
+[![Docs](https://img.shields.io/badge/docs-in--repo-2A7F73.svg)](docs/)
 
 **VariantFlow** is a fast, selective-execution engine for post-calling VCF/BCF
 operations — filtering, VCFtools-style population summaries, and analytical
@@ -16,7 +16,7 @@ VariantFlow **complements** bcftools, HTSlib, GATK, VCFtools, and scikit-allel;
 it does not replace them. Every performance claim is backed by a
 correctness-matched benchmark.
 
-- **Documentation & guides:** https://ehsanestaji.com/software/variantflow
+- **Documentation & guides:** [`docs/`](docs/) — [installation](docs/installation.md), [user guide](docs/user-guide.md), [statistics reference](docs/statistics.md), [tool comparison](docs/tool-comparison.md)
 - **Archived release (Zenodo):** [10.5281/zenodo.21198171](https://doi.org/10.5281/zenodo.21198171)
 
 ---
@@ -84,7 +84,7 @@ variantflow convert input.vcf.gz --to parquet -o variants.parquet
 `pixy` (missing-data-aware π / d\_XY) · `tajima-d` · `ld` · `fst` · `sfs`
 (site-frequency spectrum)
 
-See the full [command and statistics reference](https://ehsanestaji.com/software/variantflow)
+See the full [command and statistics reference](docs/statistics.md)
 or [`docs/statistics.md`](docs/statistics.md).
 
 ## Population-genetics statistics
@@ -120,17 +120,25 @@ Full discussion: [`docs/tool-comparison.md`](docs/tool-comparison.md).
 
 VariantFlow reports a speedup only where a benchmark row records a correctness
 comparison. On the 1000 Genomes 3,202-sample high-coverage dataset, measured
-results include missingness 3.67–4.78× over VCFtools (constant ~9 MB memory),
-FORMAT filtering 4.74–17.78× over bcftools, indexed high-skip predicates
-123–273×, and LD 9.88×. Population-genetics outputs are verified byte-identical
-against VCFtools and independently cross-checked with scikit-allel. Tracked
+results include whole-chromosome missingness 8.04–8.49× over VCFtools at a
+constant 8.6 MB, an indexed `FILTER=PASS` predicate 123–273× over bcftools, and
+bounded-distance LD 5.86×. FORMAT-rich filtering measured 4.74–17.78× over
+bcftools on subsets of 1,000–50,000 records. Population-genetics outputs are
+byte-identical to VCFtools; per-individual missingness and the site-frequency
+spectrum match scikit-allel exactly; and the missing-data-aware pi and dxy
+estimators reproduce pixy's pairwise counts in every window.
+
+Earlier releases quoted LD at 9.88× and missingness at 3.67–4.78×. Those were
+measured on a Docker/Linux host; re-measured on the Apple M5 Max used for the
+published benchmarks, LD is 5.86× and missingness is faster, not slower. See
+[`v29-m5max-popgen-reproduction.md`](benchmark/reports/v29-m5max-popgen-reproduction.md). Tracked
 benchmark reports live under [`benchmark/reports/`](benchmark/reports) and
 [`docs/public-benchmark-table.md`](docs/public-benchmark-table.md).
 
 ## Documentation
 
 - **Guides, command & statistics reference, tutorials:**
-  https://ehsanestaji.com/software/variantflow
+  [`docs/user-guide.md`](docs/user-guide.md)
 - **End-to-end tutorial** (chr22 1000 Genomes): [`docs/user-guide.md`](docs/user-guide.md)
 - **Statistics reference:** [`docs/statistics.md`](docs/statistics.md)
 - **Tool comparison:** [`docs/tool-comparison.md`](docs/tool-comparison.md)
