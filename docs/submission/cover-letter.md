@@ -98,7 +98,9 @@ reviewed and remain responsible for the manuscript, code, benchmarks, licensing,
 and scientific claims.
 
 All authors have approved this submission and declare no competing interests.
-This manuscript is not currently under consideration elsewhere.
+This manuscript is not under consideration by any other journal. A preprint was
+posted to bioRxiv on 4 September 2026 under a CC BY 4.0 licence
+(doi:10.64898/2026.09.01.748643); it has not been formally published elsewhere.
 
 Sincerely,
 
