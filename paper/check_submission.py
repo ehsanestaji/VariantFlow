@@ -130,6 +130,7 @@ def main() -> int:
             "AI usage disclosure",
             "Funding",
             "Conflict of interest",
+            "Ethics statement",
             "MIT OR Apache-2.0",
         ),
     )
